@@ -1,59 +1,122 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-// ─── DATOS DE EJEMPLO ────────────────────────────────────────────────────────
-const SERVICIOS = [
-  { id: 1, nombre: "Classic Full Set", precio: 12000, duracion: 90, emoji: "✦", desc: "Extensiones clásicas pelo a pelo", color: "#b5c99a" },
-  { id: 2, nombre: "Volume Set", precio: 18000, duracion: 120, emoji: "✦✦", desc: "Efecto volumen con técnica rusa", color: "#8fad76" },
-  { id: 3, nombre: "Mega Volume", precio: 22000, duracion: 150, emoji: "✦✦✦", desc: "Máximo volumen y densidad", color: "#658c4d" },
-  { id: 4, nombre: "Classic Refill", precio: 7000, duracion: 60, emoji: "↺", desc: "Relleno clásico 2-3 semanas", color: "#c9d9b5" },
-  { id: 5, nombre: "Volume Refill", precio: 10000, duracion: 75, emoji: "↺↺", desc: "Relleno volumen 2-3 semanas", color: "#a8c285" },
-  { id: 6, nombre: "Lifting + Tinte", precio: 9500, duracion: 60, emoji: "◎", desc: "Laminado y tinte de pestañas naturales", color: "#d4e6c0" },
-];
+// ─── FIREBASE CONFIG ──────────────────────────────────────────────────────────
+const FB_URL = "https://lash-studio-c9cd7-default-rtdb.firebaseio.com";
+const FB_KEY = "AIzaSyDq8japdXOWaAAOjBLhESJB1h2qITdnhvk";
+const AUTH_URL = "https://identitytoolkit.googleapis.com/v1/accounts";
 
+// REST helpers
+const fbGet = async (path) => {
+  const res = await fetch(`${FB_URL}/${path}.json`);
+  const data = await res.json();
+  if (!data) return [];
+  return Object.entries(data).map(([id, val]) => ({ ...val, _id: id }));
+};
+const fbGetOne = async (path) => {
+  const res = await fetch(`${FB_URL}/${path}.json`);
+  return await res.json();
+};
+const fbSet = async (path, data) => {
+  await fetch(`${FB_URL}/${path}.json`, { method: "PUT", body: JSON.stringify(data) });
+};
+const fbPush = async (path, data) => {
+  const res = await fetch(`${FB_URL}/${path}.json`, { method: "POST", body: JSON.stringify(data) });
+  return await res.json(); // { name: "-NxId..." }
+};
+const fbDelete = async (path) => {
+  await fetch(`${FB_URL}/${path}.json`, { method: "DELETE" });
+};
+
+// Auth REST
+const authSignIn = async (email, password) => {
+  const res = await fetch(`${AUTH_URL}:signInWithPassword?key=${FB_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, returnSecureToken: true }),
+  });
+  return await res.json(); // { idToken, localId, email } o { error }
+};
+
+// ─── CONSTANTES LOCALES (no van a Firebase) ───────────────────────────────────
 const CURVAS = ["B", "C", "CC", "D", "L", "L+"];
 const GROSOR = ["0.05", "0.07", "0.10", "0.12", "0.15", "0.20"];
 const LARGO = ["8mm", "9mm", "10mm", "11mm", "12mm", "13mm", "14mm"];
+const TODOS_LOS_SLOTS_DEFAULT = ["09:00", "10:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
 
-const CLIENTAS = [
-  {
-    id: 1, nombre: "Valentina Torres", telefono: "1145678901", mail: "vale@mail.com",
-    foto: null, curva: "CC", grosor: "0.07", largo: "12mm",
-    alergias: "Ninguna", observaciones: "Prefiere look natural",
-    historial: [
-      { fecha: "2025-04-28", servicio: "Classic Full Set", pago: "transferencia", monto: 12000, curva: "CC", notas: "Quedó encantada" },
-      { fecha: "2025-03-14", servicio: "Classic Refill", pago: "efectivo", monto: 7000, curva: "CC", notas: "" },
-    ]
-  },
-  {
-    id: 2, nombre: "Sofía Ramírez", telefono: "1167890234", mail: "sofi@mail.com",
-    foto: null, curva: "D", grosor: "0.10", largo: "14mm",
-    alergias: "Sensibilidad al adhesivo", observaciones: "Usar adhesivo sensitive",
-    historial: [
-      { fecha: "2025-04-20", servicio: "Volume Set", pago: "transferencia", monto: 18000, curva: "D", notas: "Primera vez, quedó feliz" },
-    ]
-  },
-  {
-    id: 3, nombre: "Lucía Fernández", telefono: "1123456789", mail: "luci@mail.com",
-    foto: null, curva: "C", grosor: "0.07", largo: "11mm",
-    alergias: "Ninguna", observaciones: "",
-    historial: [
-      { fecha: "2025-05-02", servicio: "Lifting + Tinte", pago: "efectivo", monto: 9500, curva: "C", notas: "" },
-      { fecha: "2025-04-05", servicio: "Classic Full Set", pago: "transferencia", monto: 12000, curva: "C", notas: "" },
-      { fecha: "2025-02-20", servicio: "Classic Refill", pago: "efectivo", monto: 7000, curva: "C", notas: "" },
-    ]
-  },
-];
-
-const CITAS = [
-  { id: 1, clientaId: 1, clienta: "Valentina Torres", fecha: "2025-05-14", hora: "10:00", servicio: "Classic Refill", estado: "confirmada", notas: "" },
-  { id: 2, clientaId: 2, clienta: "Sofía Ramírez", fecha: "2025-05-14", hora: "12:00", servicio: "Volume Refill", estado: "confirmada", notas: "Adhesivo sensitive" },
-  { id: 3, clientaId: 3, clienta: "Lucía Fernández", fecha: "2025-05-16", hora: "15:00", servicio: "Classic Refill", estado: "pendiente", notas: "" },
-  { id: 4, clientaId: 1, clienta: "Valentina Torres", fecha: "2025-05-21", hora: "10:00", servicio: "Classic Refill", estado: "pendiente", notas: "" },
+// Servicios por defecto (se cargan a Firebase la primera vez)
+const SERVICIOS_DEFAULT = [
+  { nombre: "Classic Full Set", precio: 12000, duracion: 90, emoji: "✦", desc: "Extensiones clásicas pelo a pelo" },
+  { nombre: "Volume Set", precio: 18000, duracion: 120, emoji: "✦✦", desc: "Efecto volumen con técnica rusa" },
+  { nombre: "Mega Volume", precio: 22000, duracion: 150, emoji: "✦✦✦", desc: "Máximo volumen y densidad" },
+  { nombre: "Classic Refill", precio: 7000, duracion: 60, emoji: "↺", desc: "Relleno clásico 2-3 semanas" },
+  { nombre: "Volume Refill", precio: 10000, duracion: 75, emoji: "↺↺", desc: "Relleno volumen 2-3 semanas" },
+  { nombre: "Lifting + Tinte", precio: 9500, duracion: 60, emoji: "◎", desc: "Laminado y tinte de pestañas naturales" },
 ];
 
 // Número de WhatsApp
 const WA_NUMBER = "541126509699";
 const openWA = (msg = "") => window.open(`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`, "_blank");
+
+// ─── HOOK CENTRAL DE DATOS ────────────────────────────────────────────────────
+function useAppData() {
+  const [clientas, setClientas] = useState([]);
+  const [citas, setCitas] = useState([]);
+  const [servicios, setServicios] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const cargarDatos = async () => {
+    setLoading(true);
+    try {
+      const [cls, cts, svcs] = await Promise.all([
+        fbGet("clientas"),
+        fbGet("citas"),
+        fbGet("servicios"),
+      ]);
+      setClientas(cls);
+      setCitas(cts);
+      // Si no hay servicios, cargar los default
+      if (svcs.length === 0) {
+        for (const s of SERVICIOS_DEFAULT) await fbPush("servicios", s);
+        setServicios(SERVICIOS_DEFAULT.map((s, i) => ({ ...s, _id: String(i) })));
+      } else {
+        setServicios(svcs);
+      }
+    } catch (e) {
+      console.error("Error cargando datos:", e);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { cargarDatos(); }, []);
+
+  // CRUD clientas
+  const agregarClientas = async (data) => {
+    const res = await fbPush("clientas", { ...data, historial: {} });
+    const nueva = { ...data, historial: [], _id: res.name };
+    setClientas(prev => [...prev, nueva]);
+    return nueva;
+  };
+
+  // CRUD citas
+  const agregarCita = async (data) => {
+    const res = await fbPush("citas", data);
+    const nueva = { ...data, _id: res.name };
+    setCitas(prev => [...prev, nueva]);
+    return nueva;
+  };
+  const actualizarCita = async (id, data) => {
+    await fbSet(`citas/${id}`, data);
+    setCitas(prev => prev.map(c => c._id === id ? { ...data, _id: id } : c));
+  };
+
+  // CRUD historial
+  const agregarHistorial = async (clientaId, registro) => {
+    await fbPush(`clientas/${clientaId}/historial`, registro);
+    await cargarDatos(); // recargar para tener historial actualizado
+  };
+
+  return { clientas, citas, servicios, loading, cargarDatos, agregarClientas, agregarCita, actualizarCita, agregarHistorial };
+}
 
 // ─── ESTILOS GLOBALES ─────────────────────────────────────────────────────────
 const G = {
@@ -80,7 +143,7 @@ const css = {
     minHeight: "100vh",
     background: G.bg,
     color: G.text,
-    fontFamily: "'Georgia', 'Times New Roman', serif",
+    fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
     maxWidth: 430,
     margin: "0 auto",
     position: "relative",
@@ -97,7 +160,7 @@ const css = {
     zIndex: 10,
   },
   title: {
-    fontFamily: "'Georgia', serif",
+    fontFamily: "'Playfair Display', Georgia, serif",
     fontWeight: 700,
     fontSize: 26,
     letterSpacing: "-0.5px",
@@ -105,10 +168,10 @@ const css = {
     margin: 0,
   },
   subtitle: {
-    fontFamily: "'Courier New', monospace",
+    fontFamily: "'DM Sans', sans-serif",
     fontWeight: 400,
-    fontSize: 11,
-    letterSpacing: "0.12em",
+    fontSize: 12,
+    letterSpacing: "0.06em",
     textTransform: "lowercase",
     color: G.textMuted,
     margin: "4px 0 0",
@@ -129,9 +192,9 @@ const css = {
     borderRadius: 12,
     padding: "10px 18px",
     color: G.text,
-    fontFamily: "'Courier New', monospace",
-    fontSize: 12,
-    letterSpacing: "0.08em",
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13,
+    letterSpacing: "0.02em",
     cursor: "pointer",
     backdropFilter: "blur(8px)",
     transition: "all 0.2s ease",
@@ -142,10 +205,10 @@ const css = {
     borderRadius: 12,
     padding: "12px 24px",
     color: "#0a0a0a",
-    fontFamily: "'Courier New', monospace",
-    fontSize: 12,
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13,
     fontWeight: 700,
-    letterSpacing: "0.1em",
+    letterSpacing: "0.04em",
     cursor: "pointer",
     transition: "all 0.2s ease",
     width: "100%",
@@ -156,16 +219,16 @@ const css = {
     borderRadius: 10,
     padding: "11px 14px",
     color: G.text,
-    fontFamily: "'Courier New', monospace",
-    fontSize: 13,
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 14,
     width: "100%",
     outline: "none",
     boxSizing: "border-box",
   },
   label: {
-    fontFamily: "'Courier New', monospace",
-    fontSize: 10,
-    letterSpacing: "0.12em",
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 11,
+    letterSpacing: "0.06em",
     textTransform: "lowercase",
     color: G.textMuted,
     display: "block",
@@ -211,9 +274,9 @@ const css = {
   }),
   navIcon: { fontSize: 20 },
   navLabel: {
-    fontFamily: "'Courier New', monospace",
-    fontSize: 9,
-    letterSpacing: "0.1em",
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 10,
+    letterSpacing: "0.04em",
     textTransform: "lowercase",
   },
   fab: {
@@ -247,31 +310,31 @@ const css = {
     flex: 1,
   },
   statLabel: {
-    fontFamily: "'Courier New', monospace",
-    fontSize: 9,
-    letterSpacing: "0.12em",
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 10,
+    letterSpacing: "0.08em",
     textTransform: "lowercase",
     color: G.textMuted,
     margin: "0 0 4px",
   },
   statVal: {
-    fontFamily: "'Georgia', serif",
+    fontFamily: "'Playfair Display', Georgia, serif",
     fontWeight: 700,
     fontSize: 22,
     color: G.white,
     margin: 0,
   },
   sectionTitle: {
-    fontFamily: "'Georgia', serif",
+    fontFamily: "'Playfair Display', Georgia, serif",
     fontWeight: 700,
     fontSize: 18,
     color: G.white,
     margin: "0 0 4px",
   },
   sectionSub: {
-    fontFamily: "'Courier New', monospace",
-    fontSize: 10,
-    letterSpacing: "0.1em",
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 11,
+    letterSpacing: "0.06em",
     textTransform: "lowercase",
     color: G.textMuted,
     margin: "0 0 16px",
@@ -310,20 +373,71 @@ function BackBtn({ onBack, label = "volver" }) {
 
 // ─── PANTALLA LOGIN ───────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
-  const [modo, setModo] = useState(null); // "admin" | "clienta"
+  const [modo, setModo] = useState(null);
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [recordar, setRecordar] = useState(true);
 
-  const handleLogin = () => {
-    if (modo === "admin") {
-      if (user === "male" && pass === "1234") { onLogin("admin"); }
-      else { setError("credenciales incorrectas"); }
-    } else {
-      const c = CLIENTAS.find(c => c.nombre.toLowerCase().includes(user.toLowerCase()));
-      if (c && pass === "1234") { onLogin("clienta", c); }
-      else { setError("usuaria no encontrada"); }
+  // Verificar sesión guardada al iniciar
+  useEffect(() => {
+    const sesionGuardada = localStorage.getItem("ls_session");
+    if (sesionGuardada) {
+      try {
+        const parsed = JSON.parse(sesionGuardada);
+        if (parsed.tipo && parsed.expiry > Date.now()) {
+          onLogin(parsed.tipo, parsed.data || null);
+        } else {
+          localStorage.removeItem("ls_session");
+        }
+      } catch { localStorage.removeItem("ls_session"); }
     }
+  }, []);
+
+  const guardarSesion = (tipo, data = null) => {
+    if (recordar) {
+      const expiry = Date.now() + 1000 * 60 * 60 * 24 * 30; // 30 días
+      localStorage.setItem("ls_session", JSON.stringify({ tipo, data, expiry }));
+    }
+  };
+
+  const handleLogin = async () => {
+    if (!user.trim() || !pass.trim()) { setError("completá los campos"); return; }
+    setCargando(true);
+    setError("");
+
+    if (modo === "admin") {
+      const email = user.includes("@") ? user : `${user}@lashstudio.com`;
+      const res = await authSignIn(email, pass);
+      if (res.error) {
+        setError("credenciales incorrectas");
+      } else {
+        guardarSesion("admin");
+        onLogin("admin");
+      }
+    } else {
+      try {
+        const todas = await fbGet("clientas");
+        const encontrada = todas.find(c =>
+          c.nombre?.toLowerCase().includes(user.toLowerCase())
+        );
+        if (!encontrada) { setError("nombre no encontrado"); setCargando(false); return; }
+        const emailClienta = encontrada.mail || `${encontrada._id}@lashstudio.com`;
+        const res = await authSignIn(emailClienta, pass);
+        if (res.error) {
+          setError("contraseña incorrecta");
+        } else {
+          const historial = encontrada.historial ? Object.values(encontrada.historial) : [];
+          const clientaData = { ...encontrada, historial };
+          guardarSesion("clienta", clientaData);
+          onLogin("clienta", clientaData);
+        }
+      } catch (e) {
+        setError("error de conexión");
+      }
+    }
+    setCargando(false);
   };
 
   return (
@@ -340,42 +454,66 @@ function LoginScreen({ onLogin }) {
       {!modo ? (
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
           <p style={{ ...css.subtitle, textAlign: "center", marginBottom: 8 }}>acceder como</p>
-          <button style={{ ...css.card, textAlign: "center", cursor: "pointer", border: `0.5px solid ${G.green}` }} onClick={() => setModo("admin")}>
+          <div style={{ ...css.card, textAlign: "center", cursor: "pointer", border: `0.5px solid ${G.green}` }} onClick={() => setModo("admin")}>
             <div style={{ fontSize: 28, marginBottom: 6 }}>👑</div>
             <p style={{ ...css.sectionTitle, fontSize: 15 }}>Lashista</p>
             <p style={{ ...css.subtitle }}>acceso al panel de male</p>
-          </button>
-          <button style={{ ...css.card, textAlign: "center", cursor: "pointer" }} onClick={() => setModo("clienta")}>
+          </div>
+          <div style={{ ...css.card, textAlign: "center", cursor: "pointer" }} onClick={() => setModo("clienta")}>
             <div style={{ fontSize: 28, marginBottom: 6 }}>🌸</div>
             <p style={{ ...css.sectionTitle, fontSize: 15 }}>Clienta</p>
             <p style={{ ...css.subtitle }}>mi espacio personal</p>
-          </button>
+          </div>
         </div>
       ) : (
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-          <button onClick={() => { setModo(null); setError(""); }} style={{ ...css.glassBtn, alignSelf: "flex-start", marginBottom: 8 }}>← volver</button>
+          <button onClick={() => { setModo(null); setError(""); setUser(""); setPass(""); }}
+            style={{ ...css.glassBtn, alignSelf: "flex-start", marginBottom: 8 }}>← volver</button>
           <div style={{ textAlign: "center", marginBottom: 8 }}>
             <span style={css.tag}>{modo === "admin" ? "panel lashista" : "acceso clienta"}</span>
           </div>
           <div>
             <label style={css.label}>{modo === "admin" ? "usuario" : "nombre"}</label>
-            <input style={css.input} value={user} onChange={e => setUser(e.target.value)} placeholder={modo === "admin" ? "male" : "tu nombre"} />
+            <input style={css.input} value={user} onChange={e => setUser(e.target.value)}
+              placeholder={modo === "admin" ? "male" : "tu nombre"} autoComplete="username" />
           </div>
           <div>
             <label style={css.label}>contraseña</label>
-            <input style={css.input} type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder="••••" onKeyDown={e => e.key === "Enter" && handleLogin()} />
+            <input style={css.input} type="password" value={pass} onChange={e => setPass(e.target.value)}
+              placeholder="••••••" autoComplete="current-password"
+              onKeyDown={e => e.key === "Enter" && handleLogin()} />
           </div>
-          {error && <p style={{ color: G.red, fontFamily: "'Courier New', monospace", fontSize: 11, textAlign: "center" }}>{error}</p>}
-          <button style={css.greenBtn} onClick={handleLogin}>ingresar →</button>
-          <p style={{ ...css.subtitle, textAlign: "center", color: G.textMuted, fontSize: 10 }}>
-            {modo === "admin" ? "usuario: male / pass: 1234" : "tu nombre / pass: 1234"}
-          </p>
+
+          {/* Mantener sesión */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setRecordar(r => !r)}>
+            <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${recordar ? G.green : G.border}`, background: recordar ? G.greenMuted : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s", flexShrink: 0 }}>
+              {recordar && <span style={{ color: G.green, fontSize: 12, lineHeight: 1 }}>✓</span>}
+            </div>
+            <p style={{ ...css.subtitle, margin: 0, fontSize: 11, color: G.textSub }}>mantener sesión iniciada</p>
+          </div>
+
+          {error && <p style={{ color: G.red, fontFamily: "'DM Sans', sans-serif", fontSize: 12, textAlign: "center" }}>{error}</p>}
+
+          <button style={{ ...css.greenBtn, opacity: cargando ? 0.6 : 1 }} onClick={handleLogin} disabled={cargando}>
+            {cargando ? "ingresando..." : "ingresar →"}
+          </button>
         </div>
       )}
-      <p style={{ ...css.subtitle, marginTop: 40, color: G.textMuted, fontSize: 9, textAlign: "center" }}>
-        consultas → {" "}
-        <span style={{ color: G.green, cursor: "pointer" }} onClick={() => openWA()}>whatsapp</span>
-      </p>
+
+      {/* Footer */}
+      <div style={{ marginTop: 40, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+        <p style={{ ...css.subtitle, color: G.textMuted, fontSize: 11, textAlign: "center" }}>
+          consultas →{" "}
+          <span style={{ color: G.green, cursor: "pointer" }} onClick={() => openWA()}>whatsapp</span>
+        </p>
+        <p style={{ ...css.subtitle, color: G.textMuted, fontSize: 11, textAlign: "center" }}>
+          ¿primera vez? →{" "}
+          <span style={{ color: G.green, cursor: "pointer" }}
+            onClick={() => openWA("Hola Male! Quiero registrarme en Lash Studio 🌿")}>
+            registrate acá
+          </span>
+        </p>
+      </div>
     </div>
   );
 }
@@ -1850,15 +1988,17 @@ function ClientaPerfil({ clienta, onLogout }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function App() {
-  const [session, setSession] = useState(null); // null | { tipo: "admin" | "clienta", data }
+  const [session, setSession] = useState(null);
+  const appData = useAppData();
 
-  const handleLogin = (tipo, data = null) => {
-    setSession({ tipo, data });
+  const handleLogin = (tipo, data = null) => setSession({ tipo, data });
+  const handleLogout = () => {
+    localStorage.removeItem("ls_session");
+    setSession(null);
   };
-  const handleLogout = () => setSession(null);
 
   if (!session) return <LoginScreen onLogin={handleLogin} />;
-  if (session.tipo === "admin") return <AdminApp onLogout={handleLogout} />;
-  if (session.tipo === "clienta") return <ClientaApp clienta={session.data} onLogout={handleLogout} />;
+  if (session.tipo === "admin") return <AdminApp onLogout={handleLogout} appData={appData} />;
+  if (session.tipo === "clienta") return <ClientaApp clienta={session.data} onLogout={handleLogout} appData={appData} />;
   return null;
 }
