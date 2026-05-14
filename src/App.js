@@ -522,10 +522,11 @@ function LoginScreen({ onLogin }) {
 // ─── VISTA ADMIN ─────────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function AdminApp({ onLogout }) {
+function AdminApp({ onLogout, appData }) {
   const [tab, setTab] = useState("dashboard");
   const [subScreen, setSubScreen] = useState(null);
   const [subData, setSubData] = useState(null);
+  const { clientas, citas, servicios, loading, agregarClientas, agregarCita } = appData;
 
   const navigate = (screen, data = null) => { setSubScreen(screen); setSubData(data); };
   const back = () => { setSubScreen(null); setSubData(null); };
@@ -538,17 +539,24 @@ function AdminApp({ onLogout }) {
     { id: "config", icon: "⚙", label: "config" },
   ];
 
+  if (loading) return (
+    <div style={{ minHeight: "100vh", background: G.bg, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontSize: 36 }}>🌿</div>
+      <p style={{ ...css.subtitle, color: G.textSub }}>cargando...</p>
+    </div>
+  );
+
   const renderMain = () => {
-    if (subScreen === "clienta-detalle") return <ClientaDetalle clienta={subData} onBack={back} onNavigate={navigate} />;
-    if (subScreen === "nueva-cita") return <NuevaCita onBack={back} />;
-    if (subScreen === "cita-detalle") return <CitaDetalle cita={subData} onBack={back} />;
+    if (subScreen === "clienta-detalle") return <ClientaDetalle clienta={subData} onBack={back} onNavigate={navigate} citas={citas} />;
+    if (subScreen === "nueva-cita") return <NuevaCita onBack={back} clientas={clientas} servicios={servicios} agregarCita={agregarCita} />;
+    if (subScreen === "cita-detalle") return <CitaDetalle cita={subData} onBack={back} servicios={servicios} />;
     switch (tab) {
-      case "dashboard": return <AdminDashboard onNavigate={navigate} setTab={setTab} />;
-      case "agenda": return <AdminAgenda onNavigate={navigate} />;
-      case "clientas": return <AdminClientas onNavigate={navigate} />;
-      case "finanzas": return <AdminFinanzas />;
-      case "config": return <AdminConfig />;
-      default: return <AdminDashboard onNavigate={navigate} setTab={setTab} />;
+      case "dashboard": return <AdminDashboard onNavigate={navigate} setTab={setTab} clientas={clientas} citas={citas} />;
+      case "agenda": return <AdminAgenda onNavigate={navigate} citas={citas} />;
+      case "clientas": return <AdminClientas onNavigate={navigate} clientas={clientas} agregarClientas={agregarClientas} />;
+      case "finanzas": return <AdminFinanzas clientas={clientas} servicios={servicios} />;
+      case "config": return <AdminConfig servicios={servicios} />;
+      default: return <AdminDashboard onNavigate={navigate} setTab={setTab} clientas={clientas} citas={citas} />;
     }
   };
 
@@ -570,11 +578,13 @@ function AdminApp({ onLogout }) {
 }
 
 // ─── ADMIN: DASHBOARD ─────────────────────────────────────────────────────────
-function AdminDashboard({ onNavigate, setTab }) {
-  const citasHoy = CITAS.filter(c => c.fecha === "2025-05-14");
-  const ingresosEsteMes = CLIENTAS.flatMap(c => c.historial)
-    .filter(h => h.fecha.startsWith("2025-05"))
-    .reduce((a, h) => a + h.monto, 0);
+function AdminDashboard({ onNavigate, setTab, clientas, citas }) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const citasHoy = citas.filter(c => c.fecha === hoy);
+  const mesActual = hoy.slice(0, 7);
+  const ingresosEsteMes = clientas.flatMap(c =>
+    c.historial ? Object.values(c.historial) : []
+  ).filter(h => h.fecha?.startsWith(mesActual)).reduce((a, h) => a + (h.monto || 0), 0);
 
   return (
     <div>
@@ -615,25 +625,25 @@ function AdminDashboard({ onNavigate, setTab }) {
             onMouseLeave={e => e.currentTarget.style.borderColor = G.border}
           >
             <p style={css.statLabel}>clientas</p>
-            <p style={css.statVal}>{CLIENTAS.length}</p>
+            <p style={css.statVal}>{clientas.length}</p>
             <p style={{ ...css.subtitle, fontSize: 10, margin: 0, color: G.green }}>ver →</p>
           </div>
         </div>
 
         {/* Citas de hoy */}
         <p style={css.sectionTitle}>hoy</p>
-        <p style={css.sectionSub}>martes 14 de mayo</p>
+        <p style={css.sectionSub}>{new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}</p>
         {citasHoy.length === 0 ? (
-          <p style={{ color: G.textMuted, fontFamily: "Courier New", fontSize: 12 }}>sin citas para hoy ✦</p>
+          <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>sin citas para hoy ✦</p>
         ) : (
           citasHoy.map(c => (
-            <div key={c.id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("cita-detalle", c)}>
+            <div key={c._id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("cita-detalle", c)}>
               <div style={{ textAlign: "center", minWidth: 40 }}>
-                <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 15, color: G.green }}>{c.hora}</p>
+                <p style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 15, color: G.green }}>{c.hora}</p>
               </div>
               <div style={{ flex: 1 }}>
-                <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontWeight: 600, fontSize: 14 }}>{c.clienta}</p>
-                <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>{c.servicio}</p>
+                <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 14 }}>{c.clienta}</p>
+                <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>{c.servicio}</p>
               </div>
               <span style={{ ...css.tag, fontSize: 9, padding: "2px 8px" }}>{c.estado}</span>
             </div>
@@ -644,19 +654,22 @@ function AdminDashboard({ onNavigate, setTab }) {
 
         {/* Próximas */}
         <p style={css.sectionTitle}>próximas</p>
-        <p style={css.sectionSub}>esta semana</p>
-        {CITAS.filter(c => c.fecha > "2025-05-14").slice(0, 3).map(c => (
-          <div key={c.id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("cita-detalle", c)}>
+        <p style={css.sectionSub}>siguientes turnos agendados</p>
+        {citas.filter(c => c.fecha > hoy).sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)).slice(0, 3).map(c => (
+          <div key={c._id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("cita-detalle", c)}>
             <div style={{ textAlign: "center", minWidth: 40 }}>
-              <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 10, color: G.textMuted }}>{c.fecha.slice(5).replace("-", "/")}</p>
-              <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 14, color: G.green }}>{c.hora}</p>
+              <p style={{ margin: 0, fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: G.textMuted }}>{c.fecha?.slice(5).replace("-", "/")}</p>
+              <p style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 14, color: G.green }}>{c.hora}</p>
             </div>
             <div style={{ flex: 1 }}>
-              <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontSize: 14 }}>{c.clienta}</p>
-              <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>{c.servicio}</p>
+              <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontSize: 14 }}>{c.clienta}</p>
+              <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>{c.servicio}</p>
             </div>
           </div>
         ))}
+        {citas.filter(c => c.fecha > hoy).length === 0 && (
+          <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>no hay citas próximas ✦</p>
+        )}
 
         <button style={{ ...css.greenBtn, marginTop: 8 }} onClick={() => setTab("agenda")}>ver agenda completa →</button>
 
@@ -665,16 +678,20 @@ function AdminDashboard({ onNavigate, setTab }) {
         {/* Top clientas */}
         <p style={css.sectionTitle}>clientas activas</p>
         <p style={css.sectionSub}>últimas visitas</p>
-        {CLIENTAS.slice(0, 3).map(c => (
-          <div key={c.id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("clienta-detalle", c)}>
-            <Avatar nombre={c.nombre} />
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontSize: 14 }}>{c.nombre}</p>
-              <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>curva {c.curva} · {c.largo}</p>
+        {clientas.length === 0 && <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>aún no hay clientas registradas ✦</p>}
+        {clientas.slice(0, 3).map(c => {
+          const hist = c.historial ? Object.values(c.historial) : [];
+          return (
+            <div key={c._id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("clienta-detalle", c)}>
+              <Avatar nombre={c.nombre || "?"} />
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontSize: 14 }}>{c.nombre}</p>
+                <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>curva {c.curva} · {c.largo}</p>
+              </div>
+              <span style={{ ...css.tag, fontSize: 10 }}>{hist.length} vis.</span>
             </div>
-            <span style={{ ...css.tag, fontSize: 10 }}>{c.historial.length} vis.</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -683,26 +700,25 @@ function AdminDashboard({ onNavigate, setTab }) {
 // ─── ADMIN: AGENDA ────────────────────────────────────────────────────────────
 const TODOS_LOS_SLOTS = ["09:00", "10:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
 
-function AdminAgenda({ onNavigate }) {
-  // Usamos mayo 2025 como mes activo (hardcoded para el demo; con Firebase será dinámico)
-  const [mesOffset, setMesOffset] = useState(0); // 0 = mayo 2025
-  const [diaSeleccionado, setDiaSeleccionado] = useState("2025-05-14"); // hoy por defecto
+function AdminAgenda({ onNavigate, citas }) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [mesOffset, setMesOffset] = useState(0);
+  const [diaSeleccionado, setDiaSeleccionado] = useState(hoy);
 
   // ── Helpers de fecha ──
-  const baseYear = 2025, baseMes = 4; // mes 4 = mayo (0-indexed)
-  const mesActual = new Date(baseYear, baseMes + mesOffset, 1);
+  const ahora = new Date();
+  const mesActual = new Date(ahora.getFullYear(), ahora.getMonth() + mesOffset, 1);
   const anio = mesActual.getFullYear();
-  const mes = mesActual.getMonth(); // 0-indexed
+  const mes = mesActual.getMonth();
   const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
   const DIAS_CORTOS = ["D", "L", "M", "X", "J", "V", "S"];
 
-  // Días del mes
-  const primerDia = new Date(anio, mes, 1).getDay(); // 0=dom
+  const primerDia = new Date(anio, mes, 1).getDay();
   const diasEnMes = new Date(anio, mes + 1, 0).getDate();
 
   // Índice de citas por fecha
   const citasPorFecha = {};
-  CITAS.forEach(c => { if (!citasPorFecha[c.fecha]) citasPorFecha[c.fecha] = []; citasPorFecha[c.fecha].push(c); });
+  citas.forEach(c => { if (!citasPorFecha[c.fecha]) citasPorFecha[c.fecha] = []; citasPorFecha[c.fecha].push(c); });
 
   const fmtDateKey = (d) => {
     const mm = String(mes + 1).padStart(2, "0");
@@ -765,7 +781,7 @@ function AdminAgenda({ onNavigate }) {
               const dia = i + 1;
               const key = fmtDateKey(dia);
               const tieneCitas = !!(citasPorFecha[key]?.length);
-              const esHoy = key === "2025-05-14";
+              const esHoy = key === hoy;
               const esSel = key === diaSeleccionado;
               const cantCitas = citasPorFecha[key]?.length || 0;
               return (
@@ -898,9 +914,8 @@ function AdminAgenda({ onNavigate }) {
 }
 
 // ─── CITA DETALLE ─────────────────────────────────────────────────────────────
-function CitaDetalle({ cita, onBack }) {
-  const clienta = CLIENTAS.find(c => c.id === cita.clientaId);
-  const servicio = SERVICIOS.find(s => s.nombre === cita.servicio);
+function CitaDetalle({ cita, onBack, servicios }) {
+  const servicio = servicios?.find(s => s.nombre === cita.servicio);
   return (
     <div>
       <div style={css.topBar}>
@@ -909,15 +924,13 @@ function CitaDetalle({ cita, onBack }) {
         <p style={css.subtitle}>{cita.fecha} · {cita.hora}</p>
       </div>
       <div style={{ padding: "20px" }}>
-        {clienta && (
-          <div style={{ ...css.card, display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-            <Avatar nombre={clienta.nombre} size={48} />
-            <div>
-              <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 16 }}>{clienta.nombre}</p>
-              <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>curva habitual: {clienta.curva} · {clienta.largo}</p>
-            </div>
+        <div style={{ ...css.card, display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+          <Avatar nombre={cita.clienta || "?"} size={48} />
+          <div>
+            <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 16 }}>{cita.clienta}</p>
+            <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>{cita.fecha} · {cita.hora}</p>
           </div>
-        )}
+        </div>
 
         <div style={css.card}>
           <p style={{ ...css.statLabel, marginBottom: 8 }}>servicio</p>
@@ -954,10 +967,28 @@ function CitaDetalle({ cita, onBack }) {
 }
 
 // ─── NUEVA CITA ───────────────────────────────────────────────────────────────
-function NuevaCita({ onBack }) {
-  const [form, setForm] = useState({ clienta: "", fecha: "", hora: "", servicio: "", notas: "" });
+function NuevaCita({ onBack, clientas, servicios, agregarCita }) {
+  const [form, setForm] = useState({ clientaId: "", fecha: "", hora: "", servicio: "", notas: "" });
+  const [guardando, setGuardando] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const horas = ["09:00", "10:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
+
+  const handleGuardar = async () => {
+    if (!form.clientaId || !form.fecha || !form.hora || !form.servicio) return;
+    setGuardando(true);
+    const clienta = clientas.find(c => c._id === form.clientaId);
+    await agregarCita({
+      clientaId: form.clientaId,
+      clienta: clienta?.nombre || "",
+      fecha: form.fecha,
+      hora: form.hora,
+      servicio: form.servicio,
+      notas: form.notas,
+      estado: "confirmada",
+    });
+    setGuardando(false);
+    onBack();
+  };
 
   return (
     <div>
@@ -970,16 +1001,16 @@ function NuevaCita({ onBack }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div>
             <label style={css.label}>clienta</label>
-            <select style={{ ...css.input, appearance: "none" }} value={form.clienta} onChange={e => set("clienta", e.target.value)}>
+            <select style={{ ...css.input, appearance: "none" }} value={form.clientaId} onChange={e => set("clientaId", e.target.value)}>
               <option value="">seleccionar clienta...</option>
-              {CLIENTAS.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              {clientas.map(c => <option key={c._id} value={c._id}>{c.nombre}</option>)}
             </select>
           </div>
           <div>
             <label style={css.label}>servicio</label>
             <select style={{ ...css.input, appearance: "none" }} value={form.servicio} onChange={e => set("servicio", e.target.value)}>
               <option value="">seleccionar servicio...</option>
-              {SERVICIOS.map(s => <option key={s.id} value={s.nombre}>{s.nombre} · ${s.precio.toLocaleString("es-AR")}</option>)}
+              {servicios.map(s => <option key={s._id} value={s.nombre}>{s.nombre} · ${s.precio?.toLocaleString("es-AR")}</option>)}
             </select>
           </div>
           <div>
@@ -999,7 +1030,9 @@ function NuevaCita({ onBack }) {
             <label style={css.label}>notas</label>
             <textarea style={{ ...css.input, height: 80, resize: "none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder="indicaciones especiales..." />
           </div>
-          <button style={css.greenBtn}>confirmar cita →</button>
+          <button style={{ ...css.greenBtn, opacity: guardando ? 0.6 : 1 }} onClick={handleGuardar} disabled={guardando}>
+            {guardando ? "guardando..." : "confirmar cita →"}
+          </button>
         </div>
       </div>
     </div>
@@ -1007,27 +1040,30 @@ function NuevaCita({ onBack }) {
 }
 
 // ─── ADMIN: CLIENTAS ──────────────────────────────────────────────────────────
-function AdminClientas({ onNavigate }) {
+function AdminClientas({ onNavigate, clientas, agregarClientas }) {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [nueva, setNueva] = useState({ nombre: "", telefono: "", mail: "", curva: "C", grosor: "0.07", largo: "11mm", alergias: "Ninguna", observaciones: "" });
   const [guardado, setGuardado] = useState(false);
   const setN = (k, v) => setNueva(f => ({ ...f, [k]: v }));
 
-  const filtradas = CLIENTAS.filter(c => c.nombre.toLowerCase().includes(search.toLowerCase()));
+  const filtradas = clientas.filter(c => c.nombre?.toLowerCase().includes(search.toLowerCase()));
 
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     if (!nueva.nombre.trim()) return;
-    // Con Firebase esto hará un PUT real; por ahora cierra el modal con feedback visual
+    await agregarClientas(nueva);
     setGuardado(true);
-    setTimeout(() => { setGuardado(false); setModalOpen(false); setNueva({ nombre: "", telefono: "", mail: "", curva: "C", grosor: "0.07", largo: "11mm", alergias: "Ninguna", observaciones: "" }); }, 1500);
+    setTimeout(() => {
+      setGuardado(false); setModalOpen(false);
+      setNueva({ nombre: "", telefono: "", mail: "", curva: "C", grosor: "0.07", largo: "11mm", alergias: "Ninguna", observaciones: "" });
+    }, 1200);
   };
 
   return (
     <div>
       <div style={css.topBar}>
         <h1 style={css.title}>Clientas</h1>
-        <p style={css.subtitle}>{CLIENTAS.length} registradas</p>
+        <p style={css.subtitle}>{clientas.length} registradas</p>
       </div>
       <div style={{ padding: "20px" }}>
         <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
@@ -1035,20 +1071,24 @@ function AdminClientas({ onNavigate }) {
           <button style={{ ...css.glassBtn, whiteSpace: "nowrap", background: G.greenMuted, borderColor: G.green, color: G.greenLight, fontWeight: 700 }} onClick={() => setModalOpen(true)}>+ nueva</button>
         </div>
 
-        {filtradas.map(c => (
-          <div key={c.id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("clienta-detalle", c)}>
-            <Avatar nombre={c.nombre} />
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontSize: 14 }}>{c.nombre}</p>
-              <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>curva {c.curva} · {c.grosor}mm · {c.largo}</p>
-              {c.alergias !== "Ninguna" && <p style={{ margin: "4px 0 0", color: G.red, fontFamily: "'Courier New', monospace", fontSize: 9 }}>⚠ {c.alergias}</p>}
+        {filtradas.length === 0 && <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>no hay clientas aún ✦</p>}
+        {filtradas.map(c => {
+          const hist = c.historial ? Object.values(c.historial) : [];
+          return (
+            <div key={c._id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("clienta-detalle", c)}>
+              <Avatar nombre={c.nombre || "?"} />
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontSize: 14 }}>{c.nombre}</p>
+                <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>curva {c.curva} · {c.grosor}mm · {c.largo}</p>
+                {c.alergias && c.alergias !== "Ninguna" && <p style={{ margin: "4px 0 0", color: G.red, fontFamily: "'DM Sans', sans-serif", fontSize: 10 }}>⚠ {c.alergias}</p>}
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <p style={{ margin: "0 0 2px", ...css.subtitle, fontSize: 10 }}>{hist.length} visitas</p>
+                <span style={{ fontSize: 16 }}>→</span>
+              </div>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <p style={{ margin: "0 0 2px", ...css.subtitle, fontSize: 10 }}>{c.historial.length} visitas</p>
-              <span style={{ fontSize: 16 }}>→</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── MODAL NUEVA CLIENTA ── */}
@@ -1255,15 +1295,19 @@ function ClientaDetalle({ clienta, onBack }) {
 }
 
 // ─── ADMIN: FINANZAS ──────────────────────────────────────────────────────────
-function AdminFinanzas() {
+function AdminFinanzas({ clientas, servicios }) {
   const [periodo, setPeriodo] = useState("mes");
-  const todosLosIngresos = CLIENTAS.flatMap(c => c.historial);
-  const totalMes = todosLosIngresos.filter(h => h.fecha.startsWith("2025-05")).reduce((a, h) => a + h.monto, 0);
-  const totalTransf = todosLosIngresos.filter(h => h.pago === "transferencia").reduce((a, h) => a + h.monto, 0);
-  const totalEfectivo = todosLosIngresos.filter(h => h.pago === "efectivo").reduce((a, h) => a + h.monto, 0);
+  const mesActual = new Date().toISOString().slice(0, 7);
+  const todosLosIngresos = clientas.flatMap(c =>
+    c.historial ? Object.values(c.historial) : []
+  );
+  const totalMes = todosLosIngresos.filter(h => h.fecha?.startsWith(mesActual)).reduce((a, h) => a + (h.monto || 0), 0);
+  const totalTransf = todosLosIngresos.filter(h => h.pago === "transferencia").reduce((a, h) => a + (h.monto || 0), 0);
+  const totalEfectivo = todosLosIngresos.filter(h => h.pago === "efectivo").reduce((a, h) => a + (h.monto || 0), 0);
+  const totalGral = totalTransf + totalEfectivo || 1;
   const porServicio = {};
-  SERVICIOS.forEach(s => { porServicio[s.nombre] = 0; });
-  todosLosIngresos.forEach(h => { if (porServicio[h.servicio] !== undefined) porServicio[h.servicio] += h.monto; });
+  servicios.forEach(s => { porServicio[s.nombre] = 0; });
+  todosLosIngresos.forEach(h => { if (porServicio[h.servicio] !== undefined) porServicio[h.servicio] += (h.monto || 0); });
 
   return (
     <div>
@@ -1286,7 +1330,7 @@ function AdminFinanzas() {
           <p style={{ fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 36, color: G.green, margin: "4px 0 8px" }}>
             ${totalMes.toLocaleString("es-AR")}
           </p>
-          <p style={{ ...css.subtitle, textAlign: "center" }}>mayo 2025</p>
+          <p style={{ ...css.subtitle, textAlign: "center" }}>{new Date().toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</p>
         </div>
 
         {/* Efectivo vs Transferencia */}
@@ -1295,14 +1339,14 @@ function AdminFinanzas() {
             <p style={css.statLabel}>transferencia</p>
             <p style={{ ...css.statVal, fontSize: 18, color: G.green }}>${(totalTransf / 1000).toFixed(0)}k</p>
             <p style={{ ...css.subtitle, fontSize: 9, margin: 0 }}>
-              {Math.round((totalTransf / (totalTransf + totalEfectivo)) * 100)}%
+              {Math.round((totalTransf / totalGral) * 100)}%
             </p>
           </div>
           <div style={{ ...css.statCard, flex: 1 }}>
             <p style={css.statLabel}>efectivo</p>
             <p style={{ ...css.statVal, fontSize: 18 }}>${(totalEfectivo / 1000).toFixed(0)}k</p>
             <p style={{ ...css.subtitle, fontSize: 9, margin: 0 }}>
-              {Math.round((totalEfectivo / (totalTransf + totalEfectivo)) * 100)}%
+              {Math.round((totalEfectivo / totalGral) * 100)}%
             </p>
           </div>
         </div>
@@ -1312,13 +1356,16 @@ function AdminFinanzas() {
         {/* Por servicio */}
         <p style={css.sectionTitle}>por servicio</p>
         <p style={css.sectionSub}>histórico</p>
+        {Object.entries(porServicio).filter(([, v]) => v > 0).length === 0 && (
+          <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>aún sin registros ✦</p>
+        )}
         {Object.entries(porServicio).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([nombre, total]) => {
           const max = Math.max(...Object.values(porServicio));
           return (
             <div key={nombre} style={{ ...css.card, padding: "12px 14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 12 }}>{nombre}</p>
-                <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 13, color: G.green }}>${total.toLocaleString("es-AR")}</p>
+                <p style={{ margin: 0, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>{nombre}</p>
+                <p style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 13, color: G.green }}>${total.toLocaleString("es-AR")}</p>
               </div>
               <div style={{ height: 3, background: G.border, borderRadius: 2 }}>
                 <div style={{ height: "100%", width: `${(total / max) * 100}%`, background: G.green, borderRadius: 2, transition: "width 0.5s ease" }} />
@@ -1332,19 +1379,22 @@ function AdminFinanzas() {
         {/* Top clientas */}
         <p style={css.sectionTitle}>top clientas</p>
         <p style={css.sectionSub}>por gasto histórico</p>
-        {CLIENTAS.map(c => ({
-          ...c, total: c.historial.reduce((a, h) => a + h.monto, 0)
-        })).sort((a, b) => b.total - a.total).map((c, i) => (
-          <div key={c.id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 20, color: i === 0 ? G.green : G.textMuted, minWidth: 24 }}>
+        {clientas.length === 0 && <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>aún sin clientas ✦</p>}
+        {clientas.map(c => {
+          const hist = c.historial ? Object.values(c.historial) : [];
+          const total = hist.reduce((a, h) => a + (h.monto || 0), 0);
+          return { ...c, histArr: hist, total };
+        }).sort((a, b) => b.total - a.total).map((c, i) => (
+          <div key={c._id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 20, color: i === 0 ? G.green : G.textMuted, minWidth: 24 }}>
               {i + 1}
             </div>
-            <Avatar nombre={c.nombre} size={36} />
+            <Avatar nombre={c.nombre || "?"} size={36} />
             <div style={{ flex: 1 }}>
-              <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontSize: 13 }}>{c.nombre}</p>
-              <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>{c.historial.length} visitas</p>
+              <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontSize: 13 }}>{c.nombre}</p>
+              <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>{c.histArr.length} visitas</p>
             </div>
-            <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontWeight: 700, color: G.green, fontSize: 14 }}>
+            <p style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontWeight: 700, color: G.green, fontSize: 14 }}>
               ${c.total.toLocaleString("es-AR")}
             </p>
           </div>
@@ -1355,7 +1405,7 @@ function AdminFinanzas() {
 }
 
 // ─── ADMIN: CONFIG ────────────────────────────────────────────────────────────
-function AdminConfig() {
+function AdminConfig({ servicios }) {
   const [tab, setTab] = useState("servicios");
 
   return (
@@ -1378,7 +1428,7 @@ function AdminConfig() {
               <p style={{ ...css.sectionSub, margin: 0 }}>servicios activos</p>
               <button style={{ ...css.glassBtn, fontSize: 10 }}>+ agregar</button>
             </div>
-            {SERVICIOS.map(s => (
+            {servicios.map(s => (
               <div key={s.id} style={{ ...css.card, padding: "14px 16px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
@@ -1443,8 +1493,9 @@ function AdminConfig() {
 // ─── VISTA CLIENTA ────────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function ClientaApp({ clienta, onLogout }) {
+function ClientaApp({ clienta, onLogout, appData }) {
   const [tab, setTab] = useState("inicio");
+  const { citas, servicios } = appData;
   const navItems = [
     { id: "inicio", icon: "⬡", label: "inicio" },
     { id: "agendar", icon: "◷", label: "agendar" },
@@ -1454,11 +1505,11 @@ function ClientaApp({ clienta, onLogout }) {
 
   const renderTab = () => {
     switch (tab) {
-      case "inicio": return <ClientaInicio clienta={clienta} setTab={setTab} />;
-      case "agendar": return <ClientaAgendar clienta={clienta} />;
+      case "inicio": return <ClientaInicio clienta={clienta} setTab={setTab} citas={citas} />;
+      case "agendar": return <ClientaAgendar clienta={clienta} servicios={servicios} citas={citas} />;
       case "historial": return <ClientaHistorial clienta={clienta} />;
       case "perfil": return <ClientaPerfil clienta={clienta} onLogout={onLogout} />;
-      default: return <ClientaInicio clienta={clienta} setTab={setTab} />;
+      default: return <ClientaInicio clienta={clienta} setTab={setTab} citas={citas} />;
     }
   };
 
@@ -1480,17 +1531,20 @@ function ClientaApp({ clienta, onLogout }) {
 }
 
 // ─── CLIENTA: INICIO ──────────────────────────────────────────────────────────
-function ClientaInicio({ clienta, setTab }) {
-  const ultimaCita = clienta.historial[0];
-  const diasDesde = Math.floor((new Date() - new Date(ultimaCita?.fecha)) / (1000 * 60 * 60 * 24));
-  const proxCita = CITAS.find(c => c.clientaId === clienta.id && c.fecha >= "2025-05-14");
-  const diasHastaProxima = proxCita ? Math.floor((new Date(proxCita.fecha) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+function ClientaInicio({ clienta, setTab, citas }) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const ultimaCita = clienta.historial?.[0];
+  const diasDesde = ultimaCita?.fecha
+    ? Math.floor((new Date() - new Date(ultimaCita.fecha)) / (1000 * 60 * 60 * 24))
+    : null;
+  const proxCita = citas.find(c => c.clientaId === clienta._id && c.fecha >= hoy);
+  const diasHastaProxima = proxCita
+    ? Math.floor((new Date(proxCita.fecha) - new Date()) / (1000 * 60 * 60 * 24))
+    : null;
 
-  const serviciosUsados = {};
-  clienta.historial.forEach(h => { serviciosUsados[h.servicio] = (serviciosUsados[h.servicio] || 0) + 1; });
   const curvasUsadas = {};
-  clienta.historial.forEach(h => { curvasUsadas[h.curva] = (curvasUsadas[h.curva] || 0) + 1; });
-  const curvaFav = Object.entries(curvasUsadas).sort((a, b) => b[1] - a[1])[0]?.[0];
+  (clienta.historial || []).forEach(h => { curvasUsadas[h.curva] = (curvasUsadas[h.curva] || 0) + 1; });
+  const curvaFav = Object.entries(curvasUsadas).sort((a, b) => b[1] - a[1])[0]?.[0] || clienta.curva || "—";
 
   return (
     <div>
@@ -1537,7 +1591,7 @@ function ClientaInicio({ clienta, setTab }) {
             onMouseLeave={e => e.currentTarget.style.borderColor = G.border}
           >
             <p style={css.statLabel}>visitas</p>
-            <p style={css.statVal}>{clienta.historial.length}</p>
+            <p style={css.statVal}>{clienta.historial?.length || 0}</p>
             <p style={{ ...css.subtitle, fontSize: 9, margin: 0, color: G.green }}>ver →</p>
           </div>
           {/* Curva fav → Perfil */}
@@ -1610,14 +1664,14 @@ const COMBOS = [
   { id: "c4", nombre: "Refill + Perfilado de cejas", servicios: ["Classic Refill", "Perfilado de Cejas"], duracion: 90, emoji: "↺◎" },
 ];
 
-function ClientaAgendar({ clienta }) {
+function ClientaAgendar({ clienta, servicios, citas }) {
   const [paso, setPaso] = useState(1);
   const [modoServicio, setModoServicio] = useState("individual"); // "individual" | "combo" | "noSe"
   const [form, setForm] = useState({ servicio: null, combo: null, fecha: "", hora: "", notas: "" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const horasDisponibles = ["09:00", "10:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00"];
-  const ocupadas = CITAS.filter(c => c.fecha === form.fecha).map(c => c.hora);
+  const ocupadas = citas.filter(c => c.fecha === form.fecha).map(c => c.hora);
 
   // Nombre display del servicio elegido
   const servicioDisplay = modoServicio === "combo" ? form.combo?.nombre
@@ -1664,7 +1718,7 @@ function ClientaAgendar({ clienta }) {
             </div>
 
             {/* SERVICIOS INDIVIDUALES */}
-            {modoServicio === "individual" && SERVICIOS.map(s => (
+            {modoServicio === "individual" && servicios.map(s => (
               <div key={s.id}
                 style={{ ...css.card, borderColor: form.servicio?.id === s.id ? G.green : G.border, background: form.servicio?.id === s.id ? "rgba(143,189,90,0.06)" : G.bgCard }}
                 onClick={() => { set("servicio", s); setPaso(2); }}>
