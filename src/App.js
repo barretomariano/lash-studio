@@ -67,13 +67,10 @@ const fmtFecha = (iso) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CONSTANTES UI
 // ═══════════════════════════════════════════════════════════════════════════════
-const CURVAS = ["B", "C", "CC", "D", "L", "L+"];
-const GROSOR = ["0.05", "0.07", "0.10", "0.12", "0.15", "0.20"];
-const LARGO = ["8mm", "9mm", "10mm", "11mm", "12mm", "13mm", "14mm"];
-const SLOTS = ["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"];
-const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+// CONSTANTES UI (solo para calendarios y UI, NO datos del negocio)
+// ═══════════════════════════════════════════════════════════════════════════════
+const MESES  = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const DIAS_C = ["D","L","M","X","J","V","S"];
 const DIAS_F = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 
@@ -140,6 +137,31 @@ function FAB() {
 
 function Back({ onClick, label="volver" }) {
   return <button onClick={onClick} style={{ ...s.btnGlass, marginBottom:14, fontSize:12 }}>← {label}</button>;
+}
+
+function NavFlotante({ items, active, onChange }) {
+  return (
+    <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:430, display:"flex", justifyContent:"center", padding:"0 0 24px", zIndex:20, pointerEvents:"none" }}>
+      <nav style={{ ...NAV_STYLE, pointerEvents:"all" }}>
+        {items.map(n=>(
+          <div key={n.id} style={navItemSt(active===n.id)} onClick={()=>onChange(n.id)}>
+            <span style={{ fontSize:18 }}>{n.icon}</span>
+            <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.06em" }}>{n.label}</span>
+          </div>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+function StatBox({ label, val, sub, color=G.white, onClick }) {
+  return (
+    <div onClick={onClick} style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"13px 8px", cursor:onClick?"pointer":"default" }}>
+      <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"lowercase", letterSpacing:"0.08em" }}>{label}</p>
+      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:21, color, margin:"0 0 2px" }}>{val}</p>
+      {sub&&<p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>{sub}</p>}
+    </div>
+  );
 }
 
 function Field({ label, children }) {
@@ -846,7 +868,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
 function AdminClientas({ data, push, toast }) {
   const [search, setSearch] = useState("");
   const [sheet, setSheet] = useState(false);
-  const [form, setForm] = useState({ nombre:"", email:"", telefono:"", curva:"C", grosor:"0.07", largo:"11mm", alergias:"Ninguna", observaciones:"" });
+  const [form, setForm] = useState({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"" });
   const [saving, setSaving] = useState(false);
   const [credenciales, setCredenciales] = useState(null);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -861,7 +883,7 @@ function AdminClientas({ data, push, toast }) {
     if(res.error){ toast("error: "+res.error); return; }
     setSheet(false);
     setCredenciales({ email: res.email, pass: res.pass, nombre: form.nombre });
-    setForm({ nombre:"", email:"", telefono:"", curva:"C", grosor:"0.07", largo:"11mm", alergias:"Ninguna", observaciones:"" });
+    setForm({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"" });
   };
 
   return (
@@ -927,7 +949,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
   const [clienta, setClienta] = useState(cInit);
   const [tab, setTab] = useState("info");
   const [editando, setEditando] = useState(false);
-  const [form, setForm] = useState({ nombre:cInit.nombre, telefono:cInit.telefono||"", curva:cInit.curva||"C", grosor:cInit.grosor||"0.07", largo:cInit.largo||"11mm", alergias:cInit.alergias||"Ninguna", observaciones:cInit.observaciones||"" });
+  const [form, setForm] = useState({ nombre:cInit.nombre, telefono:cInit.telefono||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"" });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const hist = Array.isArray(clienta.historial) ? clienta.historial : (clienta.historial ? Object.values(clienta.historial) : []);
   const citasClientas = data.citas.filter(c=>c.clientaId===clienta._id && c.estado!=="completada").sort((a,b)=>a.fecha.localeCompare(b.fecha));
@@ -1246,98 +1268,327 @@ function HorariosConfig({ toast }) {
 }
 
 // ─── ADMIN: CONFIG ─────────────────────────────────────────────────────────────
-function AdminConfig({ data, toast }) {
+function AdminConfig({ data, toast, onLogout }) {
   const [tab, setTab] = useState("servicios");
-  const [sheetSv, setSheetSv] = useState(false);
-  const [editSv, setEditSv] = useState(null); // null = nuevo
-  const [formSv, setFormSv] = useState({ nombre:"", precio:"", duracion:"", descripcion:"" });
-  const [saving, setSaving] = useState(false);
-  const [confirm, setConfirm] = useState(null);
-  const setSv = (k,v) => setFormSv(f=>({...f,[k]:v}));
-
-  const abrirNuevo = () => { setEditSv(null); setFormSv({ nombre:"", precio:"", duracion:"", descripcion:"" }); setSheetSv(true); };
-  const abrirEditar = (sv) => { setEditSv(sv); setFormSv({ nombre:sv.nombre, precio:String(sv.precio), duracion:String(sv.duracion), descripcion:sv.descripcion||"" }); setSheetSv(true); };
-
-  const guardarSv = async () => {
-    if(!formSv.nombre||!formSv.precio){ toast("nombre y precio son obligatorios"); return; }
-    setSaving(true);
-    const payload = { nombre:formSv.nombre, precio:Number(formSv.precio), duracion:Number(formSv.duracion)||60, descripcion:formSv.descripcion };
-    if(editSv) await data.editarServicio(editSv._id, payload);
-    else await data.crearServicio(payload);
-    setSaving(false); setSheetSv(false);
-    toast(editSv?"✓ servicio actualizado":"✓ servicio creado");
-  };
-
-  const borrarSv = async (id) => {
-    await data.borrarServicio(id);
-    setConfirm(null); toast("servicio eliminado");
-  };
-
   return (
     <div>
       <div style={s.topBar}><h1 style={s.h1}>Configuración</h1><p style={s.sub}>parámetros del estudio</p></div>
       <div style={{ padding:"18px" }}>
-        <div style={{ display:"flex", gap:7, marginBottom:18 }}>
-          {["servicios","horarios","estudio"].map(t=>(
-            <button key={t} onClick={()=>setTab(t)} style={{ ...s.btnGlass, flex:1, fontSize:11, background:tab===t?G.greenM:G.glass, borderColor:tab===t?G.green:G.border, color:tab===t?G.greenL:G.sub }}>{t}</button>
+        <div style={{ display:"flex", gap:7, marginBottom:18, overflowX:"auto" }}>
+          {["servicios","técnico","horarios","estudio"].map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={{ ...s.btnGlass, flexShrink:0, fontSize:11, padding:"7px 14px", background:tab===t?G.greenM:G.glass, borderColor:tab===t?G.green:G.border, color:tab===t?G.greenL:G.sub }}>{t}</button>
           ))}
         </div>
-
-        {tab==="servicios"&&(
-          <div>
-            <button style={{ ...s.btnGreen, marginBottom:14 }} onClick={abrirNuevo}>+ agregar servicio</button>
-            {data.servicios.length===0&&<p style={{ color:G.muted, fontSize:13 }}>no hay servicios cargados aún ✦</p>}
-            {data.servicios.map(sv=>(
-              <div key={sv._id} style={{ ...s.card }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                  <div style={{ flex:1 }}>
-                    <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{sv.nombre}</p>
-                    {sv.descripcion&&<p style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
-                    <div style={{ display:"flex", gap:7 }}>
-                      <span style={s.tag}>{sv.duracion}min</span>
-                      <span style={s.tag}>{fmtPesos(sv.precio)}</span>
-                    </div>
-                  </div>
-                  <div style={{ display:"flex", gap:6, marginLeft:10 }}>
-                    <button style={{ ...s.btnGlass, padding:"6px 10px", fontSize:12 }} onClick={()=>abrirEditar(sv)}>✎</button>
-                    <button style={{ ...s.btnRed, padding:"6px 10px", fontSize:12 }} onClick={()=>setConfirm(sv)}>✕</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab==="horarios"&&(
-          <HorariosConfig toast={toast}/>
-        )}
-
-        {tab==="estudio"&&(
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            {[["nombre del estudio","Lash Studio by Chulas"],["dirección","San Lorenzo 3101, San Andrés"],["teléfono","11 2650-9699"],["instagram","@bychulas.studio"]].map(([l,v])=>(
-              <Field key={l} label={l}><input style={s.input} defaultValue={v}/></Field>
-            ))}
-            <button style={s.btnGreen}>guardar →</button>
-          </div>
-        )}
+        {tab==="servicios" && <ConfigServicios data={data} toast={toast}/>}
+        {tab==="técnico"   && <ConfigTecnico   data={data} toast={toast}/>}
+        {tab==="horarios"  && <ConfigHorarios  data={data} toast={toast}/>}
+        {tab==="estudio"   && <ConfigEstudio   data={data} toast={toast} onLogout={onLogout}/>}
       </div>
+    </div>
+  );
+}
 
-      {/* Sheet agregar/editar servicio */}
-      {sheetSv&&(
-        <Sheet titulo={editSv?"Editar Servicio":"Nuevo Servicio"} onClose={()=>setSheetSv(false)}>
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            <Field label="nombre del servicio *"><input style={s.input} value={formSv.nombre} onChange={e=>setSv("nombre",e.target.value)} placeholder="Nombre del servicio"/></Field>
-            <Field label="descripción"><input style={s.input} value={formSv.descripcion} onChange={e=>setSv("descripcion",e.target.value)} placeholder="ej: Extensiones pelo a pelo"/></Field>
-            <div style={{ display:"flex", gap:10 }}>
-              <Field label="precio *" style={{ flex:1 }}><input style={{ ...s.input }} type="number" value={formSv.precio} onChange={e=>setSv("precio",e.target.value)} placeholder="0"/></Field>
-              <Field label="duración (min)"><input style={{ ...s.input }} type="number" value={formSv.duracion} onChange={e=>setSv("duracion",e.target.value)} placeholder="90"/></Field>
+function ConfigServicios({ data, toast }) {
+  const [sheet,  setSheet]  = useState(false);
+  const [editSv, setEditSv] = useState(null);
+  const [confirm,setConfirm]= useState(null);
+  const [form, setForm] = useState({ nombre:"", descripcion:"", precio:"", duracion:"", fotos:[] });
+  const [saving, setSaving] = useState(false);
+  const setSv = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const abrirNuevo  = () => { setEditSv(null); setForm({ nombre:"", descripcion:"", precio:"", duracion:"", fotos:[] }); setSheet(true); };
+  const abrirEditar = (sv) => { setEditSv(sv); setForm({ nombre:sv.nombre||"", descripcion:sv.descripcion||"", precio:String(sv.precio||""), duracion:String(sv.duracion||""), fotos:sv.fotos||[] }); setSheet(true); };
+
+  const onFoto = (e) => {
+    Array.from(e.target.files||[]).forEach(file=>{
+      const r=new FileReader();
+      r.onload=ev=>setSv("fotos",prev=>[...(Array.isArray(prev)?prev:[]),ev.target.result]);
+      r.readAsDataURL(file);
+    });
+  };
+
+  const guardar = async () => {
+    if(!form.nombre||!form.precio){ toast("nombre y precio son obligatorios"); return; }
+    setSaving(true);
+    const payload={ nombre:form.nombre, descripcion:form.descripcion, precio:Number(form.precio), duracion:Number(form.duracion)||60, fotos:Array.isArray(form.fotos)?form.fotos:[] };
+    if(editSv) await data.editarServicio(editSv._id, payload);
+    else       await data.crearServicio(payload);
+    setSaving(false); setSheet(false);
+    toast(editSv?"✓ actualizado":"✓ servicio creado");
+  };
+
+  return (
+    <div>
+      <button style={{ ...s.btnGreen, marginBottom:14 }} onClick={abrirNuevo}>+ agregar servicio</button>
+      {data.servicios.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin servicios cargados ✦</p>}
+      {data.servicios.map(sv=>(
+        <div key={sv._id} style={s.card}>
+          {sv.fotos?.length>0&&(
+            <div style={{ display:"flex", gap:6, overflowX:"auto", marginBottom:10 }}>
+              {sv.fotos.map((f,i)=><img key={i} src={f} alt="" style={{ width:80, height:80, borderRadius:9, objectFit:"cover", flexShrink:0 }}/>)}
             </div>
-            <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardarSv} disabled={saving}>{saving?"guardando...":editSv?"guardar cambios →":"crear servicio →"}</button>
+          )}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+            <div style={{ flex:1 }}>
+              <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{sv.nombre}</p>
+              {sv.descripcion&&<p style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
+              <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
+                <span style={s.tag}>{sv.duracion}min est.</span>
+                <span style={s.tag}>{fmtPesos(sv.precio)}</span>
+              </div>
+              <p style={{ margin:"6px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>* duración estimada, puede variar según cada clienta</p>
+            </div>
+            <div style={{ display:"flex", gap:6, marginLeft:10 }}>
+              <button style={{ ...s.btnGlass, padding:"6px 10px", fontSize:12 }} onClick={()=>abrirEditar(sv)}>✎</button>
+              <button style={{ ...s.btnRed,   padding:"6px 10px", fontSize:12 }} onClick={()=>setConfirm(sv)}>✕</button>
+            </div>
+          </div>
+        </div>
+      ))}
+
+      {sheet&&(
+        <Sheet titulo={editSv?"Editar Servicio":"Nuevo Servicio"} onClose={()=>setSheet(false)}>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <Field label="nombre *"><input style={s.input} value={form.nombre} onChange={e=>setSv("nombre",e.target.value)} placeholder="Nombre del servicio"/></Field>
+            <Field label="descripción"><input style={s.input} value={form.descripcion} onChange={e=>setSv("descripcion",e.target.value)} placeholder="Descripción breve"/></Field>
+            <div style={{ display:"flex", gap:10 }}>
+              <Field label="precio *" style={{ flex:1 }}><input style={s.input} type="number" value={form.precio} onChange={e=>setSv("precio",e.target.value)} placeholder="0"/></Field>
+              <Field label="duración (min)" style={{ flex:1 }}><input style={s.input} type="number" value={form.duracion} onChange={e=>setSv("duracion",e.target.value)} placeholder="60"/></Field>
+            </div>
+            <p style={{ margin:"-8px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>* duración estimada según cada clienta</p>
+            <Field label="fotos (las clientas verán un carrusel)">
+              {Array.isArray(form.fotos)&&form.fotos.length>0&&(
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+                  {form.fotos.map((f,i)=>(
+                    <div key={i} style={{ position:"relative" }}>
+                      <img src={f} alt="" style={{ width:72, height:72, borderRadius:9, objectFit:"cover" }}/>
+                      <button onClick={()=>setSv("fotos",form.fotos.filter((_,j)=>j!==i))} style={{ position:"absolute", top:-6, right:-6, width:18, height:18, borderRadius:"50%", background:G.red, border:"none", color:"#fff", fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label style={{ ...s.btnGlass, display:"block", textAlign:"center", cursor:"pointer", padding:"10px" }}>
+                📷 agregar fotos
+                <input type="file" accept="image/*" multiple style={{ display:"none" }} onChange={onFoto}/>
+              </label>
+            </Field>
+            <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"guardando...":editSv?"guardar cambios →":"crear servicio →"}</button>
           </div>
         </Sheet>
       )}
+      {confirm&&<Modal titulo="Eliminar servicio" msg={`¿Eliminar "${confirm.nombre}"?`} onOk={()=>{ data.borrarServicio(confirm._id); setConfirm(null); toast("eliminado"); }} onCancel={()=>setConfirm(null)} okLabel="eliminar" danger/>}
+    </div>
+  );
+}
 
-      {confirm&&<Modal titulo="Eliminar servicio" msg={`¿Eliminar "${confirm.nombre}"? Esta acción no se puede deshacer.`} onOk={()=>borrarSv(confirm._id)} onCancel={()=>setConfirm(null)} okLabel="eliminar" danger/>}
+function ConfigTecnico({ data, toast }) {
+  const EditableChips = ({ label, configKey }) => {
+    const valores = data.getConfig(configKey, []);
+    const [nuevo,   setNuevo]   = useState("");
+    const [confirm, setConfirm] = useState(null);
+    const agregar = async () => {
+      if(!nuevo.trim()){ return; }
+      if(valores.includes(nuevo.trim())){ toast("ya existe"); return; }
+      await data.saveConfig(configKey, [...valores, nuevo.trim()]);
+      setNuevo(""); toast(`✓ ${nuevo.trim()} agregado`);
+    };
+    const quitar = async (v) => {
+      await data.saveConfig(configKey, valores.filter(x=>x!==v));
+      setConfirm(null); toast(`${v} eliminado`);
+    };
+    return (
+      <div style={{ ...s.card, marginBottom:12 }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>{label}</p>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:12 }}>
+          {valores.length===0&&<p style={{ color:G.muted, fontSize:12, margin:0 }}>sin opciones cargadas</p>}
+          {valores.map(v=>(
+            <div key={v} style={{ display:"flex", alignItems:"center", gap:4, background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"3px 8px 3px 12px" }}>
+              <span style={{ fontFamily:F.sans, fontSize:12, color:G.greenL }}>{v}</span>
+              <button onClick={()=>setConfirm(v)} style={{ background:"none", border:"none", color:G.muted, cursor:"pointer", fontSize:12, padding:"0 2px" }}>✕</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <input style={{ ...s.input, flex:1 }} value={nuevo} onChange={e=>setNuevo(e.target.value)} placeholder={`nueva opción...`} onKeyDown={e=>e.key==="Enter"&&agregar()}/>
+          <button style={{ ...s.btnGreen, width:"auto", padding:"0 14px", fontSize:13 }} onClick={agregar}>+</button>
+        </div>
+        {confirm&&<Modal titulo={`Eliminar "${confirm}"`} msg={`¿Quitar esta opción de ${label}?`} onOk={()=>quitar(confirm)} onCancel={()=>setConfirm(null)} okLabel="quitar" danger/>}
+      </div>
+    );
+  };
+  return (
+    <div>
+      <p style={{ ...s.sub, marginBottom:14 }}>opciones de la ficha técnica para cada clienta</p>
+      <EditableChips label="Curvas" configKey="curvas"/>
+      <EditableChips label="Grosores" configKey="grosores"/>
+      <EditableChips label="Largos" configKey="largos"/>
+    </div>
+  );
+}
+
+function ConfigHorarios({ data, toast }) {
+  const [tab, setTab] = useState("slots");
+  const slots = data.getConfig("slots", []);
+
+  const SlotsEditor = () => {
+    const [nuevo, setNuevo] = useState("");
+    const agregar = async () => {
+      if(!nuevo) return;
+      const t=nuevo.trim();
+      if(slots.includes(t)){ toast("ya existe"); return; }
+      await data.saveConfig("slots", [...slots, t].sort());
+      setNuevo(""); toast(`✓ ${t} agregado`);
+    };
+    const quitar = async (v) => { await data.saveConfig("slots", slots.filter(x=>x!==v)); toast(`${v} eliminado`); };
+    return (
+      <div>
+        <p style={{ ...s.sub, marginBottom:12 }}>horarios disponibles para agendar</p>
+        {slots.length===0&&<p style={{ color:G.muted, fontSize:12, marginBottom:12 }}>sin horarios — agregá los que usás</p>}
+        <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:14 }}>
+          {slots.map(h=>(
+            <div key={h} style={{ display:"flex", alignItems:"center", gap:4, background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"4px 8px 4px 12px" }}>
+              <span style={{ fontFamily:F.sans, fontSize:13, color:G.greenL }}>{h}</span>
+              <button onClick={()=>quitar(h)} style={{ background:"none", border:"none", color:G.muted, cursor:"pointer", fontSize:12, padding:"0 2px" }}>✕</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <input style={{ ...s.input, flex:1 }} type="time" value={nuevo} onChange={e=>setNuevo(e.target.value)}/>
+          <button style={{ ...s.btnGreen, width:"auto", padding:"0 14px" }} onClick={agregar}>+ agregar</button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        {[["slots","slots disponibles"],["excepciones","días no laborables"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{ ...s.btnGlass, flex:1, fontSize:11, background:tab===k?G.greenM:G.glass, borderColor:tab===k?G.green:G.border, color:tab===k?G.greenL:G.sub }}>{l}</button>
+        ))}
+      </div>
+      {tab==="slots"      && <SlotsEditor/>}
+      {tab==="excepciones"&& <ExcepcionesEditor data={data} toast={toast}/>}
+    </div>
+  );
+}
+
+function ExcepcionesEditor({ data, toast }) {
+  const [fecha,   setFecha]   = useState("");
+  const [razon,   setRazon]   = useState("");
+  const [saving,  setSaving]  = useState(false);
+  const [confirm, setConfirm] = useState(null);
+  const [lista,   setLista]   = useState(data.excepciones||[]);
+  useEffect(()=>setLista(data.excepciones||[]),[data.excepciones]);
+
+  const hoy=hoyISO();
+  const futuras=lista.filter(e=>e.fecha>=hoy).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const pasadas =lista.filter(e=>e.fecha<hoy).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+
+  const agregar=async()=>{
+    if(!fecha){ toast("elegí una fecha"); return; }
+    if(lista.find(e=>e.fecha===fecha)){ toast("ya está marcada"); return; }
+    setSaving(true);
+    const id=await db.push("excepciones",{ fecha, razon:razon||"día no laborable" });
+    setLista(p=>[...p,{ fecha, razon:razon||"día no laborable", _id:id }]);
+    setFecha(""); setRazon(""); setSaving(false); toast("✓ guardado");
+  };
+  const borrar=async(e)=>{ await db.delete(`excepciones/${e._id}`); setLista(p=>p.filter(x=>x._id!==e._id)); setConfirm(null); toast("eliminado"); };
+
+  return (
+    <div>
+      <div style={{ ...s.card, background:"rgba(143,189,90,0.04)", borderColor:G.greenD, marginBottom:14 }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 12px" }}>marcar día no laborable</p>
+        <Field label="fecha"><input style={s.input} type="date" value={fecha} min={hoy} onChange={e=>setFecha(e.target.value)}/></Field>
+        <Field label="razón (opcional)"><input style={s.input} value={razon} onChange={e=>setRazon(e.target.value)} placeholder="vacaciones, feriado, personal..."/></Field>
+        <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={agregar} disabled={saving}>{saving?"guardando...":"agregar →"}</button>
+      </div>
+      {futuras.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin días bloqueados próximos ✦</p>}
+      {futuras.map(e=>(
+        <div key={e._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center", minWidth:52 }}>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{e.fecha?.slice(5).replace("-","/")} </p>
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.greenL }}>{DIAS_F[new Date(e.fecha+"T12:00:00").getDay()].slice(0,3)}</p>
+          </div>
+          <p style={{ margin:0, fontFamily:F.sans, fontSize:13, flex:1 }}>{e.razon}</p>
+          <button style={{ ...s.btnRed, padding:"6px 10px", fontSize:12 }} onClick={()=>setConfirm(e)}>✕</button>
+        </div>
+      ))}
+      {pasadas.length>0&&(
+        <details style={{ marginTop:10 }}>
+          <summary style={{ fontFamily:F.sans, fontSize:12, color:G.muted, cursor:"pointer", padding:"8px 0" }}>pasados ({pasadas.length})</summary>
+          <div style={{ marginTop:8, opacity:0.5 }}>
+            {pasadas.map(e=><div key={e._id} style={{ ...s.card, padding:"9px 13px" }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{fmtFecha(e.fecha)} — {e.razon}</p></div>)}
+          </div>
+        </details>
+      )}
+      {confirm&&<Modal titulo="Eliminar excepción" msg={`¿Eliminar el bloqueo del ${fmtFecha(confirm.fecha)}?`} onOk={()=>borrar(confirm)} onCancel={()=>setConfirm(null)} okLabel="eliminar" danger/>}
+    </div>
+  );
+}
+
+function ConfigEstudio({ data, toast, onLogout }) {
+  const init = data.getConfig("estudio", {});
+  const [form, setForm] = useState({ nombre:init.nombre||"", direccion:init.direccion||"", whatsapp:init.whatsapp||"", instagram:init.instagram||"", urlApp:init.urlApp||"" });
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const [saving, setSaving] = useState(false);
+  const pols = data.getConfig("politicas", []);
+  const [politicas, setPoliticas] = useState(pols);
+  const [nuevaPol,  setNuevaPol]  = useState("");
+  const [editIdx,   setEditIdx]   = useState(null);
+  const [editTxt,   setEditTxt]   = useState("");
+
+  useEffect(()=>{
+    const e=data.getConfig("estudio",{});
+    setForm({ nombre:e.nombre||"", direccion:e.direccion||"", whatsapp:e.whatsapp||"", instagram:e.instagram||"", urlApp:e.urlApp||"" });
+    setPoliticas(data.getConfig("politicas",[]));
+  },[data.config]);
+
+  const guardarEstudio=async()=>{ setSaving(true); await data.saveConfig("estudio",form); setSaving(false); toast("✓ datos guardados"); };
+  const addPol=async()=>{ if(!nuevaPol.trim()) return; const upd=[...politicas,nuevaPol.trim()]; await data.saveConfig("politicas",upd); setPoliticas(upd); setNuevaPol(""); toast("✓ política agregada"); };
+  const savePol=async(i)=>{ const upd=politicas.map((p,j)=>j===i?editTxt:p); await data.saveConfig("politicas",upd); setPoliticas(upd); setEditIdx(null); toast("✓ guardado"); };
+  const delPol=async(i)=>{ const upd=politicas.filter((_,j)=>j!==i); await data.saveConfig("politicas",upd); setPoliticas(upd); toast("eliminada"); };
+
+  return (
+    <div>
+      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 12px" }}>datos del estudio</p>
+      <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12, marginBottom:14 }}>
+        <Field label="nombre del estudio"><input style={s.input} value={form.nombre} onChange={e=>set("nombre",e.target.value)}/></Field>
+        <Field label="dirección"><input style={s.input} value={form.direccion} onChange={e=>set("direccion",e.target.value)}/></Field>
+        <Field label="whatsapp (con código de país, ej: 541126509699)"><input style={s.input} value={form.whatsapp} onChange={e=>set("whatsapp",e.target.value)} type="tel"/></Field>
+        <Field label="instagram (@usuario)"><input style={s.input} value={form.instagram} onChange={e=>set("instagram",e.target.value)} placeholder="@usuario"/></Field>
+        <Field label="url de la app"><input style={s.input} value={form.urlApp} onChange={e=>set("urlApp",e.target.value)} placeholder="https://..."/></Field>
+        <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardarEstudio} disabled={saving}>{saving?"guardando...":"guardar →"}</button>
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:0 }}>políticas del estudio</p>
+      </div>
+      <p style={{ ...s.sub, marginBottom:12 }}>las clientas las ven en su perfil</p>
+      {politicas.length===0&&<p style={{ color:G.muted, fontSize:13, marginBottom:10 }}>sin políticas cargadas ✦</p>}
+      {politicas.map((p,i)=>(
+        <div key={i} style={{ ...s.card, padding:"10px 14px" }}>
+          {editIdx===i?(
+            <div style={{ display:"flex", gap:8 }}>
+              <input style={{ ...s.input, flex:1 }} value={editTxt} onChange={e=>setEditTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&savePol(i)}/>
+              <button style={{ ...s.btnGreen, width:"auto", padding:"0 12px" }} onClick={()=>savePol(i)}>✓</button>
+              <button style={{ ...s.btnGlass, padding:"0 10px" }} onClick={()=>setEditIdx(null)}>✕</button>
+            </div>
+          ):(
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <p style={{ margin:0, flex:1, fontFamily:F.sans, fontSize:13, color:G.sub }}>✦ {p}</p>
+              <button style={{ ...s.btnGlass, padding:"5px 9px", fontSize:11 }} onClick={()=>{ setEditIdx(i); setEditTxt(p); }}>✎</button>
+              <button style={{ ...s.btnRed, padding:"5px 9px", fontSize:11 }} onClick={()=>delPol(i)}>✕</button>
+            </div>
+          )}
+        </div>
+      ))}
+      <div style={{ display:"flex", gap:8, marginTop:4 }}>
+        <input style={{ ...s.input, flex:1 }} value={nuevaPol} onChange={e=>setNuevaPol(e.target.value)} placeholder="nueva política..." onKeyDown={e=>e.key==="Enter"&&addPol()}/>
+        <button style={{ ...s.btnGreen, width:"auto", padding:"0 14px" }} onClick={addPol}>+</button>
+      </div>
+      <div style={s.divider}/>
+      <button style={{ ...s.btnRed, width:"100%", marginTop:8 }} onClick={onLogout}>cerrar sesión</button>
     </div>
   );
 }
@@ -1346,148 +1597,188 @@ function AdminConfig({ data, toast }) {
 // PANEL CLIENTA
 // ═══════════════════════════════════════════════════════════════════════════════
 function ClientaApp({ clienta, data, onLogout }) {
-  const [tab, setTab] = useState("inicio");
+  const [tab,   setTab]   = useState("inicio");
+  const [toast, setToast] = useState(null);
   const tabs = [{ id:"inicio",icon:"⬡",label:"inicio" },{ id:"agendar",icon:"◷",label:"agendar" },{ id:"historial",icon:"✦",label:"historial" },{ id:"perfil",icon:"✿",label:"perfil" }];
-
+  const wa = data.getConfig("estudio",{})?.whatsapp;
   const render = () => {
     switch(tab){
-      case "inicio": return <CInicio clienta={clienta} data={data} setTab={setTab}/>;
-      case "agendar": return <CAgendar clienta={clienta} data={data}/>;
-      case "historial": return <CHistorial clienta={clienta}/>;
-      case "perfil": return <CPerfil clienta={clienta} onLogout={onLogout}/>;
-      default: return <CInicio clienta={clienta} data={data} setTab={setTab}/>;
+      case "inicio":    return <CInicio    clienta={clienta} data={data} setTab={setTab}/>;
+      case "agendar":   return <CAgendar   clienta={clienta} data={data}/>;
+      case "historial": return <CHistorial clienta={clienta} data={data}/>;
+      case "perfil":    return <CPerfil    clienta={clienta} data={data} onLogout={onLogout}/>;
+      default:          return <CInicio    clienta={clienta} data={data} setTab={setTab}/>;
     }
   };
-
   return (
     <div style={s.app}>
       <div style={s.screen}>{render()}</div>
-      <nav style={s.nav}>
-        {tabs.map(t=>(
-          <div key={t.id} style={navItemStyle(tab===t.id)} onClick={()=>setTab(t.id)}>
-            <span style={{ fontSize:19 }}>{t.icon}</span>
-            <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.08em" }}>{t.label}</span>
-            {tab===t.id&&<div style={{ width:4,height:4,borderRadius:"50%",background:G.green }}/>}
-          </div>
-        ))}
-      </nav>
-      <FAB/>
+      <NavFlotante items={tabs} active={tab} onChange={setTab}/>
+      {wa&&<button style={{ position:"fixed", bottom:100, right:18, width:50, height:50, borderRadius:"50%", background:G.green, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, boxShadow:`0 4px 20px rgba(143,189,90,0.4)`, zIndex:30 }} onClick={()=>openWA(wa,"Hola! Tengo una consulta 💚")}>💬</button>}
+      {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
     </div>
   );
 }
 
+// ─── CLIENTA: INICIO ──────────────────────────────────────────────────────────
 function CInicio({ clienta, data, setTab }) {
   const hoy = hoyISO();
-  const hist = clienta.historial||[];
-  const ultima = hist[hist.length-1];
+  const hist = Array.isArray(clienta.historial)?clienta.historial:Object.values(clienta.historial||{});
+  hist.sort((a,b)=>b.fecha?.localeCompare(a.fecha));
+  const ultima = hist[0];
   const diasDesde = ultima?.fecha ? Math.floor((new Date()-new Date(ultima.fecha))/(1000*60*60*24)) : null;
-  const proxCita = data.citas.filter(c=>c.clientaId===clienta._id&&c.fecha>=hoy&&c.estado!=="completada").sort((a,b)=>a.fecha.localeCompare(b.fecha))[0];
-  const diasHasta = proxCita ? Math.floor((new Date(proxCita.fecha)-new Date())/(1000*60*60*24)) : null;
-  const curvaFav = clienta.curva||"—";
+  const proxCita  = data.citas.filter(c=>c.clientaId===clienta._id&&c.fecha>=hoy&&c.estado!=="completada").sort((a,b)=>a.fecha.localeCompare(b.fecha))[0];
+  const diasHasta = proxCita ? Math.floor((new Date(proxCita.fecha+"T12:00:00")-new Date())/(1000*60*60*24)) : null;
+  const estudio   = data.getConfig("estudio", {});
+
+  // Abrir maps con la dirección
+  const abrirMaps = () => {
+    if(estudio.direccion) window.open(`https://maps.google.com/?q=${encodeURIComponent(estudio.direccion)}`, "_blank");
+  };
+  const abrirIG = () => {
+    if(estudio.instagram) window.open(`https://instagram.com/${estudio.instagram.replace("@","")}`, "_blank");
+  };
 
   return (
     <div>
-      <div style={s.topBar}><h1 style={s.h1}>Lash Studio</h1><p style={s.sub}>hola, {clienta.nombre?.split(" ")[0].toLowerCase()} 🌿</p></div>
+      <div style={s.topBar}>
+        <h1 style={s.h1}>{estudio.nombre||"Lash Studio"}</h1>
+        <p style={s.sub}>hola, {clienta.nombre?.split(" ")[0]?.toLowerCase()||""} 🌿</p>
+      </div>
       <div style={{ padding:"18px" }}>
+
+        {/* Banner recordatorio próxima cita */}
+        {proxCita&&diasHasta!==null&&(
+          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.16),rgba(143,189,90,0.04))", border:`1px solid ${G.green}`, borderRadius:16, padding:"16px 18px", marginBottom:12 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div>
+                <p style={{ margin:"0 0 3px", fontFamily:F.sans, fontSize:10, color:G.greenL, textTransform:"lowercase", letterSpacing:"0.08em" }}>próxima cita</p>
+                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:16 }}>{proxCita.servicio}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(proxCita.fecha)} · {proxCita.hora}</p>
+              </div>
+              <div style={{ textAlign:"center", background:"rgba(10,10,10,0.4)", border:`0.5px solid rgba(255,255,255,0.1)`, borderRadius:14, padding:"10px 14px", minWidth:58 }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:26, color:G.greenL }}>{diasHasta}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>{diasHasta===1?"día":"días"}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Recordatorio service */}
         {diasDesde!==null&&diasDesde>=14&&!proxCita&&(
           <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.14),rgba(143,189,90,0.04))", border:`1px solid ${G.green}`, borderRadius:14, padding:"15px 16px", marginBottom:12 }}>
-            <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.greenL }}>¡es hora del service! ✦</p>
-            <p style={{ margin:"0 0 11px", fontFamily:F.sans, fontSize:12, color:G.sub }}>hace {diasDesde} días de tu último tratamiento</p>
+            <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.greenL }}>
+              {diasDesde>=30?"¡te extrañamos! 💚":"¡es hora del service! ✦"}
+            </p>
+            <p style={{ margin:"0 0 11px", fontFamily:F.sans, fontSize:12, color:G.sub }}>
+              {diasDesde>=30?`hace ${diasDesde} días que no te hacés un tratamiento`:`hace ${diasDesde} días de tu último servicio`}
+            </p>
             <button style={{ ...s.btnGreen, padding:"9px 14px" }} onClick={()=>setTab("agendar")}>agendar ahora →</button>
           </div>
         )}
 
-        {/* Próxima cita */}
-        {proxCita&&(
-          <div style={{ ...s.card, borderColor:G.greenD, marginBottom:12 }}>
-            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 7px", textTransform:"lowercase", letterSpacing:"0.08em" }}>próxima cita</p>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div>
-                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:16 }}>{proxCita.servicio}</p>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(proxCita.fecha)} · {proxCita.hora}</p>
-              </div>
-              {diasHasta!==null&&(
-                <div style={{ textAlign:"center", background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:11, padding:"8px 13px" }}>
-                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.greenL }}>{diasHasta}</p>
-                  <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Widgets */}
-        <div style={{ display:"flex", gap:9, marginBottom:18 }}>
-          <div onClick={()=>setTab("historial")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"13px 8px" }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px" }}>visitas</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>{hist.length}</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>ver →</p>
-          </div>
-          <div onClick={()=>setTab("perfil")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"13px 8px" }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px" }}>curva fav.</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>{curvaFav}</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>mi ficha →</p>
-          </div>
-          <div onClick={()=>setTab("agendar")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"13px 8px", background:G.greenM, borderColor:G.green }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:"0 0 4px" }}>turno</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>+</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:0 }}>agendar →</p>
-          </div>
+        {/* Widgets de stats */}
+        <div style={{ display:"flex", gap:9, marginBottom:16 }}>
+          <StatBox label="visitas" val={hist.length} sub="historial →" onClick={()=>setTab("historial")}/>
+          <StatBox label="curva fav." val={clienta.curva||"—"} sub="mi ficha →" onClick={()=>setTab("perfil")}/>
+          <StatBox label="agendar" val="+" sub="reservar →" color={G.green} onClick={()=>setTab("agendar")}/>
         </div>
 
         {/* Último servicio */}
         {ultima&&(
-          <>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>último servicio</p>
-            <p style={{ ...s.sub, marginBottom:10 }}>{fmtFecha(ultima.fecha)}</p>
-            <div style={{ ...s.card, cursor:"pointer" }} onClick={()=>setTab("historial")}>
-              <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{ultima.servicio}</p>
-              <span style={s.tag}>curva {ultima.curva}</span>
-              <p style={{ margin:"9px 0 0", fontFamily:F.sans, fontSize:11, color:G.muted }}>ver historial completo →</p>
-            </div>
-          </>
+          <div style={{ ...s.card, cursor:"pointer", marginBottom:14 }} onClick={()=>setTab("historial")}>
+            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 5px" }}>último servicio · {fmtFecha(ultima.fecha)}</p>
+            <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{ultima.servicio}</p>
+            {ultima.curva&&<span style={s.tag}>curva {ultima.curva}</span>}
+            <p style={{ margin:"8px 0 0", fontFamily:F.sans, fontSize:11, color:G.muted }}>ver historial completo →</p>
+          </div>
         )}
 
-        <div style={s.divider}/>
-        {/* Info estudio */}
-        <div style={s.card}>
-          {[["📍","San Lorenzo 3101, San Andrés"],["📱","11 2650-9699"],["📷","@bychulas.studio"]].map(([ic,v])=>(
-            <div key={v} style={{ display:"flex", gap:10, alignItems:"center", marginBottom:8 }}>
-              <span style={{ fontSize:14 }}>{ic}</span>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</p>
-            </div>
-          ))}
-          <button style={{ ...s.btnGreen, marginTop:8, padding:"9px" }} onClick={()=>openWA()}>abrir en WhatsApp →</button>
+        {/* Accesos rápidos al estudio */}
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>el estudio</p>
+        <div style={{ display:"flex", gap:10, marginBottom:12 }}>
+          {estudio.whatsapp&&(
+            <button style={{ flex:1, background:"rgba(37,211,102,0.1)", border:`0.5px solid rgba(37,211,102,0.3)`, borderRadius:14, padding:"14px 8px", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}
+              onClick={()=>openWA(estudio.whatsapp,"Hola! Tengo una consulta 💚")}>
+              <span style={{ fontSize:22 }}>💬</span>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:"rgba(37,211,102,0.9)" }}>WhatsApp</p>
+            </button>
+          )}
+          {estudio.direccion&&(
+            <button style={{ flex:1, background:"rgba(66,133,244,0.1)", border:`0.5px solid rgba(66,133,244,0.3)`, borderRadius:14, padding:"14px 8px", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}
+              onClick={abrirMaps}>
+              <span style={{ fontSize:22 }}>📍</span>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:"rgba(66,133,244,0.9)" }}>Cómo llegar</p>
+            </button>
+          )}
+          {estudio.instagram&&(
+            <button style={{ flex:1, background:"rgba(225,48,108,0.1)", border:`0.5px solid rgba(225,48,108,0.3)`, borderRadius:14, padding:"14px 8px", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}
+              onClick={abrirIG}>
+              <span style={{ fontSize:22 }}>📷</span>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:"rgba(225,48,108,0.9)" }}>Instagram</p>
+            </button>
+          )}
         </div>
+        {estudio.direccion&&<p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, textAlign:"center", marginBottom:4 }}>{estudio.direccion}</p>}
       </div>
     </div>
   );
 }
 
+// ─── CLIENTA: AGENDAR ─────────────────────────────────────────────────────────
 function CAgendar({ clienta, data }) {
-  const [paso, setPaso] = useState(1);
-  const [modo, setModo] = useState("individual");
-  const [form, setForm] = useState({ servicio:null, fecha:"", hora:"", notas:"" });
+  const [paso,    setPaso]    = useState(1);
+  const [modo,    setModo]    = useState("individual");
+  const [svSel,   setSvSel]   = useState(null);
+  const [mes,     setMes]     = useState(0); // offset de mes
+  const [diaS,    setDiaS]    = useState(null);
+  const [horaSel, setHoraSel] = useState(null);
+  const [notas,   setNotas]   = useState("");
   const [enviado, setEnviado] = useState(false);
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const ocupadas = data.citas.filter(c=>c.fecha===form.fecha&&c.estado!=="completada").map(c=>c.hora);
+
+  const estudio = data.getConfig("estudio", {});
+  const slots   = data.getConfig("slots",   []);
+  const excFechas = new Set(data.excepciones.map(e=>e.fecha));
+
+  // Calendario
+  const ahora = new Date();
+  const mesD  = new Date(ahora.getFullYear(), ahora.getMonth()+mes, 1);
+  const anio  = mesD.getFullYear();
+  const mesN  = mesD.getMonth();
+  const primerDia = new Date(anio,mesN,1).getDay();
+  const diasMes   = new Date(anio,mesN+1,0).getDate();
+  const fmtKey = (d) => `${anio}-${String(mesN+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const hoy   = hoyISO();
+
+  // Citas ocupadas por fecha
+  const citasPorFecha={};
+  data.citas.forEach(c=>{ if(c.estado!=="completada"){ if(!citasPorFecha[c.fecha]) citasPorFecha[c.fecha]=[]; citasPorFecha[c.fecha].push(c.hora); } });
+
+  const ocupadasDia = diaS ? (citasPorFecha[diaS]||[]) : [];
+  const diaEsBloqueado = diaS ? excFechas.has(diaS) : false;
+  const slotsDia = slots.filter(h=>!ocupadasDia.includes(h));
 
   const confirmar = () => {
-    const sv = form.servicio?.nombre||"A confirmar con Male";
+    if(!estudio.whatsapp) return;
     const msg = modo==="noSe"
-      ? `Hola Male! 🌿 Quiero agendar un turno:\n📅 ${form.fecha} a las ${form.hora}\n💭 No sé bien qué hacerme, me gustaría que me asesores${form.notas?`\nNotas: ${form.notas}`:""}\n💚 ${clienta.nombre}`
-      : `Hola Male! 🌿 Quiero agendar:\n✦ ${sv}\n📅 ${form.fecha} a las ${form.hora}${form.notas?`\nNotas: ${form.notas}`:""}\n💚 ${clienta.nombre}`;
-    openWA(msg);
+      ? `Hola! 🌿 Quiero agendar:\n📅 ${fmtFecha(diaS)} a las ${horaSel}${notas?`\n💭 ${notas}`:""}\n💚 ${clienta.nombre}`
+      : `Hola! 🌿 Quiero agendar:\n✦ ${svSel?.nombre||"a confirmar"}\n📅 ${fmtFecha(diaS)} a las ${horaSel}${notas?`\n💭 ${notas}`:""}\n💚 ${clienta.nombre}`;
+    openWA(estudio.whatsapp, msg);
     setEnviado(true);
   };
+
+  if(!estudio.whatsapp) return (
+    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:28 }}>
+      <p style={{ color:G.muted, fontSize:13, textAlign:"center" }}>El estudio aún no configuró el contacto.</p>
+    </div>
+  );
 
   if(enviado) return (
     <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, textAlign:"center" }}>
       <div style={{ fontSize:44, marginBottom:12 }}>🌿</div>
       <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.greenL, margin:"0 0 8px" }}>¡solicitud enviada!</p>
-      <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 24px", lineHeight:1.7 }}>Male va a confirmar tu turno por WhatsApp. ¡Nos vemos pronto!</p>
-      <button style={s.btnGreen} onClick={()=>{ setEnviado(false); setPaso(1); setForm({ servicio:null, fecha:"", hora:"", notas:"" }); }}>volver →</button>
+      <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 24px", lineHeight:1.7 }}>Te confirman el turno por WhatsApp. ¡Nos vemos pronto!</p>
+      <button style={s.btnGreen} onClick={()=>{ setEnviado(false); setPaso(1); setSvSel(null); setDiaS(null); setHoraSel(null); setNotas(""); }}>volver →</button>
     </div>
   );
 
@@ -1499,25 +1790,33 @@ function CAgendar({ clienta, data }) {
           {[1,2,3].map(p=><div key={p} style={{ flex:1, height:3, borderRadius:2, background:p<=paso?G.green:G.border, transition:"background 0.3s" }}/>)}
         </div>
 
+        {/* PASO 1: SERVICIO */}
         {paso===1&&(
           <div>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 14px" }}>¿qué querés hacerte?</p>
-            <div style={{ display:"flex", gap:7, marginBottom:16 }}>
+            <div style={{ display:"flex", gap:7, marginBottom:14 }}>
               {[["individual","servicio"],["noSe","no sé aún"]].map(([m,l])=>(
-                <button key={m} onClick={()=>{ setModo(m); set("servicio",null); }} style={{ ...s.btnGlass, flex:1, fontSize:11, background:modo===m?G.greenM:G.glass, borderColor:modo===m?G.green:G.border, color:modo===m?G.greenL:G.sub }}>{l}</button>
+                <button key={m} onClick={()=>{ setModo(m); setSvSel(null); }} style={{ ...s.btnGlass, flex:1, fontSize:11, background:modo===m?G.greenM:G.glass, borderColor:modo===m?G.green:G.border, color:modo===m?G.greenL:G.sub }}>{l}</button>
               ))}
             </div>
 
             {modo==="individual"&&(
               data.servicios.length===0
-                ? <p style={{ color:G.muted, fontSize:13 }}>los servicios se están cargando...</p>
+                ? <p style={{ color:G.muted, fontSize:13 }}>servicios próximamente disponibles...</p>
                 : data.servicios.map(sv=>(
-                  <div key={sv._id} style={{ ...s.card, borderColor:form.servicio?._id===sv._id?G.green:G.border, background:form.servicio?._id===sv._id?"rgba(143,189,90,0.06)":G.card }} onClick={()=>{ set("servicio",sv); setPaso(2); }}>
+                  <div key={sv._id} style={{ ...s.card, borderColor:svSel?._id===sv._id?G.green:G.border, background:svSel?._id===sv._id?"rgba(143,189,90,0.06)":G.card, cursor:"pointer" }}
+                    onClick={()=>{ setSvSel(sv); setPaso(2); }}>
+                    {sv.fotos?.length>0&&(
+                      <div style={{ display:"flex", gap:6, overflowX:"auto", marginBottom:10 }}>
+                        {sv.fotos.map((f,i)=><img key={i} src={f} alt="" style={{ width:90, height:70, borderRadius:9, objectFit:"cover", flexShrink:0 }}/>)}
+                      </div>
+                    )}
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                       <div style={{ flex:1 }}>
                         <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontSize:14 }}>{sv.nombre}</p>
                         {sv.descripcion&&<p style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
                         <span style={s.tag}>{sv.duracion}min</span>
+                        <p style={{ margin:"4px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>* duración estimada</p>
                       </div>
                       <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:15 }}>{fmtPesos(sv.precio)}</p>
                     </div>
@@ -1530,65 +1829,131 @@ function CAgendar({ clienta, data }) {
                 <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, textAlign:"center", padding:"22px 18px" }}>
                   <div style={{ fontSize:30, marginBottom:9 }}>🌿</div>
                   <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>¡no te preocupes!</p>
-                  <p style={{ margin:"0 0 14px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.7 }}>Agendá tu turno y Male te va a asesorar personalmente. Podés contarle qué efecto buscás en las notas.</p>
-                  <button style={{ ...s.btnGreen, padding:"10px" }} onClick={()=>setPaso(2)}>agendar igualmente →</button>
+                  <p style={{ margin:"0 0 14px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.7 }}>Agendá y te asesoran cuando llegués al estudio. Contá qué efecto buscás en las notas.</p>
+                  <button style={{ ...s.btnGreen, padding:"10px" }} onClick={()=>setPaso(2)}>agendar →</button>
                 </div>
-                <div style={{ ...s.card, marginTop:0 }}>
-                  <p style={{ ...s.sub, margin:"0 0 9px" }}>¿querés consultar antes?</p>
-                  <button style={{ ...s.btnGlass, width:"100%", borderColor:G.green, color:G.greenL }} onClick={()=>openWA("Hola Male! No sé bien qué servicio hacerme, ¿me podés orientar? 🌿")}>💬 consultar por WhatsApp</button>
+                <div style={{ ...s.card, marginTop:0, cursor:"pointer" }} onClick={()=>openWA(estudio.whatsapp,"Hola! No sé bien qué hacerme, ¿me podés orientar? 🌿")}>
+                  <p style={{ ...s.sub, margin:"0 0 4px" }}>¿consultar antes?</p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.greenL }}>💬 escribir por WhatsApp</p>
                 </div>
               </div>
             )}
           </div>
         )}
 
+        {/* PASO 2: CALENDARIO + HORA */}
         {paso===2&&(
           <div>
             <button style={{ ...s.btnGlass, marginBottom:14, fontSize:12 }} onClick={()=>setPaso(1)}>← cambiar servicio</button>
-            {form.servicio&&<div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:16, padding:"9px 13px" }}>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL }}>✦ {form.servicio.nombre}</p>
+            {svSel&&<div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:16, padding:"9px 14px" }}>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL }}>✦ {svSel.nombre}</p>
             </div>}
-            <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/></Field>
-            {form.fecha&&(
-              <>
-                <Field label="hora disponible">
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
-                    {SLOTS.map(h=>{
-                      const oc=ocupadas.includes(h);
-                      return <button key={h} disabled={oc} onClick={()=>set("hora",h)} style={{ ...s.btnGlass, padding:"9px 12px", fontSize:12, opacity:oc?0.3:1, background:form.hora===h?G.greenM:G.glass, borderColor:form.hora===h?G.green:G.border, color:form.hora===h?G.greenL:G.sub, cursor:oc?"not-allowed":"pointer" }}>
-                        {h}{oc?" ✕":""}
-                      </button>;
+
+            {/* Calendario para clienta */}
+            <div style={{ ...s.card, padding:"14px 10px", marginBottom:16 }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                <button style={{ ...s.btnGlass, padding:"6px 12px", fontSize:15 }} onClick={()=>setMes(o=>o-1)}>‹</button>
+                <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mesN]} {anio}</p>
+                <button style={{ ...s.btnGlass, padding:"6px 12px", fontSize:15 }} onClick={()=>setMes(o=>o+1)}>›</button>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4 }}>
+                {DIAS_C.map(d=><div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:10, color:G.muted, padding:"2px 0" }}>{d}</div>)}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
+                {Array(primerDia).fill(null).map((_,i)=><div key={"e"+i}/>)}
+                {Array(diasMes).fill(null).map((_,i)=>{
+                  const dia=i+1, key=fmtKey(dia);
+                  const esPasado=key<hoy;
+                  const esBloqueado=excFechas.has(key);
+                  const ocupadas=citasPorFecha[key]||[];
+                  const libres=slots.filter(h=>!ocupadas.includes(h));
+                  const sinLugares=libres.length===0&&slots.length>0;
+                  const esHoy=key===hoy, esSel=key===diaS;
+                  const disabled=esPasado||esBloqueado||sinLugares;
+                  return (
+                    <div key={dia} onClick={()=>!disabled&&(setDiaS(key),setHoraSel(null))}
+                      style={{ textAlign:"center", borderRadius:8, padding:"5px 2px", cursor:disabled?"default":"pointer", opacity:disabled?0.3:1,
+                        background:esSel?G.green:esHoy?G.greenM:"transparent",
+                        border:esSel?"none":esHoy?`0.5px solid ${G.green}`:"0.5px solid transparent" }}>
+                      <span style={{ fontFamily:F.sans, fontSize:12, color:esSel?"#0a0a0a":esHoy?G.greenL:G.sub, fontWeight:esSel||esHoy?700:400, display:"block" }}>{dia}</span>
+                      {/* Indicador de slots disponibles */}
+                      {!disabled&&!esSel&&(
+                        <div style={{ display:"flex", justifyContent:"center", gap:1.5, marginTop:2 }}>
+                          {Array(Math.min(libres.length,4)).fill(null).map((_,pi)=>(
+                            <div key={pi} style={{ width:2.5,height:2.5,borderRadius:"50%",background:G.green }}/>
+                          ))}
+                        </div>
+                      )}
+                      {sinLugares&&<span style={{ fontSize:7, color:G.red }}>✕</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, marginBottom:12, textAlign:"center" }}>
+              los puntitos verdes indican horarios disponibles · ✕ = sin lugar
+            </p>
+
+            {/* Slots del día seleccionado */}
+            {diaS&&!diaEsBloqueado&&(
+              <div>
+                <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>
+                  {DIAS_F[new Date(diaS+"T12:00:00").getDay()]} {fmtFecha(diaS)}
+                </p>
+                {slotsDia.length===0?(
+                  <p style={{ color:G.muted, fontSize:13 }}>sin horarios disponibles este día</p>
+                ):(
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:14 }}>
+                    {slots.map(h=>{
+                      const ocupado=ocupadasDia.includes(h);
+                      return (
+                        <button key={h} disabled={ocupado} onClick={()=>setHoraSel(h)}
+                          style={{ ...s.btnGlass, padding:"10px 14px", fontSize:13, opacity:ocupado?0.25:1,
+                            background:horaSel===h?G.greenM:G.glass,
+                            borderColor:horaSel===h?G.green:ocupado?"rgba(255,255,255,0.04)":G.border,
+                            color:horaSel===h?G.greenL:ocupado?G.muted:G.sub,
+                            cursor:ocupado?"not-allowed":"pointer" }}>
+                          {h}
+                          {ocupado&&<span style={{ display:"block", fontSize:9, color:G.red, marginTop:1 }}>ocupado</span>}
+                        </button>
+                      );
                     })}
                   </div>
-                </Field>
-                <Field label={modo==="noSe"?"contanos qué efecto buscás":"notas (opcional)"}>
-                  <textarea style={{ ...s.input, height:65, resize:"none" }} value={form.notas} onChange={e=>set("notas",e.target.value)} placeholder={modo==="noSe"?"largo, volumen, ocasión especial...":"indicaciones especiales..."}/>
-                </Field>
-                {form.hora&&<button style={s.btnGreen} onClick={()=>setPaso(3)}>confirmar horario →</button>}
-              </>
+                )}
+                {horaSel&&(
+                  <>
+                    <Field label={modo==="noSe"?"contanos qué efecto buscás (opcional)":"notas (opcional)"}>
+                      <textarea style={{ ...s.input, height:65, resize:"none" }} value={notas} onChange={e=>setNotas(e.target.value)} placeholder={modo==="noSe"?"largo, volumen, ocasión especial...":"indicaciones especiales..."}/>
+                    </Field>
+                    <button style={s.btnGreen} onClick={()=>setPaso(3)}>confirmar →</button>
+                  </>
+                )}
+              </div>
             )}
+            {diaEsBloqueado&&<p style={{ color:G.red, fontSize:13, textAlign:"center" }}>🚫 ese día no trabajamos, elegí otro</p>}
           </div>
         )}
 
+        {/* PASO 3: CONFIRMACIÓN */}
         {paso===3&&(
           <div>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>confirmá tu cita</p>
-            <p style={{ ...s.sub, marginBottom:14 }}>revisá los detalles antes de enviar</p>
+            <p style={{ ...s.sub, marginBottom:14 }}>revisá antes de enviar</p>
             <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD }}>
               {[
-                ["servicio", form.servicio?.nombre||"A confirmar con Male"],
-                ["fecha", fmtFecha(form.fecha)],
-                ["hora", form.hora],
-                ["duración aprox.", form.servicio?.duracion?`${form.servicio.duracion}min`:"a confirmar"],
-                ...(form.notas?[["notas",form.notas]]:[]),
+                ["servicio",    svSel?.nombre||"a confirmar con el estudio"],
+                ["fecha",       fmtFecha(diaS)],
+                ["hora",        horaSel],
+                ["duración",    svSel?.duracion?`${svSel.duracion}min (est.)`:"a confirmar"],
+                ...(notas?[["notas",notas]]:[]),
               ].map(([k,v])=>(
                 <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`0.5px solid ${G.border}` }}>
                   <span style={{ ...s.label, margin:0 }}>{k}</span>
-                  <span style={{ fontFamily:F.sans, fontSize:12, color:G.sub, maxWidth:"60%", textAlign:"right" }}>{v}</span>
+                  <span style={{ fontFamily:F.sans, fontSize:12, color:G.sub, maxWidth:"62%", textAlign:"right" }}>{v}</span>
                 </div>
               ))}
             </div>
-            <button style={{ ...s.btnGreen, marginTop:14 }} onClick={confirmar}>confirmar y avisar a Male →</button>
+            <button style={{ ...s.btnGreen, marginTop:14 }} onClick={confirmar}>confirmar y avisar →</button>
             <button style={{ ...s.btnGlass, marginTop:9, width:"100%" }} onClick={()=>setPaso(1)}>modificar</button>
           </div>
         )}
@@ -1597,46 +1962,65 @@ function CAgendar({ clienta, data }) {
   );
 }
 
-function CHistorial({ clienta }) {
-  const hist = clienta.historial||[];
-  const curvasUsadas = {};
-  hist.forEach(h=>{ curvasUsadas[h.curva]=(curvasUsadas[h.curva]||0)+1; });
+// ─── CLIENTA: HISTORIAL ───────────────────────────────────────────────────────
+function CHistorial({ clienta, data }) {
+  const hist = Array.isArray(clienta.historial)?clienta.historial:Object.values(clienta.historial||{});
+  hist.sort((a,b)=>b.fecha?.localeCompare(a.fecha));
+
+  const curvasUsadas = hist.reduce((acc,h)=>{ if(h.curva) acc[h.curva]=(acc[h.curva]||0)+1; return acc; },{});
   const curvaFav = Object.entries(curvasUsadas).sort((a,b)=>b[1]-a[1])[0]?.[0]||clienta.curva||"—";
-  const badge = hist.length>=10?"✦ clienta VIP":hist.length>=5?"✦ clienta frecuente":hist.length>=2?"✦ clienta activa":null;
+
+  // Servicios más pedidos
+  const porServicio = hist.reduce((acc,h)=>{ if(h.servicio) acc[h.servicio]=(acc[h.servicio]||0)+1; return acc; },{});
+
+  // Badge de lealtad
+  const badge = hist.length>=10?"⭐ VIP":hist.length>=5?"💎 frecuente":hist.length>=2?"🌿 activa":null;
 
   return (
     <div>
       <div style={s.topBar}><h1 style={s.h1}>Historial</h1><p style={s.sub}>{hist.length} visitas al estudio</p></div>
       <div style={{ padding:"18px" }}>
-        <div style={{ display:"flex", gap:9, marginBottom:16 }}>
-          <div style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"13px 8px" }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px" }}>visitas</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:24, color:G.green, margin:0 }}>{hist.length}</p>
-          </div>
-          <div style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"13px 8px" }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px" }}>curva fav.</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:24, margin:0 }}>{curvaFav}</p>
-          </div>
+        {/* Stats */}
+        <div style={{ display:"flex", gap:9, marginBottom:14 }}>
+          <StatBox label="visitas" val={hist.length} color={G.green}/>
+          <StatBox label="curva fav." val={curvaFav}/>
         </div>
 
+        {/* Badge */}
         {badge&&(
           <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, textAlign:"center", padding:"16px", marginBottom:14 }}>
-            <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>{badge}</p>
-            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{hist.length} visitas y siempre hermosa 💚</p>
+            <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.greenL }}>{badge}</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>
+              {hist.length>=10?"sos una clienta VIP del estudio":hist.length>=5?"gracias por tu fidelidad":"gracias por confiar en nosotras"} 💚
+            </p>
           </div>
         )}
 
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>tus visitas</p>
-        <p style={{ ...s.sub, marginBottom:12 }}>más recientes primero</p>
+        {/* Servicios favoritos */}
+        {Object.keys(porServicio).length>1&&(
+          <>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 9px" }}>tus servicios favoritos</p>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
+              {Object.entries(porServicio).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([sv,cnt])=>(
+                <div key={sv} style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:12, padding:"8px 12px" }}>
+                  <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:12, color:G.greenL }}>{sv}</p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{cnt}x</p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 9px" }}>todas las visitas</p>
         {hist.length===0&&<p style={{ color:G.muted, fontSize:13 }}>tu historial estará aquí después de tu primera visita ✦</p>}
-        {[...hist].reverse().map((h,i)=>(
+        {hist.map((h,i)=>(
           <div key={i} style={s.card}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
               <div>
                 <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p>
                 <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtFecha(h.fecha)}</p>
               </div>
-              <span style={s.tag}>curva {h.curva}</span>
+              {h.curva&&<span style={s.tag}>curva {h.curva}</span>}
             </div>
             {h.notas&&<p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>✦ {h.notas}</p>}
           </div>
@@ -1646,13 +2030,27 @@ function CHistorial({ clienta }) {
   );
 }
 
-function CPerfil({ clienta, onLogout }) {
+// ─── CLIENTA: PERFIL ──────────────────────────────────────────────────────────
+function CPerfil({ clienta, data, onLogout }) {
   const [editando, setEditando] = useState(false);
-  const [foto, setFoto] = useState(null);
+  const [foto,     setFoto]     = useState(null);
+  const [form, setForm] = useState({ nombre:clienta.nombre||"", telefono:clienta.telefono||"", emergencia:"" });
+  const [saving,   setSaving]   = useState(false);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const politicas = data.getConfig("politicas", []);
+  const estudio   = data.getConfig("estudio", {});
 
   const onFoto = (e) => {
     const f=e.target.files?.[0]; if(!f) return;
     const r=new FileReader(); r.onload=ev=>setFoto(ev.target.result); r.readAsDataURL(f);
+  };
+
+  // NOTE: guardar cambios actualiza Firebase para los campos editables del perfil
+  const guardar = async () => {
+    setSaving(true);
+    // Solo actualiza campos permitidos (no email, no datos técnicos)
+    await db.update(`clientas/${clienta._id}`, { nombre:form.nombre, telefono:form.telefono, emergencia:form.emergencia });
+    setSaving(false); setEditando(false);
   };
 
   return (
@@ -1663,51 +2061,68 @@ function CPerfil({ clienta, onLogout }) {
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:22 }}>
           <div style={{ position:"relative", marginBottom:10 }}>
             {foto
-              ? <img src={foto} alt="perfil" style={{ width:78, height:78, borderRadius:"50%", objectFit:"cover", border:`2px solid ${G.green}` }}/>
-              : <Avatar nombre={clienta.nombre} size={78}/>
-            }
-            <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:editando?G.green:"rgba(10,10,10,0.8)", border:`1.5px solid ${editando?G.bg:G.border}`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}>📷</label>
+              ?<img src={foto} alt="perfil" style={{ width:78, height:78, borderRadius:"50%", objectFit:"cover", border:`2px solid ${G.green}` }}/>
+              :<Avatar nombre={clienta.nombre} size={78}/>}
+            {editando&&(
+              <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:G.green, border:`1.5px solid #0a0a0a`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}>📷</label>
+            )}
             <input id="foto-input" type="file" accept="image/*" style={{ display:"none" }} onChange={onFoto}/>
           </div>
-          <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:18 }}>{clienta.nombre}</p>
+          <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, fontSize:18 }}>{clienta.nombre}</p>
           <span style={s.tag}>clienta activa</span>
         </div>
 
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          <button style={{ ...s.btnGlass, flex:1, fontSize:12 }} onClick={()=>setEditando(e=>!e)}>{editando?"cancelar":"✎ editar"}</button>
-          <button style={{ ...s.btnGlass, flex:1, fontSize:12 }} onClick={()=>openWA()}>💬 contactar</button>
+          <button style={{ ...s.btnGlass, flex:1, fontSize:12 }} onClick={()=>setEditando(e=>!e)}>{editando?"cancelar":"✎ editar mis datos"}</button>
         </div>
 
+        {/* Datos editables */}
         <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12 }}>
-          {[["nombre",clienta.nombre],["email",clienta.email||"—"],["teléfono",clienta.telefono||"—"]].map(([l,v])=>(
-            <div key={l}>
-              <label style={s.label}>{l}</label>
-              {editando ? <input style={s.input} defaultValue={v}/> : <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</p>}
-            </div>
-          ))}
-          {editando&&<Field label="contacto de emergencia"><input style={s.input} placeholder="nombre y teléfono..."/></Field>}
-        </div>
-
-        <div style={{ marginTop:12 }}>
-          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>mis preferencias</p>
-          <div style={s.card}>
-            {[["curva habitual",clienta.curva||"—"],["grosor",clienta.grosor?`${clienta.grosor}mm`:"—"],["largo",clienta.largo||"—"]].map(([l,v])=>(
-              <div key={l} style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                <span style={{ ...s.label, margin:0 }}>{l}</span>
-                <span style={s.tag}>{v}</span>
-              </div>
-            ))}
+          <div>
+            <label style={s.label}>nombre</label>
+            {editando?<input style={s.input} value={form.nombre} onChange={e=>set("nombre",e.target.value)}/>:<p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{clienta.nombre||"—"}</p>}
           </div>
+          <div>
+            <label style={s.label}>email</label>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.muted }}>{clienta.email||"—"}</p>
+            {editando&&<p style={{ margin:"4px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted }}>el email no se puede cambiar desde aquí</p>}
+          </div>
+          <div>
+            <label style={s.label}>teléfono</label>
+            {editando?<input style={s.input} value={form.telefono} onChange={e=>set("telefono",e.target.value)} type="tel"/>:<p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{clienta.telefono||"—"}</p>}
+          </div>
+          {editando&&(
+            <div>
+              <label style={s.label}>contacto de emergencia</label>
+              <input style={s.input} value={form.emergencia} onChange={e=>set("emergencia",e.target.value)} placeholder="nombre y teléfono..."/>
+            </div>
+          )}
+          {editando&&<button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"guardando...":"guardar cambios →"}</button>}
         </div>
 
-        <div style={{ ...s.card, marginTop:12, background:"rgba(143,189,90,0.03)", borderColor:G.border }}>
-          <p style={{ margin:"0 0 9px", fontFamily:F.serif, fontWeight:700, fontSize:14 }}>Políticas del Estudio</p>
-          {["Cancelaciones con 24hs de anticipación","Puntualidad · tolerancia 10 minutos","No usar rimel 48hs antes","Retoques gratuitos dentro de las 72hs","Prohibido el uso de aceites en la zona"].map((p,i)=>(
-            <p key={i} style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:12, color:G.sub }}>✦ {p}</p>
-          ))}
-        </div>
+        {/* Preferencias técnicas (solo lectura) */}
+        {(clienta.curva||clienta.grosor||clienta.largo)&&(
+          <div style={{ marginTop:12 }}>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 9px" }}>mis preferencias</p>
+            <div style={s.card}>
+              {[["curva habitual",clienta.curva],["grosor",clienta.grosor?`${clienta.grosor}`:""],["largo",clienta.largo]].filter(([,v])=>v).map(([l,v])=>(
+                <div key={l} style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                  <span style={{ ...s.label, margin:0 }}>{l}</span>
+                  <span style={s.tag}>{v}</span>
+                </div>
+              ))}
+              <p style={{ margin:"6px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted }}>estas preferencias las actualiza tu lashista</p>
+            </div>
+          </div>
+        )}
 
-        {editando&&<button style={{ ...s.btnGreen, marginTop:12 }}>guardar cambios →</button>}
+        {/* Políticas */}
+        {politicas.length>0&&(
+          <div style={{ ...s.card, marginTop:12, background:"rgba(143,189,90,0.03)", borderColor:G.border }}>
+            <p style={{ margin:"0 0 9px", fontFamily:F.serif, fontWeight:700, fontSize:14 }}>Políticas del Estudio</p>
+            {politicas.map((p,i)=><p key={i} style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>✦ {p}</p>)}
+          </div>
+        )}
 
         <button style={{ ...s.btnRed, marginTop:18, width:"100%" }} onClick={onLogout}>cerrar sesión</button>
       </div>
