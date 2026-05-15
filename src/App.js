@@ -1,517 +1,302 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
-// ─── FIREBASE CONFIG ──────────────────────────────────────────────────────────
-const FB_URL = "https://lash-studio-c9cd7-default-rtdb.firebaseio.com";
-const FB_KEY = "AIzaSyDq8japdXOWaAAOjBLhESJB1h2qITdnhvk";
-const AUTH_URL = "https://identitytoolkit.googleapis.com/v1/accounts";
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIREBASE CONFIG
+// ═══════════════════════════════════════════════════════════════════════════════
+const FB = "https://lash-studio-c9cd7-default-rtdb.firebaseio.com";
+const API_KEY = "AIzaSyDq8japdXOWaAAOjBLhESJB1h2qITdnhvk";
+const AUTH = "https://identitytoolkit.googleapis.com/v1/accounts";
+const ADMIN_EMAIL = "maleocampo3@gmail.com";
+const WA = "541126509699";
 
-// REST helpers
-const fbGet = async (path) => {
-  const res = await fetch(`${FB_URL}/${path}.json`);
-  const data = await res.json();
-  if (!data) return [];
-  return Object.entries(data).map(([id, val]) => ({ ...val, _id: id }));
-};
-const fbGetOne = async (path) => {
-  const res = await fetch(`${FB_URL}/${path}.json`);
-  return await res.json();
-};
-const fbSet = async (path, data) => {
-  await fetch(`${FB_URL}/${path}.json`, { method: "PUT", body: JSON.stringify(data) });
-};
-const fbPush = async (path, data) => {
-  const res = await fetch(`${FB_URL}/${path}.json`, { method: "POST", body: JSON.stringify(data) });
-  return await res.json(); // { name: "-NxId..." }
-};
-const fbDelete = async (path) => {
-  await fetch(`${FB_URL}/${path}.json`, { method: "DELETE" });
-};
-
-// Auth REST
-const authSignIn = async (email, password) => {
-  const res = await fetch(`${AUTH_URL}:signInWithPassword?key=${FB_KEY}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, returnSecureToken: true }),
-  });
-  return await res.json(); // { idToken, localId, email } o { error }
+// ─── REST helpers ─────────────────────────────────────────────────────────────
+const db = {
+  get: async (path) => {
+    const r = await fetch(`${FB}/${path}.json`);
+    const d = await r.json();
+    if (!d || typeof d !== "object") return [];
+    return Object.entries(d).map(([k, v]) => ({ ...v, _id: k }));
+  },
+  getOne: async (path) => {
+    const r = await fetch(`${FB}/${path}.json`);
+    return await r.json();
+  },
+  set: async (path, data) => {
+    await fetch(`${FB}/${path}.json`, { method: "PUT", body: JSON.stringify(data) });
+  },
+  push: async (path, data) => {
+    const r = await fetch(`${FB}/${path}.json`, { method: "POST", body: JSON.stringify(data) });
+    const j = await r.json();
+    return j.name;
+  },
+  update: async (path, data) => {
+    await fetch(`${FB}/${path}.json`, { method: "PATCH", body: JSON.stringify(data) });
+  },
+  delete: async (path) => {
+    await fetch(`${FB}/${path}.json`, { method: "DELETE" });
+  },
 };
 
-// ─── CONSTANTES LOCALES (no van a Firebase) ───────────────────────────────────
+// ─── Auth helpers ──────────────────────────────────────────────────────────────
+const auth = {
+  signIn: async (email, password) => {
+    const r = await fetch(`${AUTH}:signInWithPassword?key=${API_KEY}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    });
+    return await r.json();
+  },
+  createUser: async (email, password) => {
+    const r = await fetch(`${AUTH}:signUp?key=${API_KEY}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    });
+    return await r.json();
+  },
+};
+
+const genPassword = () => Math.random().toString(36).slice(2, 8).toUpperCase();
+const openWA = (msg = "") => window.open(`https://wa.me/${WA}?text=${encodeURIComponent(msg)}`, "_blank");
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+const fmtPesos = (n) => `$${Number(n || 0).toLocaleString("es-AR")}`;
+const fmtFecha = (iso) => {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  const meses = ["", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  return `${parseInt(d)} ${meses[parseInt(m)]} ${y}`;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONSTANTES UI
+// ═══════════════════════════════════════════════════════════════════════════════
 const CURVAS = ["B", "C", "CC", "D", "L", "L+"];
 const GROSOR = ["0.05", "0.07", "0.10", "0.12", "0.15", "0.20"];
 const LARGO = ["8mm", "9mm", "10mm", "11mm", "12mm", "13mm", "14mm"];
-const TODOS_LOS_SLOTS_DEFAULT = ["09:00", "10:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
+const SLOTS = ["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"];
+const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const DIAS_C = ["D","L","M","X","J","V","S"];
+const DIAS_F = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 
-// Servicios por defecto (se cargan a Firebase la primera vez)
-const SERVICIOS_DEFAULT = [
-  { nombre: "Classic Full Set", precio: 12000, duracion: 90, emoji: "✦", desc: "Extensiones clásicas pelo a pelo" },
-  { nombre: "Volume Set", precio: 18000, duracion: 120, emoji: "✦✦", desc: "Efecto volumen con técnica rusa" },
-  { nombre: "Mega Volume", precio: 22000, duracion: 150, emoji: "✦✦✦", desc: "Máximo volumen y densidad" },
-  { nombre: "Classic Refill", precio: 7000, duracion: 60, emoji: "↺", desc: "Relleno clásico 2-3 semanas" },
-  { nombre: "Volume Refill", precio: 10000, duracion: 75, emoji: "↺↺", desc: "Relleno volumen 2-3 semanas" },
-  { nombre: "Lifting + Tinte", precio: 9500, duracion: 60, emoji: "◎", desc: "Laminado y tinte de pestañas naturales" },
-];
+// ═══════════════════════════════════════════════════════════════════════════════
+// ESTILOS
+// ═══════════════════════════════════════════════════════════════════════════════
+const G = {
+  bg:"#0a0a0a", card:"rgba(255,255,255,0.04)", cardHov:"rgba(255,255,255,0.07)",
+  glass:"rgba(255,255,255,0.06)", border:"rgba(255,255,255,0.08)", borderHov:"rgba(255,255,255,0.16)",
+  green:"#8fbd5a", greenD:"#5c8f2e", greenL:"#b5d98a", greenM:"rgba(143,189,90,0.15)",
+  text:"#f0f0f0", muted:"rgba(240,240,240,0.45)", sub:"rgba(240,240,240,0.65)",
+  white:"#ffffff", red:"#e07070", amber:"#e0b870",
+};
+const F = { serif:"'Playfair Display', Georgia, serif", sans:"'DM Sans', 'Segoe UI', sans-serif" };
 
-// Número de WhatsApp
-const WA_NUMBER = "541126509699";
-const openWA = (msg = "") => window.open(`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`, "_blank");
+const s = {
+  app:{ minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, maxWidth:430, margin:"0 auto", position:"relative", overflowX:"hidden" },
+  screen:{ minHeight:"100vh", paddingBottom:100 },
+  topBar:{ padding:"52px 20px 14px", borderBottom:`0.5px solid ${G.border}`, background:"rgba(10,10,10,0.94)", backdropFilter:"blur(20px)", position:"sticky", top:0, zIndex:10 },
+  h1:{ fontFamily:F.serif, fontWeight:700, fontSize:24, letterSpacing:"-0.5px", color:G.white, margin:0 },
+  sub:{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"3px 0 0", letterSpacing:"0.04em" },
+  card:{ background:G.card, border:`0.5px solid ${G.border}`, borderRadius:14, padding:"14px 16px", marginBottom:10, backdropFilter:"blur(10px)", transition:"all 0.2s" },
+  input:{ background:"rgba(255,255,255,0.06)", border:`0.5px solid ${G.border}`, borderRadius:10, padding:"11px 14px", color:G.text, fontFamily:F.sans, fontSize:14, width:"100%", outline:"none", boxSizing:"border-box" },
+  label:{ fontFamily:F.sans, fontSize:11, color:G.muted, display:"block", marginBottom:5, letterSpacing:"0.03em" },
+  btnGreen:{ background:G.green, border:"none", borderRadius:12, padding:"13px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:13, fontWeight:700, cursor:"pointer", width:"100%", transition:"opacity 0.2s" },
+  btnGlass:{ background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:11, padding:"9px 16px", color:G.text, fontFamily:F.sans, fontSize:13, cursor:"pointer", backdropFilter:"blur(8px)", transition:"all 0.2s" },
+  btnRed:{ background:"rgba(224,112,112,0.12)", border:`0.5px solid ${G.red}`, borderRadius:11, padding:"9px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" },
+  tag:{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"3px 10px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3 },
+  nav:{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:430, background:"rgba(10,10,10,0.94)", backdropFilter:"blur(20px)", borderTop:`0.5px solid ${G.border}`, display:"flex", zIndex:20, padding:"8px 0 20px" },
+  fab:{ position:"fixed", bottom:88, right:18, width:50, height:50, borderRadius:"50%", background:G.green, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, boxShadow:`0 4px 20px rgba(143,189,90,0.4)`, zIndex:30 },
+  divider:{ height:"0.5px", background:G.border, margin:"16px 0" },
+  statCard:{ background:G.card, border:`0.5px solid ${G.border}`, borderRadius:13, padding:"13px 14px", flex:1 },
+};
 
-// ─── HOOK CENTRAL DE DATOS ────────────────────────────────────────────────────
-function useAppData() {
-  const [clientas, setClientas] = useState([]);
-  const [citas, setCitas] = useState([]);
-  const [servicios, setServicios] = useState([]);
-  const [loading, setLoading] = useState(true);
+const navItemStyle = (active) => ({
+  flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3,
+  padding:"8px 0", cursor:"pointer", color: active ? G.green : G.muted, transition:"color 0.2s",
+});
 
-  const cargarDatos = async () => {
-    setLoading(true);
-    try {
-      const [cls, cts, svcs] = await Promise.all([
-        fbGet("clientas"),
-        fbGet("citas"),
-        fbGet("servicios"),
-      ]);
-      setClientas(cls);
-      setCitas(cts);
-      // Si no hay servicios, cargar los default
-      if (svcs.length === 0) {
-        for (const s of SERVICIOS_DEFAULT) await fbPush("servicios", s);
-        setServicios(SERVICIOS_DEFAULT.map((s, i) => ({ ...s, _id: String(i) })));
-      } else {
-        setServicios(svcs);
-      }
-    } catch (e) {
-      console.error("Error cargando datos:", e);
-    }
-    setLoading(false);
-  };
-
-  useEffect(() => { cargarDatos(); }, []);
-
-  // CRUD clientas
-  const agregarClientas = async (data) => {
-    const res = await fbPush("clientas", { ...data, historial: {} });
-    const nueva = { ...data, historial: [], _id: res.name };
-    setClientas(prev => [...prev, nueva]);
-    return nueva;
-  };
-
-  // CRUD citas
-  const agregarCita = async (data) => {
-    const res = await fbPush("citas", data);
-    const nueva = { ...data, _id: res.name };
-    setCitas(prev => [...prev, nueva]);
-    return nueva;
-  };
-  const actualizarCita = async (id, data) => {
-    await fbSet(`citas/${id}`, data);
-    setCitas(prev => prev.map(c => c._id === id ? { ...data, _id: id } : c));
-  };
-
-  // CRUD historial
-  const agregarHistorial = async (clientaId, registro) => {
-    await fbPush(`clientas/${clientaId}/historial`, registro);
-    await cargarDatos(); // recargar para tener historial actualizado
-  };
-
-  return { clientas, citas, servicios, loading, cargarDatos, agregarClientas, agregarCita, actualizarCita, agregarHistorial };
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPONENTES COMUNES
+// ═══════════════════════════════════════════════════════════════════════════════
+function Loader({ msg = "cargando..." }) {
+  return (
+    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:14 }}>
+      <span style={{ fontSize:36 }}>🌿</span>
+      <p style={{ ...s.sub, fontSize:13, color:G.sub }}>{msg}</p>
+    </div>
+  );
 }
 
-// ─── ESTILOS GLOBALES ─────────────────────────────────────────────────────────
-const G = {
-  bg: "#0a0a0a",
-  bgCard: "rgba(255,255,255,0.04)",
-  bgCardHover: "rgba(255,255,255,0.07)",
-  bgGlass: "rgba(255,255,255,0.06)",
-  border: "rgba(255,255,255,0.08)",
-  borderHover: "rgba(255,255,255,0.16)",
-  green: "#8fbd5a",
-  greenDark: "#5c8f2e",
-  greenLight: "#b5d98a",
-  greenMuted: "rgba(143,189,90,0.15)",
-  text: "#f0f0f0",
-  textMuted: "rgba(240,240,240,0.45)",
-  textSub: "rgba(240,240,240,0.65)",
-  white: "#ffffff",
-  red: "#e07070",
-  amber: "#e0b870",
-};
-
-const css = {
-  app: {
-    minHeight: "100vh",
-    background: G.bg,
-    color: G.text,
-    fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
-    maxWidth: 430,
-    margin: "0 auto",
-    position: "relative",
-    overflowX: "hidden",
-  },
-  screen: { minHeight: "100vh", paddingBottom: 100 },
-  topBar: {
-    padding: "52px 24px 16px",
-    borderBottom: `0.5px solid ${G.border}`,
-    background: "rgba(10,10,10,0.92)",
-    backdropFilter: "blur(20px)",
-    position: "sticky",
-    top: 0,
-    zIndex: 10,
-  },
-  title: {
-    fontFamily: "'Playfair Display', Georgia, serif",
-    fontWeight: 700,
-    fontSize: 26,
-    letterSpacing: "-0.5px",
-    color: G.white,
-    margin: 0,
-  },
-  subtitle: {
-    fontFamily: "'DM Sans', sans-serif",
-    fontWeight: 400,
-    fontSize: 12,
-    letterSpacing: "0.06em",
-    textTransform: "lowercase",
-    color: G.textMuted,
-    margin: "4px 0 0",
-  },
-  card: {
-    background: G.bgCard,
-    border: `0.5px solid ${G.border}`,
-    borderRadius: 16,
-    padding: "16px 18px",
-    marginBottom: 12,
-    backdropFilter: "blur(10px)",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-  },
-  glassBtn: {
-    background: G.bgGlass,
-    border: `0.5px solid ${G.borderHover}`,
-    borderRadius: 12,
-    padding: "10px 18px",
-    color: G.text,
-    fontFamily: "'DM Sans', sans-serif",
-    fontSize: 13,
-    letterSpacing: "0.02em",
-    cursor: "pointer",
-    backdropFilter: "blur(8px)",
-    transition: "all 0.2s ease",
-  },
-  greenBtn: {
-    background: G.green,
-    border: "none",
-    borderRadius: 12,
-    padding: "12px 24px",
-    color: "#0a0a0a",
-    fontFamily: "'DM Sans', sans-serif",
-    fontSize: 13,
-    fontWeight: 700,
-    letterSpacing: "0.04em",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-    width: "100%",
-  },
-  input: {
-    background: "rgba(255,255,255,0.05)",
-    border: `0.5px solid ${G.border}`,
-    borderRadius: 10,
-    padding: "11px 14px",
-    color: G.text,
-    fontFamily: "'DM Sans', sans-serif",
-    fontSize: 14,
-    width: "100%",
-    outline: "none",
-    boxSizing: "border-box",
-  },
-  label: {
-    fontFamily: "'DM Sans', sans-serif",
-    fontSize: 11,
-    letterSpacing: "0.06em",
-    textTransform: "lowercase",
-    color: G.textMuted,
-    display: "block",
-    marginBottom: 6,
-  },
-  tag: {
-    background: G.greenMuted,
-    border: `0.5px solid ${G.green}`,
-    borderRadius: 20,
-    padding: "3px 10px",
-    fontSize: 11,
-    color: G.greenLight,
-    fontFamily: "'Courier New', monospace",
-    letterSpacing: "0.05em",
-    display: "inline-block",
-    marginRight: 6,
-    marginBottom: 4,
-  },
-  bottomNav: {
-    position: "fixed",
-    bottom: 0,
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: "100%",
-    maxWidth: 430,
-    background: "rgba(10,10,10,0.92)",
-    backdropFilter: "blur(20px)",
-    borderTop: `0.5px solid ${G.border}`,
-    display: "flex",
-    zIndex: 20,
-    padding: "8px 0 20px",
-  },
-  navItem: (active) => ({
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 3,
-    padding: "8px 0",
-    cursor: "pointer",
-    color: active ? G.green : G.textMuted,
-    transition: "color 0.2s ease",
-  }),
-  navIcon: { fontSize: 20 },
-  navLabel: {
-    fontFamily: "'DM Sans', sans-serif",
-    fontSize: 10,
-    letterSpacing: "0.04em",
-    textTransform: "lowercase",
-  },
-  fab: {
-    position: "fixed",
-    bottom: 90,
-    right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: "50%",
-    background: G.green,
-    border: "none",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 22,
-    boxShadow: `0 4px 20px rgba(143,189,90,0.4)`,
-    zIndex: 30,
-    transition: "transform 0.2s ease",
-  },
-  divider: {
-    height: 0.5,
-    background: G.border,
-    margin: "16px 0",
-  },
-  statCard: {
-    background: G.bgCard,
-    border: `0.5px solid ${G.border}`,
-    borderRadius: 14,
-    padding: "14px 16px",
-    flex: 1,
-  },
-  statLabel: {
-    fontFamily: "'DM Sans', sans-serif",
-    fontSize: 10,
-    letterSpacing: "0.08em",
-    textTransform: "lowercase",
-    color: G.textMuted,
-    margin: "0 0 4px",
-  },
-  statVal: {
-    fontFamily: "'Playfair Display', Georgia, serif",
-    fontWeight: 700,
-    fontSize: 22,
-    color: G.white,
-    margin: 0,
-  },
-  sectionTitle: {
-    fontFamily: "'Playfair Display', Georgia, serif",
-    fontWeight: 700,
-    fontSize: 18,
-    color: G.white,
-    margin: "0 0 4px",
-  },
-  sectionSub: {
-    fontFamily: "'DM Sans', sans-serif",
-    fontSize: 11,
-    letterSpacing: "0.06em",
-    textTransform: "lowercase",
-    color: G.textMuted,
-    margin: "0 0 16px",
-  },
-};
-
-// ─── COMPONENTES COMUNES ──────────────────────────────────────────────────────
-function Avatar({ nombre, size = 40, color = G.greenMuted }) {
-  const initials = nombre.split(" ").slice(0, 2).map(n => n[0]).join("").toUpperCase();
+function Avatar({ nombre = "?", size = 40 }) {
+  const ini = (nombre || "?").split(" ").slice(0,2).map(n=>n[0]||"").join("").toUpperCase();
   return (
-    <div style={{
-      width: size, height: size, borderRadius: "50%",
-      background: color, border: `0.5px solid ${G.green}`,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'Georgia', serif", fontWeight: 700,
-      fontSize: size * 0.32, color: G.greenLight, flexShrink: 0,
-    }}>{initials}</div>
+    <div style={{ width:size, height:size, borderRadius:"50%", background:G.greenM, border:`1px solid ${G.green}`, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:F.serif, fontWeight:700, fontSize:size*0.3, color:G.greenL, flexShrink:0 }}>
+      {ini}
+    </div>
   );
 }
 
 function FAB() {
+  return <button style={s.fab} onClick={()=>openWA("Hola Male! Tengo una consulta 💚")}>💬</button>;
+}
+
+function Back({ onClick, label="volver" }) {
+  return <button onClick={onClick} style={{ ...s.btnGlass, marginBottom:14, fontSize:12 }}>← {label}</button>;
+}
+
+function Field({ label, children }) {
+  return <div style={{ marginBottom:12 }}><label style={s.label}>{label}</label>{children}</div>;
+}
+
+function ChipSelector({ options, value, onChange }) {
   return (
-    <button style={css.fab} onClick={() => openWA("Hola Male! Tengo una consulta 💚")} title="Preguntale a Male">
-      💬
-    </button>
+    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+      {options.map(o => (
+        <button key={o} onClick={()=>onChange(o)}
+          style={{ ...s.btnGlass, padding:"6px 12px", fontSize:12,
+            background: value===o ? G.greenM : G.glass,
+            borderColor: value===o ? G.green : G.border,
+            color: value===o ? G.greenL : G.sub }}>
+          {o}
+        </button>
+      ))}
+    </div>
   );
 }
 
-function BackBtn({ onBack, label = "volver" }) {
+function Toast({ msg, onDone }) {
+  useEffect(()=>{ const t=setTimeout(onDone,2200); return ()=>clearTimeout(t); },[]);
   return (
-    <button onClick={onBack} style={{ ...css.glassBtn, marginBottom: 16, fontSize: 11 }}>
-      ← {label}
-    </button>
+    <div style={{ position:"fixed", bottom:110, left:"50%", transform:"translateX(-50%)", background:G.green, color:"#0a0a0a", borderRadius:12, padding:"10px 20px", fontFamily:F.sans, fontWeight:700, fontSize:13, zIndex:99, boxShadow:"0 4px 20px rgba(0,0,0,0.4)", whiteSpace:"nowrap" }}>
+      {msg}
+    </div>
   );
 }
 
-// ─── PANTALLA LOGIN ───────────────────────────────────────────────────────────
-function LoginScreen({ onLogin }) {
+// Modal de confirmación / alerta
+function Modal({ titulo, msg, onOk, onCancel, okLabel="confirmar", danger=false }) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div style={{ background:"#111", border:`0.5px solid ${G.border}`, borderRadius:18, padding:24, width:"100%", maxWidth:360 }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.white, margin:"0 0 8px" }}>{titulo}</p>
+        <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 20px", lineHeight:1.6 }}>{msg}</p>
+        <div style={{ display:"flex", gap:10 }}>
+          {onCancel && <button style={{ ...s.btnGlass, flex:1 }} onClick={onCancel}>cancelar</button>}
+          <button style={{ ...s.btnGreen, flex:1, background: danger ? G.red : G.green }} onClick={onOk}>{okLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Bottom Sheet genérico
+function Sheet({ titulo, onClose, children }) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", backdropFilter:"blur(8px)", zIndex:100, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
+      onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div style={{ background:"#111", border:`0.5px solid ${G.border}`, borderRadius:"18px 18px 0 0", width:"100%", maxWidth:430, maxHeight:"92vh", overflowY:"auto", padding:"20px 20px 40px" }}>
+        <div style={{ width:34, height:4, background:G.border, borderRadius:2, margin:"0 auto 16px" }}/>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.white, margin:0 }}>{titulo}</p>
+          <button style={{ ...s.btnGlass, padding:"6px 12px", fontSize:13 }} onClick={onClose}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LOGIN
+// ═══════════════════════════════════════════════════════════════════════════════
+function Login({ onLogin }) {
   const [modo, setModo] = useState(null);
-  const [user, setUser] = useState("");
+  const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
-  const [error, setError] = useState("");
-  const [cargando, setCargando] = useState(false);
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
   const [recordar, setRecordar] = useState(true);
 
-  // Verificar sesión guardada al iniciar
-  useEffect(() => {
-    const sesionGuardada = localStorage.getItem("ls_session");
-    if (sesionGuardada) {
-      try {
-        const parsed = JSON.parse(sesionGuardada);
-        if (parsed.tipo && parsed.expiry > Date.now()) {
-          onLogin(parsed.tipo, parsed.data || null);
-        } else {
-          localStorage.removeItem("ls_session");
-        }
-      } catch { localStorage.removeItem("ls_session"); }
-    }
-  }, []);
+  useEffect(()=>{
+    const g = localStorage.getItem("ls_session");
+    if(g){ try{ const p=JSON.parse(g); if(p.expiry>Date.now()) onLogin(p.tipo,p.data); }catch{} }
+  },[]);
 
-  const guardarSesion = (tipo, data = null) => {
-    if (recordar) {
-      const expiry = Date.now() + 1000 * 60 * 60 * 24 * 30; // 30 días
-      localStorage.setItem("ls_session", JSON.stringify({ tipo, data, expiry }));
-    }
+  const guardar = (tipo, data=null) => {
+    if(recordar) localStorage.setItem("ls_session", JSON.stringify({ tipo, data, expiry: Date.now()+1000*60*60*24*30 }));
   };
 
-  const handleLogin = async () => {
-    if (!user.trim() || !pass.trim()) { setError("completá los campos"); return; }
-    setCargando(true);
-    setError("");
+  const entrar = async () => {
+    if(!email||!pass){ setErr("completá los campos"); return; }
+    setLoading(true); setErr("");
+    const r = await auth.signIn(email, pass);
+    if(r.error){ setErr("credenciales incorrectas"); setLoading(false); return; }
 
-    if (modo === "admin") {
-      const email = user.includes("@") ? user : `${user}@lashstudio.com`;
-      const res = await authSignIn(email, pass);
-      if (res.error) {
-        setError("credenciales incorrectas");
-      } else {
-        guardarSesion("admin");
-        onLogin("admin");
-      }
+    if(email.toLowerCase() === ADMIN_EMAIL.toLowerCase()){
+      guardar("admin"); onLogin("admin");
     } else {
-      try {
-        const todas = await fbGet("clientas");
-        const encontrada = todas.find(c =>
-          c.nombre?.toLowerCase().includes(user.toLowerCase())
-        );
-        if (!encontrada) { setError("nombre no encontrado"); setCargando(false); return; }
-        const emailClienta = encontrada.mail || `${encontrada._id}@lashstudio.com`;
-        const res = await authSignIn(emailClienta, pass);
-        if (res.error) {
-          setError("contraseña incorrecta");
-        } else {
-          const historial = encontrada.historial ? Object.values(encontrada.historial) : [];
-          const clientaData = { ...encontrada, historial };
-          guardarSesion("clienta", clientaData);
-          onLogin("clienta", clientaData);
-        }
-      } catch (e) {
-        setError("error de conexión");
-      }
+      // Buscar clienta por email
+      const todas = await db.get("clientas");
+      const c = todas.find(x=>x.email?.toLowerCase()===email.toLowerCase());
+      if(!c){ setErr("no encontramos tu cuenta"); setLoading(false); return; }
+      const hist = c.historial ? Object.values(c.historial) : [];
+      const data = { ...c, historial: hist };
+      guardar("clienta", data); onLogin("clienta", data);
     }
-    setCargando(false);
+    setLoading(false);
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: G.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32 }}>
-      {/* Logo */}
-      <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🌿</div>
-        <h1 style={{ ...css.title, fontSize: 34, letterSpacing: 2, textAlign: "center" }}>Lash Studio</h1>
-        <p style={{ ...css.subtitle, textAlign: "center", marginTop: 8 }}>by chulas</p>
-        <div style={{ width: 40, height: 1, background: G.green, margin: "16px auto" }} />
-        <p style={{ ...css.subtitle, color: G.textMuted, textAlign: "center" }}>san andrés · buenos aires</p>
+    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28 }}>
+      <div style={{ textAlign:"center", marginBottom:44 }}>
+        <div style={{ fontSize:44, marginBottom:10 }}>🌿</div>
+        <h1 style={{ ...s.h1, fontSize:32, letterSpacing:2 }}>Lash Studio</h1>
+        <p style={{ ...s.sub, marginTop:6 }}>by chulas</p>
+        <div style={{ width:36, height:1, background:G.green, margin:"14px auto" }}/>
+        <p style={{ ...s.sub, color:G.muted }}>san andrés · buenos aires</p>
       </div>
 
       {!modo ? (
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-          <p style={{ ...css.subtitle, textAlign: "center", marginBottom: 8 }}>acceder como</p>
-          <div style={{ ...css.card, textAlign: "center", cursor: "pointer", border: `0.5px solid ${G.green}` }} onClick={() => setModo("admin")}>
-            <div style={{ fontSize: 28, marginBottom: 6 }}>👑</div>
-            <p style={{ ...css.sectionTitle, fontSize: 15 }}>Lashista</p>
-            <p style={{ ...css.subtitle }}>acceso al panel de male</p>
+        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:10 }}>
+          <p style={{ ...s.sub, textAlign:"center", marginBottom:6 }}>acceder como</p>
+          <div style={{ ...s.card, textAlign:"center", cursor:"pointer", border:`0.5px solid ${G.green}` }} onClick={()=>{ setModo("admin"); setEmail(ADMIN_EMAIL); }}>
+            <div style={{ fontSize:26, marginBottom:6 }}>👑</div>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 2px" }}>Lashista</p>
+            <p style={{ ...s.sub }}>panel de male</p>
           </div>
-          <div style={{ ...css.card, textAlign: "center", cursor: "pointer" }} onClick={() => setModo("clienta")}>
-            <div style={{ fontSize: 28, marginBottom: 6 }}>🌸</div>
-            <p style={{ ...css.sectionTitle, fontSize: 15 }}>Clienta</p>
-            <p style={{ ...css.subtitle }}>mi espacio personal</p>
+          <div style={{ ...s.card, textAlign:"center", cursor:"pointer" }} onClick={()=>setModo("clienta")}>
+            <div style={{ fontSize:26, marginBottom:6 }}>🌸</div>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 2px" }}>Clienta</p>
+            <p style={{ ...s.sub }}>mi espacio personal</p>
           </div>
         </div>
-      ) : (
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-          <button onClick={() => { setModo(null); setError(""); setUser(""); setPass(""); }}
-            style={{ ...css.glassBtn, alignSelf: "flex-start", marginBottom: 8 }}>← volver</button>
-          <div style={{ textAlign: "center", marginBottom: 8 }}>
-            <span style={css.tag}>{modo === "admin" ? "panel lashista" : "acceso clienta"}</span>
-          </div>
-          <div>
-            <label style={css.label}>{modo === "admin" ? "usuario" : "nombre"}</label>
-            <input style={css.input} value={user} onChange={e => setUser(e.target.value)}
-              placeholder={modo === "admin" ? "male" : "tu nombre"} autoComplete="username" />
-          </div>
-          <div>
-            <label style={css.label}>contraseña</label>
-            <input style={css.input} type="password" value={pass} onChange={e => setPass(e.target.value)}
-              placeholder="••••••" autoComplete="current-password"
-              onKeyDown={e => e.key === "Enter" && handleLogin()} />
-          </div>
-
-          {/* Mantener sesión */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setRecordar(r => !r)}>
-            <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${recordar ? G.green : G.border}`, background: recordar ? G.greenMuted : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s", flexShrink: 0 }}>
-              {recordar && <span style={{ color: G.green, fontSize: 12, lineHeight: 1 }}>✓</span>}
+      ):(
+        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:11 }}>
+          <button onClick={()=>{ setModo(null); setErr(""); setEmail(""); setPass(""); }} style={{ ...s.btnGlass, alignSelf:"flex-start", marginBottom:6 }}>← volver</button>
+          <span style={{ ...s.tag, alignSelf:"center" }}>{modo==="admin"?"panel lashista":"acceso clienta"}</span>
+          <Field label="email">
+            <input style={s.input} value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" type="email" autoComplete="username"/>
+          </Field>
+          <Field label="contraseña">
+            <input style={s.input} value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••" type="password" autoComplete="current-password" onKeyDown={e=>e.key==="Enter"&&entrar()}/>
+          </Field>
+          <div style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setRecordar(r=>!r)}>
+            <div style={{ width:18,height:18,borderRadius:5,border:`1.5px solid ${recordar?G.green:G.border}`,background:recordar?G.greenM:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>
+              {recordar&&<span style={{ color:G.green, fontSize:12 }}>✓</span>}
             </div>
-            <p style={{ ...css.subtitle, margin: 0, fontSize: 11, color: G.textSub }}>mantener sesión iniciada</p>
+            <p style={{ ...s.sub, margin:0, fontSize:12, color:G.sub }}>mantener sesión iniciada</p>
           </div>
-
-          {error && <p style={{ color: G.red, fontFamily: "'DM Sans', sans-serif", fontSize: 12, textAlign: "center" }}>{error}</p>}
-
-          <button style={{ ...css.greenBtn, opacity: cargando ? 0.6 : 1 }} onClick={handleLogin} disabled={cargando}>
-            {cargando ? "ingresando..." : "ingresar →"}
+          {err&&<p style={{ color:G.red, fontSize:12, textAlign:"center", fontFamily:F.sans }}>{err}</p>}
+          <button style={{ ...s.btnGreen, opacity:loading?0.6:1 }} onClick={entrar} disabled={loading}>
+            {loading?"ingresando...":"ingresar →"}
           </button>
         </div>
       )}
 
-      {/* Footer */}
-      <div style={{ marginTop: 40, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        <p style={{ ...css.subtitle, color: G.textMuted, fontSize: 11, textAlign: "center" }}>
-          consultas →{" "}
-          <span style={{ color: G.green, cursor: "pointer" }} onClick={() => openWA()}>whatsapp</span>
+      <div style={{ marginTop:36, display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
+        <p style={{ ...s.sub, color:G.muted, fontSize:11 }}>
+          consultas → <span style={{ color:G.green, cursor:"pointer" }} onClick={()=>openWA()}>whatsapp</span>
         </p>
-        <p style={{ ...css.subtitle, color: G.textMuted, fontSize: 11, textAlign: "center" }}>
-          ¿primera vez? →{" "}
-          <span style={{ color: G.green, cursor: "pointer" }}
-            onClick={() => openWA("Hola Male! Quiero registrarme en Lash Studio 🌿")}>
-            registrate acá
-          </span>
+        <p style={{ ...s.sub, color:G.muted, fontSize:11 }}>
+          ¿primera vez? → <span style={{ color:G.green, cursor:"pointer" }} onClick={()=>openWA("Hola Male! Quiero registrarme en Lash Studio 🌿")}>registrate acá</span>
         </p>
       </div>
     </div>
@@ -519,772 +304,731 @@ function LoginScreen({ onLogin }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ─── VISTA ADMIN ─────────────────────────────────────────────────────────────
+// HOOK DE DATOS GLOBALES
 // ═══════════════════════════════════════════════════════════════════════════════
+function useData() {
+  const [servicios, setServicios] = useState([]);
+  const [clientas, setClientas] = useState([]);
+  const [citas, setCitas] = useState([]);
+  const [excepciones, setExcepciones] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-function AdminApp({ onLogout, appData }) {
-  const [tab, setTab] = useState("dashboard");
-  const [subScreen, setSubScreen] = useState(null);
-  const [subData, setSubData] = useState(null);
-  const { clientas, citas, servicios, loading, agregarClientas, agregarCita } = appData;
+  const recargar = useCallback(async () => {
+    setLoading(true);
+    const [sv, cl, ct, ex] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones")]);
+    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex);
+    setLoading(false);
+  }, []);
 
-  const navigate = (screen, data = null) => { setSubScreen(screen); setSubData(data); };
-  const back = () => { setSubScreen(null); setSubData(null); };
+  useEffect(()=>{ recargar(); }, []);
+
+  // ── Servicios ──────────────────────────────────────────────────────────────
+  const crearServicio = async (data) => {
+    const id = await db.push("servicios", data);
+    setServicios(p=>[...p, { ...data, _id:id }]);
+  };
+  const editarServicio = async (id, data) => {
+    await db.set(`servicios/${id}`, data);
+    setServicios(p=>p.map(x=>x._id===id?{ ...data, _id:id }:x));
+  };
+  const borrarServicio = async (id) => {
+    await db.delete(`servicios/${id}`);
+    setServicios(p=>p.filter(x=>x._id!==id));
+  };
+
+  // ── Clientas ───────────────────────────────────────────────────────────────
+  const crearClientas = async (datos) => {
+    // 1. Crear usuario en Firebase Auth
+    const pass = genPassword();
+    const emailUsar = datos.email;
+    const authRes = await auth.createUser(emailUsar, pass);
+    if(authRes.error) return { error: authRes.error.message };
+    // 2. Guardar en DB
+    const id = await db.push("clientas", { ...datos, uid: authRes.localId, creadaEn: hoyISO() });
+    const nueva = { ...datos, uid: authRes.localId, creadaEn: hoyISO(), _id: id, historial: [] };
+    setClientas(p=>[...p, nueva]);
+    return { ok: true, pass, email: emailUsar };
+  };
+  const editarClientas = async (id, datos) => {
+    await db.update(`clientas/${id}`, datos);
+    setClientas(p=>p.map(x=>x._id===id?{ ...x, ...datos }:x));
+  };
+
+  // ── Citas ──────────────────────────────────────────────────────────────────
+  const crearCita = async (data) => {
+    const id = await db.push("citas", { ...data, creadaEn: hoyISO() });
+    setCitas(p=>[...p, { ...data, creadaEn: hoyISO(), _id: id }]);
+    return id;
+  };
+  const editarCita = async (id, data) => {
+    await db.update(`citas/${id}`, data);
+    setCitas(p=>p.map(x=>x._id===id?{ ...x, ...data }:x));
+  };
+  const borrarCita = async (id) => {
+    await db.delete(`citas/${id}`);
+    setCitas(p=>p.filter(x=>x._id!==id));
+  };
+
+  // ── Historial (registrar pago al cerrar cita) ──────────────────────────────
+  const registrarPago = async (clientaId, citaId, registro) => {
+    await db.push(`clientas/${clientaId}/historial`, registro);
+    await editarCita(citaId, { estado:"completada" });
+    setClientas(p=>p.map(c=>{
+      if(c._id!==clientaId) return c;
+      const hist = Array.isArray(c.historial) ? c.historial : [];
+      return { ...c, historial: [...hist, registro] };
+    }));
+  };
+
+  return { servicios, clientas, citas, excepciones, loading, recargar, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, crearCita, editarCita, borrarCita, registrarPago };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APP ROOT
+// ═══════════════════════════════════════════════════════════════════════════════
+export default function App() {
+  const [session, setSession] = useState(null);
+  const data = useData();
+
+  const login = (tipo, d=null) => setSession({ tipo, data:d });
+  const logout = () => { localStorage.removeItem("ls_session"); setSession(null); };
+
+  if(!session) return <Login onLogin={login}/>;
+  if(session.tipo==="admin") return <AdminApp data={data} onLogout={logout}/>;
+  if(session.tipo==="clienta") return <ClientaApp clienta={session.data} data={data} onLogout={logout}/>;
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADMIN APP
+// ═══════════════════════════════════════════════════════════════════════════════
+function AdminApp({ data, onLogout }) {
+  const [tab, setTab] = useState("inicio");
+  const [stack, setStack] = useState([]); // [{screen, props}]
+  const [toast, setToast] = useState(null);
+
+  const push = (screen, props={}) => setStack(p=>[...p, { screen, props }]);
+  const pop = () => setStack(p=>p.slice(0,-1));
+  const showToast = (msg) => setToast(msg);
+
+  const cur = stack[stack.length-1];
 
   const navItems = [
-    { id: "dashboard", icon: "⬡", label: "inicio" },
-    { id: "agenda", icon: "◷", label: "agenda" },
-    { id: "clientas", icon: "✿", label: "clientas" },
-    { id: "finanzas", icon: "◈", label: "finanzas" },
-    { id: "config", icon: "⚙", label: "config" },
+    { id:"inicio", icon:"⬡", label:"inicio" },
+    { id:"agenda", icon:"◷", label:"agenda" },
+    { id:"clientas", icon:"✿", label:"clientas" },
+    { id:"finanzas", icon:"◈", label:"finanzas" },
+    { id:"config", icon:"⚙", label:"config" },
   ];
 
-  if (loading) return (
-    <div style={{ minHeight: "100vh", background: G.bg, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: 36 }}>🌿</div>
-      <p style={{ ...css.subtitle, color: G.textSub }}>cargando...</p>
-    </div>
-  );
-
-  const renderMain = () => {
-    if (subScreen === "clienta-detalle") return <ClientaDetalle clienta={subData} onBack={back} onNavigate={navigate} citas={citas} />;
-    if (subScreen === "nueva-cita") return <NuevaCita onBack={back} clientas={clientas} servicios={servicios} agregarCita={agregarCita} />;
-    if (subScreen === "cita-detalle") return <CitaDetalle cita={subData} onBack={back} servicios={servicios} />;
-    switch (tab) {
-      case "dashboard": return <AdminDashboard onNavigate={navigate} setTab={setTab} clientas={clientas} citas={citas} />;
-      case "agenda": return <AdminAgenda onNavigate={navigate} citas={citas} />;
-      case "clientas": return <AdminClientas onNavigate={navigate} clientas={clientas} agregarClientas={agregarClientas} />;
-      case "finanzas": return <AdminFinanzas clientas={clientas} servicios={servicios} />;
-      case "config": return <AdminConfig servicios={servicios} />;
-      default: return <AdminDashboard onNavigate={navigate} setTab={setTab} clientas={clientas} citas={citas} />;
+  const renderScreen = () => {
+    if(cur) {
+      const p = { ...cur.props, pop, push, data, toast: showToast };
+      switch(cur.screen){
+        case "clienta-detalle": return <ClientaDetalle {...p}/>;
+        case "nueva-cita": return <NuevaCita {...p}/>;
+        case "cita-detalle": return <CitaDetalle {...p}/>;
+        default: return null;
+      }
+    }
+    const p = { push, data, toast: showToast };
+    switch(tab){
+      case "inicio": return <AdminInicio {...p} setTab={setTab}/>;
+      case "agenda": return <AdminAgenda {...p}/>;
+      case "clientas": return <AdminClientas {...p}/>;
+      case "finanzas": return <AdminFinanzas {...p}/>;
+      case "config": return <AdminConfig {...p}/>;
+      default: return <AdminInicio {...p} setTab={setTab}/>;
     }
   };
 
+  if(data.loading) return <Loader/>;
+
   return (
-    <div style={css.app}>
-      <div style={css.screen}>{renderMain()}</div>
-      <nav style={css.bottomNav}>
-        {navItems.map(n => (
-          <div key={n.id} style={css.navItem(tab === n.id && !subScreen)} onClick={() => { setTab(n.id); back(); }}>
-            <span style={css.navIcon}>{n.icon}</span>
-            <span style={css.navLabel}>{n.label}</span>
-            {tab === n.id && !subScreen && <div style={{ width: 4, height: 4, borderRadius: "50%", background: G.green }} />}
-          </div>
-        ))}
-      </nav>
-      <FAB />
+    <div style={s.app}>
+      <div style={s.screen}>{renderScreen()}</div>
+      {!cur && (
+        <nav style={s.nav}>
+          {navItems.map(n=>(
+            <div key={n.id} style={navItemStyle(tab===n.id)} onClick={()=>setTab(n.id)}>
+              <span style={{ fontSize:19 }}>{n.icon}</span>
+              <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.08em" }}>{n.label}</span>
+              {tab===n.id&&<div style={{ width:4,height:4,borderRadius:"50%",background:G.green }}/>}
+            </div>
+          ))}
+        </nav>
+      )}
+      <FAB/>
+      {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
     </div>
   );
 }
 
-// ─── ADMIN: DASHBOARD ─────────────────────────────────────────────────────────
-function AdminDashboard({ onNavigate, setTab, clientas, citas }) {
-  const hoy = new Date().toISOString().slice(0, 10);
-  const citasHoy = citas.filter(c => c.fecha === hoy);
-  const mesActual = hoy.slice(0, 7);
-  const ingresosEsteMes = clientas.flatMap(c =>
-    c.historial ? Object.values(c.historial) : []
-  ).filter(h => h.fecha?.startsWith(mesActual)).reduce((a, h) => a + (h.monto || 0), 0);
+// ─── ADMIN: INICIO ─────────────────────────────────────────────────────────────
+function AdminInicio({ data, push, setTab }) {
+  const hoy = hoyISO();
+  const mesActual = hoy.slice(0,7);
+  const citasHoy = data.citas.filter(c=>c.fecha===hoy && c.estado!=="completada");
+  const proximas = data.citas.filter(c=>c.fecha>hoy && c.estado!=="completada").sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora)).slice(0,4);
+  const totalMes = data.clientas.flatMap(c=>c.historial||[]).filter(h=>h.fecha?.startsWith(mesActual)).reduce((a,h)=>a+(h.monto||0),0);
 
   return (
     <div>
-      <div style={css.topBar}>
-        <h1 style={css.title}>Lash Studio</h1>
-        <p style={css.subtitle}>panel lashista · male</p>
+      <div style={s.topBar}>
+        <h1 style={s.h1}>Lash Studio</h1>
+        <p style={s.sub}>bienvenida, Male 🌿</p>
       </div>
-      <div style={{ padding: "20px 20px 0" }}>
-        {/* Stats rápidas — CLICKEABLES */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-          {/* HOY → Agenda filtrada a hoy */}
-          <div
-            style={{ ...css.statCard, cursor: "pointer", border: `0.5px solid ${G.border}`, transition: "border-color 0.2s" }}
-            onClick={() => setTab("agenda")}
-            onMouseEnter={e => e.currentTarget.style.borderColor = G.green}
-            onMouseLeave={e => e.currentTarget.style.borderColor = G.border}
-          >
-            <p style={css.statLabel}>hoy</p>
-            <p style={css.statVal}>{citasHoy.length}</p>
-            <p style={{ ...css.subtitle, fontSize: 10, margin: 0, color: G.green }}>ver →</p>
-          </div>
-          {/* ESTE MES → Finanzas */}
-          <div
-            style={{ ...css.statCard, cursor: "pointer", border: `0.5px solid ${G.border}`, transition: "border-color 0.2s" }}
-            onClick={() => setTab("finanzas")}
-            onMouseEnter={e => e.currentTarget.style.borderColor = G.green}
-            onMouseLeave={e => e.currentTarget.style.borderColor = G.border}
-          >
-            <p style={css.statLabel}>este mes</p>
-            <p style={{ ...css.statVal, fontSize: 16 }}>${(ingresosEsteMes / 1000).toFixed(0)}k</p>
-            <p style={{ ...css.subtitle, fontSize: 10, margin: 0, color: G.green }}>ver →</p>
-          </div>
-          {/* CLIENTAS → Tab clientas */}
-          <div
-            style={{ ...css.statCard, cursor: "pointer", border: `0.5px solid ${G.border}`, transition: "border-color 0.2s" }}
-            onClick={() => setTab("clientas")}
-            onMouseEnter={e => e.currentTarget.style.borderColor = G.green}
-            onMouseLeave={e => e.currentTarget.style.borderColor = G.border}
-          >
-            <p style={css.statLabel}>clientas</p>
-            <p style={css.statVal}>{clientas.length}</p>
-            <p style={{ ...css.subtitle, fontSize: 10, margin: 0, color: G.green }}>ver →</p>
-          </div>
+      <div style={{ padding:"18px 18px 0" }}>
+        {/* Stats */}
+        <div style={{ display:"flex", gap:9, marginBottom:18 }}>
+          {[
+            { label:"hoy", val:citasHoy.length, action:()=>setTab("agenda") },
+            { label:"este mes", val:totalMes>0?`${(totalMes/1000).toFixed(0)}k`:"$0", action:()=>setTab("finanzas") },
+            { label:"clientas", val:data.clientas.length, action:()=>setTab("clientas") },
+          ].map(w=>(
+            <div key={w.label} onClick={w.action} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"13px 8px" }}>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"lowercase", letterSpacing:"0.08em" }}>{w.label}</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:21, color:G.white, margin:"0 0 2px" }}>{w.val}</p>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>ver →</p>
+            </div>
+          ))}
         </div>
 
         {/* Citas de hoy */}
-        <p style={css.sectionTitle}>hoy</p>
-        <p style={css.sectionSub}>{new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}</p>
-        {citasHoy.length === 0 ? (
-          <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>sin citas para hoy ✦</p>
-        ) : (
-          citasHoy.map(c => (
-            <div key={c._id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("cita-detalle", c)}>
-              <div style={{ textAlign: "center", minWidth: 40 }}>
-                <p style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 15, color: G.green }}>{c.hora}</p>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>hoy</p>
+        <p style={{ ...s.sub, marginBottom:12 }}>{new Date().toLocaleDateString("es-AR",{ weekday:"long", day:"numeric", month:"long" })}</p>
+        {citasHoy.length===0
+          ? <p style={{ color:G.muted, fontSize:13, marginBottom:16 }}>sin citas para hoy ✦</p>
+          : citasHoy.map(c=>(
+            <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={()=>push("cita-detalle",{cita:c})}>
+              <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center", minWidth:48 }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.greenL }}>{c.hora}</p>
               </div>
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 14 }}>{c.clienta}</p>
-                <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>{c.servicio}</p>
+              <div style={{ flex:1 }}>
+                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{c.clientaNombre}</p>
+                <p style={{ margin:0, ...s.sub, fontSize:11 }}>{c.servicio}</p>
               </div>
-              <span style={{ ...css.tag, fontSize: 9, padding: "2px 8px" }}>{c.estado}</span>
+              <span style={s.tag}>{c.estado}</span>
             </div>
           ))
-        )}
+        }
 
-        <div style={css.divider} />
+        <div style={s.divider}/>
 
         {/* Próximas */}
-        <p style={css.sectionTitle}>próximas</p>
-        <p style={css.sectionSub}>siguientes turnos agendados</p>
-        {citas.filter(c => c.fecha > hoy).sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)).slice(0, 3).map(c => (
-          <div key={c._id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("cita-detalle", c)}>
-            <div style={{ textAlign: "center", minWidth: 40 }}>
-              <p style={{ margin: 0, fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: G.textMuted }}>{c.fecha?.slice(5).replace("-", "/")}</p>
-              <p style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 14, color: G.green }}>{c.hora}</p>
-            </div>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontSize: 14 }}>{c.clienta}</p>
-              <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>{c.servicio}</p>
-            </div>
-          </div>
-        ))}
-        {citas.filter(c => c.fecha > hoy).length === 0 && (
-          <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>no hay citas próximas ✦</p>
-        )}
-
-        <button style={{ ...css.greenBtn, marginTop: 8 }} onClick={() => setTab("agenda")}>ver agenda completa →</button>
-
-        <div style={css.divider} />
-
-        {/* Top clientas */}
-        <p style={css.sectionTitle}>clientas activas</p>
-        <p style={css.sectionSub}>últimas visitas</p>
-        {clientas.length === 0 && <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>aún no hay clientas registradas ✦</p>}
-        {clientas.slice(0, 3).map(c => {
-          const hist = c.historial ? Object.values(c.historial) : [];
-          return (
-            <div key={c._id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("clienta-detalle", c)}>
-              <Avatar nombre={c.nombre || "?"} />
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontSize: 14 }}>{c.nombre}</p>
-                <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>curva {c.curva} · {c.largo}</p>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>próximas</p>
+        <p style={{ ...s.sub, marginBottom:12 }}>turnos confirmados</p>
+        {proximas.length===0
+          ? <p style={{ color:G.muted, fontSize:13 }}>no hay citas agendadas ✦</p>
+          : proximas.map(c=>(
+            <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={()=>push("cita-detalle",{cita:c})}>
+              <div style={{ textAlign:"center", minWidth:40 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{c.fecha?.slice(5).replace("-","/")}</p>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.green }}>{c.hora}</p>
               </div>
-              <span style={{ ...css.tag, fontSize: 10 }}>{hist.length} vis.</span>
+              <div style={{ flex:1 }}>
+                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{c.clientaNombre}</p>
+                <p style={{ margin:0, ...s.sub, fontSize:11 }}>{c.servicio}</p>
+              </div>
             </div>
-          );
-        })}
+          ))
+        }
+        <button style={{ ...s.btnGreen, marginTop:10 }} onClick={()=>setTab("agenda")}>ver agenda completa →</button>
       </div>
     </div>
   );
 }
 
-// ─── ADMIN: AGENDA ────────────────────────────────────────────────────────────
-const TODOS_LOS_SLOTS = ["09:00", "10:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
-
-function AdminAgenda({ onNavigate, citas }) {
-  const hoy = new Date().toISOString().slice(0, 10);
-  const [mesOffset, setMesOffset] = useState(0);
-  const [diaSeleccionado, setDiaSeleccionado] = useState(hoy);
-
-  // ── Helpers de fecha ──
+// ─── ADMIN: AGENDA ─────────────────────────────────────────────────────────────
+function AdminAgenda({ data, push, toast }) {
+  const hoy = hoyISO();
   const ahora = new Date();
-  const mesActual = new Date(ahora.getFullYear(), ahora.getMonth() + mesOffset, 1);
-  const anio = mesActual.getFullYear();
-  const mes = mesActual.getMonth();
-  const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-  const DIAS_CORTOS = ["D", "L", "M", "X", "J", "V", "S"];
+  const [offset, setOffset] = useState(0);
+  const [diaS, setDiaS] = useState(hoy);
 
-  const primerDia = new Date(anio, mes, 1).getDay();
-  const diasEnMes = new Date(anio, mes + 1, 0).getDate();
+  const mesD = new Date(ahora.getFullYear(), ahora.getMonth()+offset, 1);
+  const anio = mesD.getFullYear();
+  const mes = mesD.getMonth();
+  const primerDia = new Date(anio,mes,1).getDay();
+  const diasMes = new Date(anio,mes+1,0).getDate();
 
-  // Índice de citas por fecha
   const citasPorFecha = {};
-  citas.forEach(c => { if (!citasPorFecha[c.fecha]) citasPorFecha[c.fecha] = []; citasPorFecha[c.fecha].push(c); });
+  data.citas.forEach(c=>{ if(!citasPorFecha[c.fecha]) citasPorFecha[c.fecha]=[]; citasPorFecha[c.fecha].push(c); });
 
-  const fmtDateKey = (d) => {
-    const mm = String(mes + 1).padStart(2, "0");
-    const dd = String(d).padStart(2, "0");
-    return `${anio}-${mm}-${dd}`;
-  };
+  // Excepciones: set de fechas bloqueadas
+  const fechasBloqueadas = new Set(data.excepciones.map(e=>e.fecha));
+  const excepcionDia = data.excepciones.find(e=>e.fecha===diaS);
+  const diaEsBloqueado = fechasBloqueadas.has(diaS);
 
-  // Citas del día seleccionado
-  const citasDia = citasPorFecha[diaSeleccionado] || [];
-  const ocupadasDia = citasDia.map(c => c.hora);
-  const [dd, mm2] = [diaSeleccionado.slice(8), diaSeleccionado.slice(5, 7)];
-  const fmtDiaSel = `${parseInt(dd)} de ${MESES[parseInt(mm2) - 1]}`;
-  const dtSel = new Date(diaSeleccionado + "T12:00:00");
-  const DIAS_FULL = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const fmtKey = (d) => `${anio}-${String(mes+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const citasDia = citasPorFecha[diaS]||[];
 
-  // Recordatorio mañana: citas del día siguiente al seleccionado
-  const dtManana = new Date(diaSeleccionado + "T12:00:00");
-  dtManana.setDate(dtManana.getDate() + 1);
-  const mananaKey = dtManana.toISOString().slice(0, 10);
-  const citasManana = citasPorFecha[mananaKey] || [];
+  // recordatorio mañana
+  const dtManana = new Date(diaS+"T12:00:00"); dtManana.setDate(dtManana.getDate()+1);
+  const mananaKey = dtManana.toISOString().slice(0,10);
+  const citasManana = citasPorFecha[mananaKey]||[];
 
   return (
     <div>
-      <div style={css.topBar}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <h1 style={css.title}>Agenda</h1>
-            <p style={css.subtitle}>calendario del estudio</p>
-          </div>
-          <button style={{ ...css.glassBtn, fontSize: 11, padding: "8px 14px", background: G.greenMuted, borderColor: G.green, color: "#0a0a0a", fontWeight: 700 }}
-            onClick={() => onNavigate("nueva-cita")}>+ nueva</button>
+      <div style={s.topBar}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div><h1 style={s.h1}>Agenda</h1><p style={s.sub}>calendario del estudio</p></div>
+          <button style={{ ...s.btnGreen, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={()=>push("nueva-cita")}>+ nueva cita</button>
         </div>
       </div>
-
-      <div style={{ padding: "20px 16px 0" }}>
-
-        {/* ── CALENDARIO ── */}
-        <div style={{ ...css.card, padding: "16px 12px", marginBottom: 20 }}>
-          {/* Navegación mes */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <button style={{ ...css.glassBtn, padding: "6px 12px", fontSize: 14 }} onClick={() => setMesOffset(o => o - 1)}>‹</button>
-            <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 15, color: G.white, textTransform: "capitalize" }}>
-              {MESES[mes]} {anio}
-            </p>
-            <button style={{ ...css.glassBtn, padding: "6px 12px", fontSize: 14 }} onClick={() => setMesOffset(o => o + 1)}>›</button>
+      <div style={{ padding:"18px 14px 0" }}>
+        {/* Calendario */}
+        <div style={{ ...s.card, padding:"14px 10px", marginBottom:18 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+            <button style={{ ...s.btnGlass, padding:"6px 12px", fontSize:15 }} onClick={()=>setOffset(o=>o-1)}>‹</button>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
+            <button style={{ ...s.btnGlass, padding:"6px 12px", fontSize:15 }} onClick={()=>setOffset(o=>o+1)}>›</button>
           </div>
-
-          {/* Cabecera días */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 6 }}>
-            {DIAS_CORTOS.map(d => (
-              <div key={d} style={{ textAlign: "center", fontFamily: "'Courier New', monospace", fontSize: 10, color: G.textMuted, padding: "2px 0", letterSpacing: "0.05em" }}>{d}</div>
-            ))}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4 }}>
+            {DIAS_C.map(d=><div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:10, color:G.muted, padding:"2px 0" }}>{d}</div>)}
           </div>
-
-          {/* Grilla de días */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
-            {/* celdas vacías antes del primer día */}
-            {Array(primerDia).fill(null).map((_, i) => <div key={"e" + i} />)}
-            {Array(diasEnMes).fill(null).map((_, i) => {
-              const dia = i + 1;
-              const key = fmtDateKey(dia);
-              const tieneCitas = !!(citasPorFecha[key]?.length);
-              const esHoy = key === hoy;
-              const esSel = key === diaSeleccionado;
-              const cantCitas = citasPorFecha[key]?.length || 0;
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
+            {Array(primerDia).fill(null).map((_,i)=><div key={"e"+i}/>)}
+            {Array(diasMes).fill(null).map((_,i)=>{
+              const dia=i+1, key=fmtKey(dia);
+              const tieneCitas=!!(citasPorFecha[key]?.length);
+              const esBloqueado=fechasBloqueadas.has(key);
+              const esHoy=key===hoy, esSel=key===diaS;
               return (
-                <div key={dia} onClick={() => setDiaSeleccionado(key)}
-                  style={{
-                    textAlign: "center", borderRadius: 8, padding: "5px 2px", cursor: "pointer",
-                    background: esSel ? G.green : esHoy ? G.greenMuted : "transparent",
-                    border: esSel ? "none" : esHoy ? `0.5px solid ${G.green}` : "0.5px solid transparent",
-                    transition: "all 0.15s",
-                    position: "relative",
-                  }}>
-                  <span style={{
-                    fontFamily: "'Courier New', monospace", fontSize: 12,
-                    color: esSel ? "#0a0a0a" : esHoy ? G.greenLight : G.textSub,
-                    fontWeight: esSel || esHoy ? 700 : 400,
-                    display: "block",
-                  }}>{dia}</span>
-                  {tieneCitas && !esSel && (
-                    <div style={{ display: "flex", justifyContent: "center", gap: 2, marginTop: 2 }}>
-                      {Array(Math.min(cantCitas, 3)).fill(null).map((_, pi) => (
-                        <div key={pi} style={{ width: 3, height: 3, borderRadius: "50%", background: esHoy ? G.green : G.greenDark }} />
-                      ))}
-                    </div>
-                  )}
-                  {tieneCitas && esSel && (
-                    <div style={{ display: "flex", justifyContent: "center", gap: 2, marginTop: 2 }}>
-                      {Array(Math.min(cantCitas, 3)).fill(null).map((_, pi) => (
-                        <div key={pi} style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(10,10,10,0.5)" }} />
-                      ))}
-                    </div>
-                  )}
+                <div key={dia} onClick={()=>setDiaS(key)} style={{ textAlign:"center", borderRadius:8, padding:"5px 2px", cursor:"pointer", background:esSel?G.green:esHoy?G.greenM:esBloqueado?"rgba(224,112,112,0.1)":"transparent", border:esSel?"none":esHoy?`0.5px solid ${G.green}`:esBloqueado?`0.5px solid rgba(224,112,112,0.3)`:"0.5px solid transparent" }}>
+                  <span style={{ fontFamily:F.sans, fontSize:12, color:esSel?"#0a0a0a":esHoy?G.greenL:esBloqueado?G.red:G.sub, fontWeight:esSel||esHoy?700:400, display:"block" }}>{dia}</span>
+                  {tieneCitas&&<div style={{ display:"flex", justifyContent:"center", gap:2, marginTop:2 }}>
+                    {Array(Math.min(citasPorFecha[key].length,3)).fill(null).map((_,pi)=>(
+                      <div key={pi} style={{ width:3,height:3,borderRadius:"50%",background:esSel?"rgba(10,10,10,0.5)":G.green }}/>
+                    ))}
+                  </div>}
+                  {esBloqueado&&!tieneCitas&&<div style={{ fontSize:7, color:G.red, lineHeight:1.2 }}>✕</div>}
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* ── DETALLE DEL DÍA SELECCIONADO ── */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: G.green, flexShrink: 0 }} />
-          <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 16, color: G.white }}>
-            {DIAS_FULL[dtSel.getDay()]} {fmtDiaSel}
+        {/* Día seleccionado */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+          <div style={{ width:5,height:5,borderRadius:"50%",background:G.green }}/>
+          <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white }}>
+            {DIAS_F[new Date(diaS+"T12:00:00").getDay()]} {fmtFecha(diaS)}
           </p>
-          {citasDia.length > 0 && <span style={{ ...css.tag, fontSize: 9 }}>{citasDia.length} citas</span>}
+          {citasDia.length>0&&<span style={s.tag}>{citasDia.length} citas</span>}
         </div>
 
-        {/* Recordatorio masivo si hay citas mañana */}
-        {citasManana.length > 0 && (
-          <div style={{ ...css.card, background: "rgba(143,189,90,0.06)", borderColor: G.greenDark, marginBottom: 14, padding: "12px 14px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {/* Banner día bloqueado */}
+        {diaEsBloqueado&&(
+          <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:11, color:G.red, letterSpacing:"0.06em" }}>día no laborable</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{excepcionDia?.razon}</p>
+            </div>
+            <span style={{ fontSize:18 }}>🚫</span>
+          </div>
+        )}
+
+        {/* Recordatorio masivo */}
+        {citasManana.length>0&&(
+          <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:12 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
-                <p style={{ margin: "0 0 2px", fontFamily: "'Courier New', monospace", fontSize: 10, color: G.greenLight, letterSpacing: "0.1em" }}>recordatorio masivo</p>
-                <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontSize: 13 }}>{citasManana.length} cita{citasManana.length > 1 ? "s" : ""} mañana</p>
+                <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.greenL, letterSpacing:"0.08em" }}>recordatorio mañana</p>
+                <p style={{ margin:0, fontFamily:F.serif, fontSize:13 }}>{citasManana.length} cita{citasManana.length>1?"s":""} para {mananaKey.slice(8,10)}/{mananaKey.slice(5,7)}</p>
               </div>
-              <button style={{ ...css.glassBtn, fontSize: 10, padding: "7px 12px", borderColor: G.green, color: G.greenLight }}
-                onClick={() => {
-                  citasManana.forEach(c => {
-                    const nombre = c.clienta.split(" ")[0];
-                    openWA(`Hola ${nombre}! 🌿 Te recuerdo que mañana tenés tu cita a las ${c.hora} en el estudio. ¡Te espero! 💚`);
-                  });
-                }}>
-                enviar a todas →
+              <button style={{ ...s.btnGlass, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }}
+                onClick={()=>citasManana.forEach(c=>openWA(`Hola ${c.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo que mañana tenés tu cita a las ${c.hora}. ¡Te espero! 💚`))}>
+                avisar a todas →
               </button>
             </div>
           </div>
         )}
 
-        {/* Slots del día */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
-          {TODOS_LOS_SLOTS.map(hora => {
-            const cita = citasDia.find(c => c.hora === hora);
-            const libre = !cita;
-            return (
-              <div key={hora} style={{
-                display: "flex", alignItems: "center", gap: 12,
-                background: libre ? "rgba(255,255,255,0.02)" : G.bgCard,
-                border: `0.5px solid ${libre ? "rgba(255,255,255,0.04)" : G.border}`,
-                borderRadius: 12, padding: "10px 14px",
-                opacity: libre ? 0.6 : 1,
-              }}>
-                {/* Hora */}
-                <div style={{
-                  minWidth: 46, background: libre ? "transparent" : G.greenMuted,
-                  border: `0.5px solid ${libre ? G.border : G.green}`,
-                  borderRadius: 8, padding: "6px 4px", textAlign: "center",
-                }}>
-                  <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 13, color: libre ? G.textMuted : G.greenLight }}>{hora}</p>
-                </div>
-
-                {libre ? (
-                  <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 11, color: G.textMuted }}>disponible</p>
-                    <button style={{ ...css.glassBtn, fontSize: 10, padding: "5px 10px" }}
-                      onClick={() => onNavigate("nueva-cita")}>+ agendar</button>
+        {/* Slots */}
+        {diaEsBloqueado ? (
+          <div style={{ ...s.card, textAlign:"center", padding:"24px", opacity:0.5 }}>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, margin:0 }}>no hay turnos disponibles este día</p>
+          </div>
+        ) : SLOTS.map(hora=>{
+          const cita = citasDia.find(c=>c.hora===hora);
+          return (
+            <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita?G.card:"rgba(255,255,255,0.01)", border:`0.5px solid ${cita?G.border:"rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita?1:0.55 }}>
+              <div style={{ background:cita?G.greenM:"transparent", border:`0.5px solid ${cita?G.green:G.border}`, borderRadius:8, padding:"5px 8px", minWidth:46, textAlign:"center" }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:cita?G.greenL:G.muted }}>{hora}</p>
+              </div>
+              {!cita
+                ? <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>disponible</p>
+                    <button style={{ ...s.btnGlass, fontSize:10, padding:"4px 10px" }} onClick={()=>push("nueva-cita",{ fechaDefault:diaS, horaDefault:hora })}>+ agendar</button>
                   </div>
-                ) : (
-                  <>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontSize: 13 }}>{cita.clienta}</p>
-                      <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 10, color: G.textMuted }}>{cita.servicio}</p>
-                      {cita.notas && <p style={{ margin: "3px 0 0", fontFamily: "'Courier New', monospace", fontSize: 9, color: G.textMuted }}>⚠ {cita.notas}</p>}
+                : <>
+                    <div style={{ flex:1 }}>
+                      <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontSize:13 }}>{cita.clientaNombre}</p>
+                      <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}</p>
                     </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <span style={{ ...css.tag, fontSize: 8, padding: "2px 6px", marginRight: 0 }}>{cita.estado}</span>
-                      {/* Botón WA recordatorio individual */}
-                      <button
-                        title="Recordatorio por WhatsApp"
-                        style={{ background: "rgba(37,211,102,0.12)", border: "0.5px solid rgba(37,211,102,0.35)", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 14, flexShrink: 0 }}
-                        onClick={e => {
-                          e.stopPropagation();
-                          const nombre = cita.clienta.split(" ")[0];
-                          openWA(`Hola ${nombre}! 🌿 Te recuerdo que mañana tenés tu cita a las ${cita.hora} en el estudio. ¡Te espero! 💚`);
-                        }}>
-                        💬
-                      </button>
-                      <button
-                        style={{ ...css.glassBtn, padding: "5px 8px", fontSize: 10 }}
-                        onClick={() => onNavigate("cita-detalle", cita)}>→</button>
+                    <div style={{ display:"flex", gap:6 }}>
+                      <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}
+                        onClick={()=>openWA(`Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo que mañana tenés tu cita a las ${cita.hora}. ¡Te espero! 💚`)}>💬</button>
+                      <button style={{ ...s.btnGlass, padding:"5px 9px", fontSize:11 }} onClick={()=>push("cita-detalle",{cita})}>→</button>
                     </div>
                   </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
-// ─── CITA DETALLE ─────────────────────────────────────────────────────────────
-function CitaDetalle({ cita, onBack, servicios }) {
-  const servicio = servicios?.find(s => s.nombre === cita.servicio);
-  return (
-    <div>
-      <div style={css.topBar}>
-        <BackBtn onBack={onBack} />
-        <h1 style={{ ...css.title, fontSize: 20 }}>Detalle de Cita</h1>
-        <p style={css.subtitle}>{cita.fecha} · {cita.hora}</p>
-      </div>
-      <div style={{ padding: "20px" }}>
-        <div style={{ ...css.card, display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-          <Avatar nombre={cita.clienta || "?"} size={48} />
-          <div>
-            <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 16 }}>{cita.clienta}</p>
-            <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>{cita.fecha} · {cita.hora}</p>
-          </div>
-        </div>
-
-        <div style={css.card}>
-          <p style={{ ...css.statLabel, marginBottom: 8 }}>servicio</p>
-          <p style={{ ...css.sectionTitle, fontSize: 17, margin: "0 0 4px" }}>{cita.servicio}</p>
-          {servicio && <p style={{ margin: "0 0 12px", ...css.subtitle, fontSize: 11 }}>{servicio.desc}</p>}
-          <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ ...css.statCard, flex: 1 }}>
-              <p style={css.statLabel}>duración</p>
-              <p style={{ ...css.statVal, fontSize: 18 }}>{servicio?.duracion || "—"}min</p>
-            </div>
-            <div style={{ ...css.statCard, flex: 1 }}>
-              <p style={css.statLabel}>precio</p>
-              <p style={{ ...css.statVal, fontSize: 18 }}>${servicio?.precio?.toLocaleString("es-AR") || "—"}</p>
-            </div>
-          </div>
-        </div>
-
-        {cita.notas && (
-          <div style={{ ...css.card, background: "rgba(143,189,90,0.06)", borderColor: G.greenDark }}>
-            <p style={css.statLabel}>notas</p>
-            <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 12, color: G.textSub }}>{cita.notas}</p>
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-          <button style={{ ...css.greenBtn, flex: 1 }} onClick={() => openWA(`Hola ${cita.clienta?.split(" ")[0]}! 🌿 Te recuerdo que mañana tenés tu cita a las ${cita.hora} en el estudio 💚`)}>
-            recordatorio WA
-          </button>
-          <button style={{ ...css.glassBtn, flex: 1 }}>confirmar</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── NUEVA CITA ───────────────────────────────────────────────────────────────
-function NuevaCita({ onBack, clientas, servicios, agregarCita }) {
-  const [form, setForm] = useState({ clientaId: "", fecha: "", hora: "", servicio: "", notas: "" });
-  const [guardando, setGuardando] = useState(false);
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const horas = ["09:00", "10:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
-
-  const handleGuardar = async () => {
-    if (!form.clientaId || !form.fecha || !form.hora || !form.servicio) return;
-    setGuardando(true);
-    const clienta = clientas.find(c => c._id === form.clientaId);
-    await agregarCita({
-      clientaId: form.clientaId,
-      clienta: clienta?.nombre || "",
-      fecha: form.fecha,
-      hora: form.hora,
-      servicio: form.servicio,
-      notas: form.notas,
-      estado: "confirmada",
-    });
-    setGuardando(false);
-    onBack();
-  };
-
-  return (
-    <div>
-      <div style={css.topBar}>
-        <BackBtn onBack={onBack} label="agenda" />
-        <h1 style={{ ...css.title, fontSize: 20 }}>Nueva Cita</h1>
-        <p style={css.subtitle}>agendar turno</p>
-      </div>
-      <div style={{ padding: "20px" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <label style={css.label}>clienta</label>
-            <select style={{ ...css.input, appearance: "none" }} value={form.clientaId} onChange={e => set("clientaId", e.target.value)}>
-              <option value="">seleccionar clienta...</option>
-              {clientas.map(c => <option key={c._id} value={c._id}>{c.nombre}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={css.label}>servicio</label>
-            <select style={{ ...css.input, appearance: "none" }} value={form.servicio} onChange={e => set("servicio", e.target.value)}>
-              <option value="">seleccionar servicio...</option>
-              {servicios.map(s => <option key={s._id} value={s.nombre}>{s.nombre} · ${s.precio?.toLocaleString("es-AR")}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={css.label}>fecha</label>
-            <input style={css.input} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} />
-          </div>
-          <div>
-            <label style={css.label}>hora</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {horas.map(h => (
-                <button key={h} style={{ ...css.glassBtn, padding: "8px 12px", background: form.hora === h ? G.greenMuted : G.bgCard, borderColor: form.hora === h ? G.green : G.border, color: form.hora === h ? G.greenLight : G.textSub }}
-                  onClick={() => set("hora", h)}>{h}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label style={css.label}>notas</label>
-            <textarea style={{ ...css.input, height: 80, resize: "none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder="indicaciones especiales..." />
-          </div>
-          <button style={{ ...css.greenBtn, opacity: guardando ? 0.6 : 1 }} onClick={handleGuardar} disabled={guardando}>
-            {guardando ? "guardando..." : "confirmar cita →"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── ADMIN: CLIENTAS ──────────────────────────────────────────────────────────
-function AdminClientas({ onNavigate, clientas, agregarClientas }) {
-  const [search, setSearch] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
-  const [nueva, setNueva] = useState({ nombre: "", telefono: "", mail: "", curva: "C", grosor: "0.07", largo: "11mm", alergias: "Ninguna", observaciones: "" });
-  const [guardado, setGuardado] = useState(false);
-  const setN = (k, v) => setNueva(f => ({ ...f, [k]: v }));
-
-  const filtradas = clientas.filter(c => c.nombre?.toLowerCase().includes(search.toLowerCase()));
-
-  const handleGuardar = async () => {
-    if (!nueva.nombre.trim()) return;
-    await agregarClientas(nueva);
-    setGuardado(true);
-    setTimeout(() => {
-      setGuardado(false); setModalOpen(false);
-      setNueva({ nombre: "", telefono: "", mail: "", curva: "C", grosor: "0.07", largo: "11mm", alergias: "Ninguna", observaciones: "" });
-    }, 1200);
-  };
-
-  return (
-    <div>
-      <div style={css.topBar}>
-        <h1 style={css.title}>Clientas</h1>
-        <p style={css.subtitle}>{clientas.length} registradas</p>
-      </div>
-      <div style={{ padding: "20px" }}>
-        <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-          <input style={{ ...css.input, flex: 1, margin: 0 }} placeholder="🔍  buscar clienta..." value={search} onChange={e => setSearch(e.target.value)} />
-          <button style={{ ...css.glassBtn, whiteSpace: "nowrap", background: G.greenMuted, borderColor: G.green, color: G.greenLight, fontWeight: 700 }} onClick={() => setModalOpen(true)}>+ nueva</button>
-        </div>
-
-        {filtradas.length === 0 && <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>no hay clientas aún ✦</p>}
-        {filtradas.map(c => {
-          const hist = c.historial ? Object.values(c.historial) : [];
-          return (
-            <div key={c._id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }} onClick={() => onNavigate("clienta-detalle", c)}>
-              <Avatar nombre={c.nombre || "?"} />
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontSize: 14 }}>{c.nombre}</p>
-                <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>curva {c.curva} · {c.grosor}mm · {c.largo}</p>
-                {c.alergias && c.alergias !== "Ninguna" && <p style={{ margin: "4px 0 0", color: G.red, fontFamily: "'DM Sans', sans-serif", fontSize: 10 }}>⚠ {c.alergias}</p>}
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <p style={{ margin: "0 0 2px", ...css.subtitle, fontSize: 10 }}>{hist.length} visitas</p>
-                <span style={{ fontSize: 16 }}>→</span>
-              </div>
+              }
             </div>
           );
         })}
+        </div>
       </div>
+    </div>
+  );
+}
 
-      {/* ── MODAL NUEVA CLIENTA ── */}
-      {modalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
-          onClick={e => { if (e.target === e.currentTarget) setModalOpen(false); }}>
-          <div style={{ background: "#111", border: `0.5px solid ${G.border}`, borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 430, maxHeight: "92vh", overflowY: "auto", padding: "24px 20px 40px" }}>
-            {/* Handle */}
-            <div style={{ width: 36, height: 4, background: G.border, borderRadius: 2, margin: "0 auto 20px" }} />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <div>
-                <h2 style={{ ...css.title, fontSize: 20, margin: 0 }}>Nueva Clienta</h2>
-                <p style={{ ...css.subtitle, margin: "4px 0 0" }}>ficha completa</p>
-              </div>
-              <button style={{ ...css.glassBtn, padding: "6px 12px", fontSize: 12 }} onClick={() => setModalOpen(false)}>✕</button>
+// ─── NUEVA CITA ─────────────────────────────────────────────────────────────────
+function NuevaCita({ data, pop, toast, fechaDefault="", horaDefault="" }) {
+  const [form, setForm] = useState({ clientaId:"", fecha:fechaDefault, hora:horaDefault, servicio:"", notas:"" });
+  const [saving, setSaving] = useState(false);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const ocupadas = data.citas.filter(c=>c.fecha===form.fecha && c.estado!=="completada").map(c=>c.hora);
+
+  const guardar = async () => {
+    if(!form.clientaId||!form.fecha||!form.hora||!form.servicio){ toast("completá todos los campos"); return; }
+    setSaving(true);
+    const clienta = data.clientas.find(c=>c._id===form.clientaId);
+    await data.crearCita({ ...form, clientaNombre: clienta?.nombre||"", estado:"confirmada" });
+    toast("✓ cita agendada");
+    pop();
+  };
+
+  return (
+    <div>
+      <div style={s.topBar}><Back onClick={pop} label="agenda"/><h1 style={s.h1}>Nueva Cita</h1></div>
+      <div style={{ padding:"18px" }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          <Field label="clienta">
+            <select style={{ ...s.input, appearance:"none" }} value={form.clientaId} onChange={e=>set("clientaId",e.target.value)}>
+              <option value="">seleccionar clienta...</option>
+              {data.clientas.map(c=><option key={c._id} value={c._id}>{c.nombre}</option>)}
+            </select>
+          </Field>
+          <Field label="servicio">
+            <select style={{ ...s.input, appearance:"none" }} value={form.servicio} onChange={e=>set("servicio",e.target.value)}>
+              <option value="">seleccionar servicio...</option>
+              {data.servicios.map(sv=><option key={sv._id} value={sv.nombre}>{sv.nombre} · {fmtPesos(sv.precio)}</option>)}
+            </select>
+          </Field>
+          <Field label="fecha">
+            <input style={s.input} type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/>
+          </Field>
+          <Field label="hora">
+            <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+              {SLOTS.map(h=>{
+                const oc=ocupadas.includes(h);
+                return <button key={h} disabled={oc} onClick={()=>set("hora",h)}
+                  style={{ ...s.btnGlass, padding:"8px 12px", fontSize:12, opacity:oc?0.3:1,
+                    background:form.hora===h?G.greenM:G.glass,
+                    borderColor:form.hora===h?G.green:G.border,
+                    color:form.hora===h?G.greenL:G.sub,
+                    cursor:oc?"not-allowed":"pointer" }}>
+                  {h}{oc?" ✕":""}
+                </button>;
+              })}
             </div>
+          </Field>
+          <Field label="notas (opcional)">
+            <textarea style={{ ...s.input, height:70, resize:"none" }} value={form.notas} onChange={e=>set("notas",e.target.value)} placeholder="indicaciones especiales..."/>
+          </Field>
+          <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"guardando...":"confirmar cita →"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {/* Datos personales */}
-              <div style={{ ...css.card, background: "rgba(143,189,90,0.04)", borderColor: G.greenDark }}>
-                <p style={{ ...css.sectionSub, margin: "0 0 12px" }}>datos personales</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div>
-                    <label style={css.label}>nombre y apellido *</label>
-                    <input style={css.input} value={nueva.nombre} onChange={e => setN("nombre", e.target.value)} placeholder="ej: Valentina Torres" />
-                  </div>
-                  <div>
-                    <label style={css.label}>teléfono</label>
-                    <input style={css.input} value={nueva.telefono} onChange={e => setN("telefono", e.target.value)} placeholder="11 XXXX-XXXX" type="tel" />
-                  </div>
-                  <div>
-                    <label style={css.label}>mail</label>
-                    <input style={css.input} value={nueva.mail} onChange={e => setN("mail", e.target.value)} placeholder="nombre@mail.com" type="email" />
-                  </div>
-                </div>
-              </div>
+// ─── DETALLE DE CITA ───────────────────────────────────────────────────────────
+function CitaDetalle({ data, pop, toast, cita:citaInit }) {
+  const [cita, setCita] = useState(citaInit);
+  const [modalPago, setModalPago] = useState(false);
+  const [pago, setPago] = useState({ metodo:"efectivo", monto:"" });
+  const [modalBorrar, setModalBorrar] = useState(false);
 
-              {/* Ficha técnica */}
-              <div style={css.card}>
-                <p style={{ ...css.sectionSub, margin: "0 0 12px" }}>ficha técnica</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div>
-                    <label style={css.label}>curva habitual</label>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {CURVAS.map(c => (
-                        <button key={c} style={{ ...css.glassBtn, padding: "6px 12px", fontSize: 12, background: nueva.curva === c ? G.greenMuted : G.bgCard, borderColor: nueva.curva === c ? G.green : G.border, color: nueva.curva === c ? G.greenLight : G.textSub }}
-                          onClick={() => setN("curva", c)}>{c}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label style={css.label}>grosor</label>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {GROSOR.map(g => (
-                        <button key={g} style={{ ...css.glassBtn, padding: "6px 10px", fontSize: 11, background: nueva.grosor === g ? G.greenMuted : G.bgCard, borderColor: nueva.grosor === g ? G.green : G.border, color: nueva.grosor === g ? G.greenLight : G.textSub }}
-                          onClick={() => setN("grosor", g)}>{g}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label style={css.label}>largo</label>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {LARGO.map(l => (
-                        <button key={l} style={{ ...css.glassBtn, padding: "6px 10px", fontSize: 11, background: nueva.largo === l ? G.greenMuted : G.bgCard, borderColor: nueva.largo === l ? G.green : G.border, color: nueva.largo === l ? G.greenLight : G.textSub }}
-                          onClick={() => setN("largo", l)}>{l}</button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+  const servicio = data.servicios.find(s=>s.nombre===cita.servicio);
+  const clienta = data.clientas.find(c=>c._id===cita.clientaId);
 
-              {/* Ficha médica */}
-              <div style={css.card}>
-                <p style={{ ...css.sectionSub, margin: "0 0 12px" }}>ficha médica</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div>
-                    <label style={css.label}>alergias / condiciones</label>
-                    <input style={css.input} value={nueva.alergias} onChange={e => setN("alergias", e.target.value)} placeholder="Ninguna, o especificar..." />
-                  </div>
-                  <div>
-                    <label style={css.label}>observaciones</label>
-                    <textarea style={{ ...css.input, height: 70, resize: "none" }} value={nueva.observaciones} onChange={e => setN("observaciones", e.target.value)} placeholder="ej: prefiere look natural, sensible al adhesivo..." />
-                  </div>
-                </div>
-              </div>
+  const completar = async () => {
+    if(!pago.monto){ toast("ingresá el monto"); return; }
+    await data.registrarPago(cita.clientaId, cita._id, { fecha:cita.fecha, servicio:cita.servicio, curva:clienta?.curva||"", monto:Number(pago.monto), pago:pago.metodo, notas:cita.notas||"" });
+    toast("✓ cita completada y pago registrado");
+    setModalPago(false);
+    setCita(p=>({...p, estado:"completada"}));
+  };
 
-              <button
-                style={{ ...css.greenBtn, opacity: nueva.nombre.trim() ? 1 : 0.4 }}
-                onClick={handleGuardar}
-                disabled={!nueva.nombre.trim()}>
-                {guardado ? "✓ clienta guardada" : "guardar clienta →"}
-              </button>
+  const borrar = async () => {
+    await data.borrarCita(cita._id);
+    toast("cita eliminada");
+    pop();
+  };
+
+  return (
+    <div>
+      <div style={s.topBar}><Back onClick={pop}/><h1 style={s.h1}>Detalle de Cita</h1><p style={s.sub}>{cita.fecha} · {cita.hora}</p></div>
+      <div style={{ padding:"18px" }}>
+        {/* Clienta */}
+        {clienta&&(
+          <div style={{ ...s.card, display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
+            <Avatar nombre={clienta.nombre} size={46}/>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{clienta.nombre}</p>
+              <p style={{ margin:0, ...s.sub, fontSize:11 }}>curva {clienta.curva} · {clienta.largo}</p>
+              {clienta.alergias&&clienta.alergias!=="Ninguna"&&<p style={{ margin:"3px 0 0", color:G.red, fontSize:10 }}>⚠ {clienta.alergias}</p>}
+            </div>
+          </div>
+        )}
+
+        {/* Servicio */}
+        <div style={{ ...s.card, marginBottom:12 }}>
+          <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 6px", textTransform:"lowercase", letterSpacing:"0.08em" }}>servicio</p>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 6px" }}>{cita.servicio}</p>
+          {servicio&&<p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{servicio.descripcion}</p>}
+          <div style={{ display:"flex", gap:8 }}>
+            <div style={{ flex:1, background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px" }}>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>duración</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, margin:0 }}>{servicio?.duracion||"—"}min</p>
+            </div>
+            <div style={{ flex:1, background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px" }}>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>precio</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.green, margin:0 }}>{fmtPesos(servicio?.precio)}</p>
             </div>
           </div>
         </div>
+
+        {cita.notas&&<div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:12 }}>
+          <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 4px" }}>notas</p>
+          <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{cita.notas}</p>
+        </div>}
+
+        <span style={{ ...s.tag, marginBottom:16, display:"inline-block" }}>{cita.estado}</span>
+
+        {/* Acciones */}
+        {cita.estado!=="completada"&&(
+          <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
+            <button style={s.btnGreen} onClick={()=>setModalPago(true)}>✓ marcar como completada</button>
+            <button style={{ ...s.btnGlass, width:"100%" }} onClick={()=>openWA(`Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita el ${cita.fecha} a las ${cita.hora}. ¡Te espero! 💚`)}>💬 recordatorio WA</button>
+            <button style={{ ...s.btnRed, width:"100%" }} onClick={()=>setModalBorrar(true)}>eliminar cita</button>
+          </div>
+        )}
+        {cita.estado==="completada"&&<p style={{ color:G.green, fontFamily:F.sans, fontSize:13, textAlign:"center" }}>✓ cita completada y pago registrado</p>}
+      </div>
+
+      {/* Modal pago */}
+      {modalPago&&(
+        <Sheet titulo="Registrar pago" onClose={()=>setModalPago(false)}>
+          <Field label="método de pago">
+            <div style={{ display:"flex", gap:8 }}>
+              {["efectivo","transferencia"].map(m=>(
+                <button key={m} onClick={()=>setPago(p=>({...p,metodo:m}))} style={{ ...s.btnGlass, flex:1, background:pago.metodo===m?G.greenM:G.glass, borderColor:pago.metodo===m?G.green:G.border, color:pago.metodo===m?G.greenL:G.sub }}>{m}</button>
+              ))}
+            </div>
+          </Field>
+          <Field label="monto cobrado">
+            <input style={s.input} type="number" value={pago.monto} onChange={e=>setPago(p=>({...p,monto:e.target.value}))} placeholder={fmtPesos(servicio?.precio)}/>
+          </Field>
+          <button style={s.btnGreen} onClick={completar}>guardar y cerrar cita →</button>
+        </Sheet>
+      )}
+
+      {modalBorrar&&<Modal titulo="Eliminar cita" msg={`¿Segura que querés eliminar la cita de ${cita.clientaNombre}?`} onOk={borrar} onCancel={()=>setModalBorrar(false)} okLabel="eliminar" danger/>}
+    </div>
+  );
+}
+
+// ─── ADMIN: CLIENTAS ───────────────────────────────────────────────────────────
+function AdminClientas({ data, push, toast }) {
+  const [search, setSearch] = useState("");
+  const [sheet, setSheet] = useState(false);
+  const [form, setForm] = useState({ nombre:"", email:"", telefono:"", curva:"C", grosor:"0.07", largo:"11mm", alergias:"Ninguna", observaciones:"" });
+  const [saving, setSaving] = useState(false);
+  const [credenciales, setCredenciales] = useState(null);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const filtradas = data.clientas.filter(c=>c.nombre?.toLowerCase().includes(search.toLowerCase()));
+
+  const guardar = async () => {
+    if(!form.nombre||!form.email){ toast("nombre y email son obligatorios"); return; }
+    setSaving(true);
+    const res = await data.crearClientas(form);
+    setSaving(false);
+    if(res.error){ toast("error: "+res.error); return; }
+    setSheet(false);
+    setCredenciales({ email: res.email, pass: res.pass, nombre: form.nombre });
+    setForm({ nombre:"", email:"", telefono:"", curva:"C", grosor:"0.07", largo:"11mm", alergias:"Ninguna", observaciones:"" });
+  };
+
+  return (
+    <div>
+      <div style={s.topBar}><h1 style={s.h1}>Clientas</h1><p style={s.sub}>{data.clientas.length} registradas</p></div>
+      <div style={{ padding:"18px" }}>
+        <div style={{ display:"flex", gap:9, marginBottom:14 }}>
+          <input style={{ ...s.input, flex:1, margin:0 }} placeholder="🔍 buscar..." value={search} onChange={e=>setSearch(e.target.value)}/>
+          <button style={{ ...s.btnGreen, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={()=>setSheet(true)}>+ nueva</button>
+        </div>
+        {filtradas.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin clientas aún ✦</p>}
+        {filtradas.map(c=>(<div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11, cursor:"pointer" }} onClick={()=>push("clienta-detalle",{clienta:c})}>
+          <Avatar nombre={c.nombre}/>
+          <div style={{ flex:1 }}>
+            <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{c.nombre}</p>
+            <p style={{ margin:0, ...s.sub, fontSize:11 }}>curva {c.curva} · {c.grosor}mm · {c.largo}</p>
+            {c.alergias&&c.alergias!=="Ninguna"&&<p style={{ margin:"3px 0 0", color:G.red, fontSize:10 }}>⚠ {c.alergias}</p>}
+          </div>
+          <span style={{ fontSize:15, color:G.muted }}>→</span>
+        </div>))}
+      </div>
+
+      {/* Sheet nueva clienta */}
+      {sheet&&(
+        <Sheet titulo="Nueva Clienta" onClose={()=>setSheet(false)}>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <Field label="nombre y apellido *"><input style={s.input} value={form.nombre} onChange={e=>set("nombre",e.target.value)} placeholder="Nombre Apellido"/></Field>
+            <Field label="email * (será su usuario de acceso)"><input style={s.input} type="email" value={form.email} onChange={e=>set("email",e.target.value)} placeholder="vale@gmail.com"/></Field>
+            <Field label="teléfono"><input style={s.input} type="tel" value={form.telefono} onChange={e=>set("telefono",e.target.value)} placeholder="11 XXXX-XXXX"/></Field>
+            <div style={s.divider}/>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>Ficha técnica</p>
+            <Field label="curva habitual"><ChipSelector options={CURVAS} value={form.curva} onChange={v=>set("curva",v)}/></Field>
+            <Field label="grosor"><ChipSelector options={GROSOR} value={form.grosor} onChange={v=>set("grosor",v)}/></Field>
+            <Field label="largo"><ChipSelector options={LARGO} value={form.largo} onChange={v=>set("largo",v)}/></Field>
+            <div style={s.divider}/>
+            <Field label="alergias / condiciones"><input style={s.input} value={form.alergias} onChange={e=>set("alergias",e.target.value)} placeholder="Ninguna"/></Field>
+            <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e=>set("observaciones",e.target.value)} placeholder="preferencias, notas..."/></Field>
+            <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"creando cuenta...":"crear clienta →"}</button>
+            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, textAlign:"center" }}>Se creará un usuario automáticamente con una contraseña generada</p>
+          </div>
+        </Sheet>
+      )}
+
+      {/* Sheet credenciales generadas */}
+      {credenciales&&(
+        <Sheet titulo="✓ Clienta creada" onClose={()=>setCredenciales(null)}>
+          <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
+            <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"0 0 4px" }}>enviá estas credenciales a {credenciales.nombre}:</p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 3px" }}>📧 <b style={{ color:G.white }}>{credenciales.email}</b></p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}>🔑 contraseña: <b style={{ color:G.white }}>{credenciales.pass}</b></p>
+          </div>
+          <button style={s.btnGreen} onClick={()=>{ openWA(`Hola ${credenciales.nombre?.split(" ")[0]}! 🌿 Te creé tu acceso a Lash Studio:\n\n📧 Email: ${credenciales.email}\n🔑 Contraseña: ${credenciales.pass}\n\nEntrá desde: https://lash-studio-gilt.vercel.app`); setCredenciales(null); }}>
+            💬 enviar por WhatsApp →
+          </button>
+        </Sheet>
       )}
     </div>
   );
 }
 
-// ─── CLIENTA DETALLE (ADMIN) ──────────────────────────────────────────────────
-function ClientaDetalle({ clienta, onBack }) {
+// ─── DETALLE CLIENTA (ADMIN) ───────────────────────────────────────────────────
+function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
+  const [clienta, setClienta] = useState(cInit);
   const [tab, setTab] = useState("info");
+  const [editando, setEditando] = useState(false);
+  const [form, setForm] = useState({ nombre:cInit.nombre, telefono:cInit.telefono||"", curva:cInit.curva||"C", grosor:cInit.grosor||"0.07", largo:cInit.largo||"11mm", alergias:cInit.alergias||"Ninguna", observaciones:cInit.observaciones||"" });
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const hist = Array.isArray(clienta.historial) ? clienta.historial : (clienta.historial ? Object.values(clienta.historial) : []);
+  const citasClientas = data.citas.filter(c=>c.clientaId===clienta._id && c.estado!=="completada").sort((a,b)=>a.fecha.localeCompare(b.fecha));
+
+  const guardar = async () => {
+    await data.editarClientas(clienta._id, form);
+    setClienta(p=>({...p,...form})); setEditando(false); toast("✓ cambios guardados");
+  };
 
   return (
     <div>
-      <div style={css.topBar}>
-        <BackBtn onBack={onBack} label="clientas" />
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar nombre={clienta.nombre} size={44} />
-          <div>
-            <h1 style={{ ...css.title, fontSize: 18 }}>{clienta.nombre}</h1>
-            <p style={css.subtitle}>{clienta.historial.length} visitas registradas</p>
-          </div>
+      <div style={s.topBar}>
+        <Back onClick={pop} label="clientas"/>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <Avatar nombre={clienta.nombre} size={42}/>
+          <div><h1 style={{ ...s.h1, fontSize:18 }}>{clienta.nombre}</h1><p style={s.sub}>{hist.length} visitas registradas</p></div>
         </div>
       </div>
-      <div style={{ padding: "20px" }}>
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          {["info", "ficha", "historial"].map(t => (
-            <button key={t} style={{ ...css.glassBtn, flex: 1, fontSize: 10, background: tab === t ? G.greenMuted : G.bgCard, borderColor: tab === t ? G.green : G.border, color: tab === t ? G.greenLight : G.textSub }}
-              onClick={() => setTab(t)}>{t}</button>
+      <div style={{ padding:"18px" }}>
+        <div style={{ display:"flex", gap:7, marginBottom:16 }}>
+          {["info","ficha","historial","citas"].map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={{ ...s.btnGlass, flex:1, fontSize:10, padding:"7px 4px", background:tab===t?G.greenM:G.glass, borderColor:tab===t?G.green:G.border, color:tab===t?G.greenL:G.sub }}>{t}</button>
           ))}
         </div>
 
-        {tab === "info" && (
+        {tab==="info"&&(
           <div>
-            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-              <button style={{ ...css.greenBtn, flex: 1 }} onClick={() => openWA(`Hola ${clienta.nombre.split(" ")[0]}! 🌿`)}>
-                📱 WhatsApp
-              </button>
-              <button style={{ ...css.glassBtn, flex: 1 }}>✉ mail</button>
+            <div style={{ display:"flex", gap:9, marginBottom:14 }}>
+              <button style={{ ...s.btnGreen, flex:1 }} onClick={()=>openWA(`Hola ${clienta.nombre?.split(" ")[0]}! 🌿`)}>💬 WhatsApp</button>
+              <button style={{ ...s.btnGlass, flex:1 }} onClick={()=>setEditando(e=>!e)}>{editando?"cancelar":"✎ editar"}</button>
             </div>
-            <div style={css.card}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {[
-                  ["teléfono", clienta.telefono],
-                  ["mail", clienta.mail],
-                  ["curva habitual", clienta.curva],
-                  ["grosor", clienta.grosor + "mm"],
-                  ["largo", clienta.largo],
-                ].map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ ...css.label, margin: 0 }}>{k}</span>
-                    <span style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: G.textSub }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {clienta.observaciones && (
-              <div style={{ ...css.card, marginTop: 0, background: "rgba(143,189,90,0.05)", borderColor: G.greenDark }}>
-                <p style={css.statLabel}>observaciones</p>
-                <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 12, color: G.textSub }}>{clienta.observaciones}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {tab === "ficha" && (
-          <div>
-            <div style={css.card}>
-              <p style={css.statLabel}>curva</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-                {CURVAS.map(c => <span key={c} style={{ ...css.tag, background: c === clienta.curva ? G.greenMuted : "transparent", borderColor: c === clienta.curva ? G.green : G.border, color: c === clienta.curva ? G.greenLight : G.textMuted }}>{c}</span>)}
-              </div>
-              <p style={css.statLabel}>grosor</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-                {GROSOR.map(g => <span key={g} style={{ ...css.tag, background: g === clienta.grosor ? G.greenMuted : "transparent", borderColor: g === clienta.grosor ? G.green : G.border, color: g === clienta.grosor ? G.greenLight : G.textMuted }}>{g}</span>)}
-              </div>
-              <p style={css.statLabel}>largo</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {LARGO.map(l => <span key={l} style={{ ...css.tag, background: l === clienta.largo ? G.greenMuted : "transparent", borderColor: l === clienta.largo ? G.green : G.border, color: l === clienta.largo ? G.greenLight : G.textMuted }}>{l}</span>)}
-              </div>
-            </div>
-            <div style={{ ...css.card, marginTop: 0 }}>
-              <p style={css.statLabel}>alergias / condiciones</p>
-              <p style={{ margin: 0, color: clienta.alergias !== "Ninguna" ? G.red : G.textSub, fontFamily: "'Courier New', monospace", fontSize: 12 }}>{clienta.alergias}</p>
+            <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:11 }}>
+              {editando
+                ? <>
+                    <Field label="nombre"><input style={s.input} value={form.nombre} onChange={e=>set("nombre",e.target.value)}/></Field>
+                    <Field label="teléfono"><input style={s.input} value={form.telefono} onChange={e=>set("telefono",e.target.value)}/></Field>
+                    <button style={s.btnGreen} onClick={guardar}>guardar →</button>
+                  </>
+                : [["teléfono",clienta.telefono||"—"],["email",clienta.email||"—"],["clienta desde",fmtFecha(clienta.creadaEn)]].map(([k,v])=>(
+                    <div key={k} style={{ display:"flex", justifyContent:"space-between" }}>
+                      <span style={{ ...s.label, margin:0 }}>{k}</span>
+                      <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</span>
+                    </div>
+                  ))
+              }
             </div>
           </div>
         )}
 
-        {tab === "historial" && (
+        {tab==="ficha"&&(
           <div>
-            {clienta.historial.map((h, i) => (
-              <div key={i} style={css.card}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+            <div style={{ ...s.card }}>
+              <Field label="curva"><ChipSelector options={CURVAS} value={form.curva} onChange={v=>{ set("curva",v); data.editarClientas(clienta._id,{curva:v}); }}/></Field>
+              <Field label="grosor"><ChipSelector options={GROSOR} value={form.grosor} onChange={v=>{ set("grosor",v); data.editarClientas(clienta._id,{grosor:v}); }}/></Field>
+              <Field label="largo"><ChipSelector options={LARGO} value={form.largo} onChange={v=>{ set("largo",v); data.editarClientas(clienta._id,{largo:v}); }}/></Field>
+            </div>
+            <div style={{ ...s.card }}>
+              <Field label="alergias / condiciones">
+                <input style={s.input} value={form.alergias} onChange={e=>set("alergias",e.target.value)} onBlur={()=>data.editarClientas(clienta._id,{alergias:form.alergias})}/>
+              </Field>
+              <Field label="observaciones">
+                <textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e=>set("observaciones",e.target.value)} onBlur={()=>data.editarClientas(clienta._id,{observaciones:form.observaciones})}/>
+              </Field>
+            </div>
+          </div>
+        )}
+
+        {tab==="historial"&&(
+          <div>
+            {hist.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin historial aún ✦</p>}
+            {[...hist].reverse().map((h,i)=>(
+              <div key={i} style={s.card}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
                   <div>
-                    <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontSize: 14 }}>{h.servicio}</p>
-                    <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>{h.fecha} · curva {h.curva}</p>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p>
+                    <p style={{ margin:0, ...s.sub, fontSize:11 }}>{fmtFecha(h.fecha)} · curva {h.curva}</p>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontWeight: 700, color: G.green, fontSize: 14 }}>${h.monto.toLocaleString("es-AR")}</p>
-                    <span style={{ ...css.tag, fontSize: 9, padding: "1px 6px", marginRight: 0 }}>{h.pago}</span>
+                  <div style={{ textAlign:"right" }}>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(h.monto)}</p>
+                    <span style={s.tag}>{h.pago}</span>
                   </div>
                 </div>
-                {h.notas && <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 11, color: G.textMuted }}>{h.notas}</p>}
+                {h.notas&&<p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{h.notas}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab==="citas"&&(
+          <div>
+            <button style={{ ...s.btnGreen, marginBottom:14 }} onClick={()=>push("nueva-cita",{clientaIdDefault:clienta._id})}>+ nueva cita para {clienta.nombre?.split(" ")[0]}</button>
+            {citasClientas.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin citas próximas ✦</p>}
+            {citasClientas.map(c=>(
+              <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={()=>push("cita-detalle",{cita:c})}>
+                <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center" }}>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{c.fecha?.slice(5).replace("-","/")}</p>
+                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.greenL }}>{c.hora}</p>
+                </div>
+                <div style={{ flex:1 }}>
+                  <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{c.servicio}</p>
+                  <span style={s.tag}>{c.estado}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -1294,109 +1038,102 @@ function ClientaDetalle({ clienta, onBack }) {
   );
 }
 
-// ─── ADMIN: FINANZAS ──────────────────────────────────────────────────────────
-function AdminFinanzas({ clientas, servicios }) {
+// ─── ADMIN: FINANZAS ───────────────────────────────────────────────────────────
+function AdminFinanzas({ data }) {
   const [periodo, setPeriodo] = useState("mes");
-  const mesActual = new Date().toISOString().slice(0, 7);
-  const todosLosIngresos = clientas.flatMap(c =>
-    c.historial ? Object.values(c.historial) : []
-  );
-  const totalMes = todosLosIngresos.filter(h => h.fecha?.startsWith(mesActual)).reduce((a, h) => a + (h.monto || 0), 0);
-  const totalTransf = todosLosIngresos.filter(h => h.pago === "transferencia").reduce((a, h) => a + (h.monto || 0), 0);
-  const totalEfectivo = todosLosIngresos.filter(h => h.pago === "efectivo").reduce((a, h) => a + (h.monto || 0), 0);
-  const totalGral = totalTransf + totalEfectivo || 1;
+  const hoy = hoyISO();
+  const mes = hoy.slice(0,7);
+  const anio = hoy.slice(0,4);
+
+  const todoElHistorial = data.clientas.flatMap(c=> Array.isArray(c.historial)?c.historial:(c.historial?Object.values(c.historial):[]));
+
+  const filtrar = (h) => {
+    if(periodo==="mes") return h.fecha?.startsWith(mes);
+    if(periodo==="año") return h.fecha?.startsWith(anio);
+    return true;
+  };
+
+  const ingresos = todoElHistorial.filter(filtrar);
+  const total = ingresos.reduce((a,h)=>a+(h.monto||0),0);
+  const transf = ingresos.filter(h=>h.pago==="transferencia").reduce((a,h)=>a+(h.monto||0),0);
+  const efect = ingresos.filter(h=>h.pago==="efectivo").reduce((a,h)=>a+(h.monto||0),0);
+  const denom = transf+efect||1;
+
   const porServicio = {};
-  servicios.forEach(s => { porServicio[s.nombre] = 0; });
-  todosLosIngresos.forEach(h => { if (porServicio[h.servicio] !== undefined) porServicio[h.servicio] += (h.monto || 0); });
+  ingresos.forEach(h=>{ porServicio[h.servicio]=(porServicio[h.servicio]||0)+(h.monto||0); });
+  const maxSv = Math.max(...Object.values(porServicio),1);
+
+  const topClientas = data.clientas.map(c=>{
+    const hist = Array.isArray(c.historial)?c.historial:(c.historial?Object.values(c.historial):[]);
+    return { ...c, total: hist.filter(filtrar).reduce((a,h)=>a+(h.monto||0),0), visitas: hist.filter(filtrar).length };
+  }).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
 
   return (
     <div>
-      <div style={css.topBar}>
-        <h1 style={css.title}>Finanzas</h1>
-        <p style={css.subtitle}>resumen de ingresos</p>
-      </div>
-      <div style={{ padding: "20px" }}>
-        {/* Periodo */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          {["semana", "mes", "año"].map(p => (
-            <button key={p} style={{ ...css.glassBtn, flex: 1, fontSize: 10, background: periodo === p ? G.greenMuted : G.bgCard, borderColor: periodo === p ? G.green : G.border, color: periodo === p ? G.greenLight : G.textSub }}
-              onClick={() => setPeriodo(p)}>{p}</button>
+      <div style={s.topBar}><h1 style={s.h1}>Finanzas</h1><p style={s.sub}>resumen de ingresos</p></div>
+      <div style={{ padding:"18px" }}>
+        <div style={{ display:"flex", gap:8, marginBottom:18 }}>
+          {["mes","año","todo"].map(p=>(
+            <button key={p} onClick={()=>setPeriodo(p)} style={{ ...s.btnGlass, flex:1, fontSize:11, background:periodo===p?G.greenM:G.glass, borderColor:periodo===p?G.green:G.border, color:periodo===p?G.greenL:G.sub }}>{p}</button>
           ))}
         </div>
 
         {/* Total */}
-        <div style={{ ...css.card, textAlign: "center", padding: "24px 16px", marginBottom: 12 }}>
-          <p style={{ ...css.statLabel, textAlign: "center" }}>ingresos totales · {periodo}</p>
-          <p style={{ fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 36, color: G.green, margin: "4px 0 8px" }}>
-            ${totalMes.toLocaleString("es-AR")}
-          </p>
-          <p style={{ ...css.subtitle, textAlign: "center" }}>{new Date().toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</p>
+        <div style={{ ...s.card, textAlign:"center", padding:"22px 16px", marginBottom:12 }}>
+          <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 6px", textTransform:"lowercase", letterSpacing:"0.08em" }}>total · {periodo==="mes"?new Date().toLocaleDateString("es-AR",{month:"long",year:"numeric"}):periodo==="año"?anio:"histórico"}</p>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:36, color:G.green, margin:"0 0 4px" }}>{fmtPesos(total)}</p>
+          <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0 }}>{ingresos.length} servicios</p>
         </div>
 
         {/* Efectivo vs Transferencia */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-          <div style={{ ...css.statCard, flex: 1, borderColor: G.border }}>
-            <p style={css.statLabel}>transferencia</p>
-            <p style={{ ...css.statVal, fontSize: 18, color: G.green }}>${(totalTransf / 1000).toFixed(0)}k</p>
-            <p style={{ ...css.subtitle, fontSize: 9, margin: 0 }}>
-              {Math.round((totalTransf / totalGral) * 100)}%
-            </p>
+        {total>0&&(
+          <div style={{ display:"flex", gap:9, marginBottom:14 }}>
+            <div style={{ ...s.card, flex:1, margin:0 }}>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>transferencia</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.green, margin:"0 0 2px" }}>{fmtPesos(transf)}</p>
+              <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{Math.round(transf/denom*100)}%</p>
+            </div>
+            <div style={{ ...s.card, flex:1, margin:0 }}>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>efectivo</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, margin:"0 0 2px" }}>{fmtPesos(efect)}</p>
+              <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{Math.round(efect/denom*100)}%</p>
+            </div>
           </div>
-          <div style={{ ...css.statCard, flex: 1 }}>
-            <p style={css.statLabel}>efectivo</p>
-            <p style={{ ...css.statVal, fontSize: 18 }}>${(totalEfectivo / 1000).toFixed(0)}k</p>
-            <p style={{ ...css.subtitle, fontSize: 9, margin: 0 }}>
-              {Math.round((totalEfectivo / totalGral) * 100)}%
-            </p>
-          </div>
-        </div>
+        )}
 
-        <div style={css.divider} />
+        <div style={s.divider}/>
 
         {/* Por servicio */}
-        <p style={css.sectionTitle}>por servicio</p>
-        <p style={css.sectionSub}>histórico</p>
-        {Object.entries(porServicio).filter(([, v]) => v > 0).length === 0 && (
-          <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>aún sin registros ✦</p>
-        )}
-        {Object.entries(porServicio).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([nombre, total]) => {
-          const max = Math.max(...Object.values(porServicio));
-          return (
-            <div key={nombre} style={{ ...css.card, padding: "12px 14px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <p style={{ margin: 0, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>{nombre}</p>
-                <p style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 13, color: G.green }}>${total.toLocaleString("es-AR")}</p>
-              </div>
-              <div style={{ height: 3, background: G.border, borderRadius: 2 }}>
-                <div style={{ height: "100%", width: `${(total / max) * 100}%`, background: G.green, borderRadius: 2, transition: "width 0.5s ease" }} />
-              </div>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>por servicio</p>
+        <p style={{ ...s.sub, marginBottom:12 }}>ingresos del período</p>
+        {Object.entries(porServicio).length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin registros en este período ✦</p>}
+        {Object.entries(porServicio).sort((a,b)=>b[1]-a[1]).map(([nom,tot])=>(
+          <div key={nom} style={{ ...s.card, padding:"11px 13px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p>
+              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmtPesos(tot)}</p>
             </div>
-          );
-        })}
+            <div style={{ height:3, background:G.border, borderRadius:2 }}>
+              <div style={{ height:"100%", width:`${(tot/maxSv)*100}%`, background:G.green, borderRadius:2 }}/>
+            </div>
+          </div>
+        ))}
 
-        <div style={css.divider} />
+        <div style={s.divider}/>
 
         {/* Top clientas */}
-        <p style={css.sectionTitle}>top clientas</p>
-        <p style={css.sectionSub}>por gasto histórico</p>
-        {clientas.length === 0 && <p style={{ color: G.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>aún sin clientas ✦</p>}
-        {clientas.map(c => {
-          const hist = c.historial ? Object.values(c.historial) : [];
-          const total = hist.reduce((a, h) => a + (h.monto || 0), 0);
-          return { ...c, histArr: hist, total };
-        }).sort((a, b) => b.total - a.total).map((c, i) => (
-          <div key={c._id} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 20, color: i === 0 ? G.green : G.textMuted, minWidth: 24 }}>
-              {i + 1}
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>top clientas</p>
+        <p style={{ ...s.sub, marginBottom:12 }}>por gasto en el período</p>
+        {topClientas.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin datos ✦</p>}
+        {topClientas.map((c,i)=>(
+          <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11 }}>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i===0?G.green:G.muted, minWidth:22, margin:0 }}>{i+1}</p>
+            <Avatar nombre={c.nombre} size={34}/>
+            <div style={{ flex:1 }}>
+              <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p>
+              <p style={{ margin:0, ...s.sub, fontSize:10 }}>{c.visitas} visitas</p>
             </div>
-            <Avatar nombre={c.nombre || "?"} size={36} />
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: "0 0 2px", fontFamily: "'Playfair Display', serif", fontSize: 13 }}>{c.nombre}</p>
-              <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>{c.histArr.length} visitas</p>
-            </div>
-            <p style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontWeight: 700, color: G.green, fontSize: 14 }}>
-              ${c.total.toLocaleString("es-AR")}
-            </p>
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(c.total)}</p>
           </div>
         ))}
       </div>
@@ -1404,47 +1141,165 @@ function AdminFinanzas({ clientas, servicios }) {
   );
 }
 
-// ─── ADMIN: CONFIG ────────────────────────────────────────────────────────────
-function AdminConfig({ servicios }) {
-  const [tab, setTab] = useState("servicios");
+// ─── HORARIOS CONFIG ──────────────────────────────────────────────────────────
+function HorariosConfig({ toast }) {
+  const [excepciones, setExcepciones] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [nuevaFecha, setNuevaFecha] = useState("");
+  const [nuevaRazon, setNuevaRazon] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [confirmarBorrar, setConfirmarBorrar] = useState(null);
+
+  useEffect(()=>{
+    db.get("excepciones").then(data=>{ setExcepciones(data.sort((a,b)=>a.fecha?.localeCompare(b.fecha))); setLoading(false); });
+  },[]);
+
+  const agregar = async () => {
+    if(!nuevaFecha){ toast("elegí una fecha"); return; }
+    if(excepciones.find(e=>e.fecha===nuevaFecha)){ toast("esa fecha ya está marcada"); return; }
+    setGuardando(true);
+    const id = await db.push("excepciones", { fecha: nuevaFecha, razon: nuevaRazon||"día no laborable" });
+    const nueva = { fecha: nuevaFecha, razon: nuevaRazon||"día no laborable", _id: id };
+    setExcepciones(p=>[...p, nueva].sort((a,b)=>a.fecha.localeCompare(b.fecha)));
+    setNuevaFecha(""); setNuevaRazon("");
+    setGuardando(false); toast("✓ excepción guardada");
+  };
+
+  const borrar = async (id) => {
+    await db.delete(`excepciones/${id}`);
+    setExcepciones(p=>p.filter(e=>e._id!==id));
+    setConfirmarBorrar(null); toast("excepción eliminada");
+  };
+
+  const hoy = hoyISO();
+  const futuras = excepciones.filter(e=>e.fecha>=hoy);
+  const pasadas = excepciones.filter(e=>e.fecha<hoy);
 
   return (
     <div>
-      <div style={css.topBar}>
-        <h1 style={css.title}>Configuración</h1>
-        <p style={css.subtitle}>parámetros del estudio</p>
+      {/* Agregar excepción */}
+      <div style={{ ...s.card, background:"rgba(143,189,90,0.04)", borderColor:G.greenD, marginBottom:16 }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 12px" }}>marcar día no laborable</p>
+        <Field label="fecha">
+          <input style={s.input} type="date" value={nuevaFecha} min={hoy} onChange={e=>setNuevaFecha(e.target.value)}/>
+        </Field>
+        <Field label="razón (opcional)">
+          <input style={s.input} value={nuevaRazon} onChange={e=>setNuevaRazon(e.target.value)} placeholder="ej: vacaciones, feriado, evento personal..."/>
+        </Field>
+        <button style={{ ...s.btnGreen, opacity:guardando?0.6:1 }} onClick={agregar} disabled={guardando}>
+          {guardando?"guardando...":"agregar excepción →"}
+        </button>
       </div>
-      <div style={{ padding: "20px" }}>
-        <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-          {["servicios", "horarios", "info"].map(t => (
-            <button key={t} style={{ ...css.glassBtn, fontSize: 10, background: tab === t ? G.greenMuted : G.bgCard, borderColor: tab === t ? G.green : G.border, color: tab === t ? G.greenLight : G.textSub }}
-              onClick={() => setTab(t)}>{t}</button>
+
+      {loading && <p style={{ color:G.muted, fontSize:13 }}>cargando...</p>}
+
+      {/* Próximas excepciones */}
+      {futuras.length>0&&(
+        <>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>días bloqueados próximos</p>
+          {futuras.map(e=>{
+            const dt = new Date(e.fecha+"T12:00:00");
+            const diasFaltan = Math.ceil((dt-new Date())/(1000*60*60*24));
+            return (
+              <div key={e._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:12 }}>
+                <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center", minWidth:50 }}>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{e.fecha?.slice(5).replace("-","/")} </p>
+                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.greenL }}>{DIAS_F[dt.getDay()].slice(0,3)}</p>
+                </div>
+                <div style={{ flex:1 }}>
+                  <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:13 }}>{e.razon}</p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>
+                    {diasFaltan===0?"hoy":diasFaltan===1?"mañana":`en ${diasFaltan} días`}
+                  </p>
+                </div>
+                <button style={{ ...s.btnRed, padding:"6px 10px", fontSize:12 }} onClick={()=>setConfirmarBorrar(e)}>✕</button>
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {futuras.length===0&&!loading&&(
+        <p style={{ color:G.muted, fontSize:13, marginBottom:16 }}>no hay días bloqueados próximos ✦</p>
+      )}
+
+      {/* Pasadas (colapsadas) */}
+      {pasadas.length>0&&(
+        <details style={{ marginTop:8 }}>
+          <summary style={{ fontFamily:F.sans, fontSize:12, color:G.muted, cursor:"pointer", padding:"8px 0", letterSpacing:"0.04em" }}>
+            ver excepciones pasadas ({pasadas.length})
+          </summary>
+          <div style={{ marginTop:10 }}>
+            {pasadas.reverse().map(e=>(
+              <div key={e._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:12, opacity:0.5 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted, flex:1 }}>{fmtFecha(e.fecha)} — {e.razon}</p>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {confirmarBorrar&&<Modal titulo="Eliminar excepción" msg={`¿Eliminar el bloqueo del ${fmtFecha(confirmarBorrar.fecha)}?`} onOk={()=>borrar(confirmarBorrar._id)} onCancel={()=>setConfirmarBorrar(null)} okLabel="eliminar" danger/>}
+    </div>
+  );
+}
+
+// ─── ADMIN: CONFIG ─────────────────────────────────────────────────────────────
+function AdminConfig({ data, toast }) {
+  const [tab, setTab] = useState("servicios");
+  const [sheetSv, setSheetSv] = useState(false);
+  const [editSv, setEditSv] = useState(null); // null = nuevo
+  const [formSv, setFormSv] = useState({ nombre:"", precio:"", duracion:"", descripcion:"" });
+  const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState(null);
+  const setSv = (k,v) => setFormSv(f=>({...f,[k]:v}));
+
+  const abrirNuevo = () => { setEditSv(null); setFormSv({ nombre:"", precio:"", duracion:"", descripcion:"" }); setSheetSv(true); };
+  const abrirEditar = (sv) => { setEditSv(sv); setFormSv({ nombre:sv.nombre, precio:String(sv.precio), duracion:String(sv.duracion), descripcion:sv.descripcion||"" }); setSheetSv(true); };
+
+  const guardarSv = async () => {
+    if(!formSv.nombre||!formSv.precio){ toast("nombre y precio son obligatorios"); return; }
+    setSaving(true);
+    const payload = { nombre:formSv.nombre, precio:Number(formSv.precio), duracion:Number(formSv.duracion)||60, descripcion:formSv.descripcion };
+    if(editSv) await data.editarServicio(editSv._id, payload);
+    else await data.crearServicio(payload);
+    setSaving(false); setSheetSv(false);
+    toast(editSv?"✓ servicio actualizado":"✓ servicio creado");
+  };
+
+  const borrarSv = async (id) => {
+    await data.borrarServicio(id);
+    setConfirm(null); toast("servicio eliminado");
+  };
+
+  return (
+    <div>
+      <div style={s.topBar}><h1 style={s.h1}>Configuración</h1><p style={s.sub}>parámetros del estudio</p></div>
+      <div style={{ padding:"18px" }}>
+        <div style={{ display:"flex", gap:7, marginBottom:18 }}>
+          {["servicios","horarios","estudio"].map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={{ ...s.btnGlass, flex:1, fontSize:11, background:tab===t?G.greenM:G.glass, borderColor:tab===t?G.green:G.border, color:tab===t?G.greenL:G.sub }}>{t}</button>
           ))}
         </div>
 
-        {tab === "servicios" && (
+        {tab==="servicios"&&(
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <p style={{ ...css.sectionSub, margin: 0 }}>servicios activos</p>
-              <button style={{ ...css.glassBtn, fontSize: 10 }}>+ agregar</button>
-            </div>
-            {servicios.map(s => (
-              <div key={s.id} style={{ ...css.card, padding: "14px 16px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ color: G.green }}>{s.emoji}</span>
-                      <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontSize: 14 }}>{s.nombre}</p>
-                    </div>
-                    <p style={{ margin: "0 0 6px", ...css.subtitle, fontSize: 10 }}>{s.desc}</p>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <span style={css.tag}>{s.duracion}min</span>
-                      <span style={css.tag}>${s.precio.toLocaleString("es-AR")}</span>
+            <button style={{ ...s.btnGreen, marginBottom:14 }} onClick={abrirNuevo}>+ agregar servicio</button>
+            {data.servicios.length===0&&<p style={{ color:G.muted, fontSize:13 }}>no hay servicios cargados aún ✦</p>}
+            {data.servicios.map(sv=>(
+              <div key={sv._id} style={{ ...s.card }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                  <div style={{ flex:1 }}>
+                    <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{sv.nombre}</p>
+                    {sv.descripcion&&<p style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
+                    <div style={{ display:"flex", gap:7 }}>
+                      <span style={s.tag}>{sv.duracion}min</span>
+                      <span style={s.tag}>{fmtPesos(sv.precio)}</span>
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 6, marginLeft: 8 }}>
-                    <button style={{ ...css.glassBtn, padding: "6px 10px", fontSize: 11 }}>✎</button>
-                    <button style={{ ...css.glassBtn, padding: "6px 10px", fontSize: 11, borderColor: G.red, color: G.red }}>✕</button>
+                  <div style={{ display:"flex", gap:6, marginLeft:10 }}>
+                    <button style={{ ...s.btnGlass, padding:"6px 10px", fontSize:12 }} onClick={()=>abrirEditar(sv)}>✎</button>
+                    <button style={{ ...s.btnRed, padding:"6px 10px", fontSize:12 }} onClick={()=>setConfirm(sv)}>✕</button>
                   </div>
                 </div>
               </div>
@@ -1452,404 +1307,288 @@ function AdminConfig({ servicios }) {
           </div>
         )}
 
-        {tab === "horarios" && (
-          <div>
-            <p style={css.sectionSub}>días y horarios de trabajo</p>
-            {["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"].map((dia, i) => (
-              <div key={dia} style={{ ...css.card, display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: i < 6 ? G.green : G.border }} />
-                <p style={{ margin: 0, flex: 1, fontFamily: "'Courier New', monospace", fontSize: 12 }}>{dia}</p>
-                {i < 5 && <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>09:00 – 18:00</p>}
-                {i === 5 && <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>09:00 – 14:00</p>}
-                {i === 6 && <p style={{ margin: 0, color: G.textMuted, fontFamily: "'Courier New', monospace", fontSize: 10 }}>cerrado</p>}
-                <button style={{ ...css.glassBtn, padding: "5px 10px", fontSize: 10 }}>✎</button>
-              </div>
-            ))}
-          </div>
+        {tab==="horarios"&&(
+          <HorariosConfig toast={toast}/>
         )}
 
-        {tab === "info" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {[
-              ["nombre del estudio", "Lash Studio by Chulas"],
-              ["dirección", "San Lorenzo 3101, San Andrés, Bs.As."],
-              ["teléfono", "11 2650-9699"],
-              ["instagram", "@bychulas.studio"],
-            ].map(([label, val]) => (
-              <div key={label}>
-                <label style={css.label}>{label}</label>
-                <input style={css.input} defaultValue={val} />
-              </div>
+        {tab==="estudio"&&(
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {[["nombre del estudio","Lash Studio by Chulas"],["dirección","San Lorenzo 3101, San Andrés"],["teléfono","11 2650-9699"],["instagram","@bychulas.studio"]].map(([l,v])=>(
+              <Field key={l} label={l}><input style={s.input} defaultValue={v}/></Field>
             ))}
-            <button style={css.greenBtn}>guardar cambios →</button>
+            <button style={s.btnGreen}>guardar →</button>
           </div>
         )}
       </div>
+
+      {/* Sheet agregar/editar servicio */}
+      {sheetSv&&(
+        <Sheet titulo={editSv?"Editar Servicio":"Nuevo Servicio"} onClose={()=>setSheetSv(false)}>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <Field label="nombre del servicio *"><input style={s.input} value={formSv.nombre} onChange={e=>setSv("nombre",e.target.value)} placeholder="Nombre del servicio"/></Field>
+            <Field label="descripción"><input style={s.input} value={formSv.descripcion} onChange={e=>setSv("descripcion",e.target.value)} placeholder="ej: Extensiones pelo a pelo"/></Field>
+            <div style={{ display:"flex", gap:10 }}>
+              <Field label="precio *" style={{ flex:1 }}><input style={{ ...s.input }} type="number" value={formSv.precio} onChange={e=>setSv("precio",e.target.value)} placeholder="0"/></Field>
+              <Field label="duración (min)"><input style={{ ...s.input }} type="number" value={formSv.duracion} onChange={e=>setSv("duracion",e.target.value)} placeholder="90"/></Field>
+            </div>
+            <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardarSv} disabled={saving}>{saving?"guardando...":editSv?"guardar cambios →":"crear servicio →"}</button>
+          </div>
+        </Sheet>
+      )}
+
+      {confirm&&<Modal titulo="Eliminar servicio" msg={`¿Eliminar "${confirm.nombre}"? Esta acción no se puede deshacer.`} onOk={()=>borrarSv(confirm._id)} onCancel={()=>setConfirm(null)} okLabel="eliminar" danger/>}
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ─── VISTA CLIENTA ────────────────────────────────────────────────────────────
+// PANEL CLIENTA
 // ═══════════════════════════════════════════════════════════════════════════════
-
-function ClientaApp({ clienta, onLogout, appData }) {
+function ClientaApp({ clienta, data, onLogout }) {
   const [tab, setTab] = useState("inicio");
-  const { citas, servicios } = appData;
-  const navItems = [
-    { id: "inicio", icon: "⬡", label: "inicio" },
-    { id: "agendar", icon: "◷", label: "agendar" },
-    { id: "historial", icon: "✦", label: "historial" },
-    { id: "perfil", icon: "✿", label: "perfil" },
-  ];
+  const tabs = [{ id:"inicio",icon:"⬡",label:"inicio" },{ id:"agendar",icon:"◷",label:"agendar" },{ id:"historial",icon:"✦",label:"historial" },{ id:"perfil",icon:"✿",label:"perfil" }];
 
-  const renderTab = () => {
-    switch (tab) {
-      case "inicio": return <ClientaInicio clienta={clienta} setTab={setTab} citas={citas} />;
-      case "agendar": return <ClientaAgendar clienta={clienta} servicios={servicios} citas={citas} />;
-      case "historial": return <ClientaHistorial clienta={clienta} />;
-      case "perfil": return <ClientaPerfil clienta={clienta} onLogout={onLogout} />;
-      default: return <ClientaInicio clienta={clienta} setTab={setTab} citas={citas} />;
+  const render = () => {
+    switch(tab){
+      case "inicio": return <CInicio clienta={clienta} data={data} setTab={setTab}/>;
+      case "agendar": return <CAgendar clienta={clienta} data={data}/>;
+      case "historial": return <CHistorial clienta={clienta}/>;
+      case "perfil": return <CPerfil clienta={clienta} onLogout={onLogout}/>;
+      default: return <CInicio clienta={clienta} data={data} setTab={setTab}/>;
     }
   };
 
   return (
-    <div style={css.app}>
-      <div style={css.screen}>{renderTab()}</div>
-      <nav style={css.bottomNav}>
-        {navItems.map(n => (
-          <div key={n.id} style={css.navItem(tab === n.id)} onClick={() => setTab(n.id)}>
-            <span style={css.navIcon}>{n.icon}</span>
-            <span style={css.navLabel}>{n.label}</span>
-            {tab === n.id && <div style={{ width: 4, height: 4, borderRadius: "50%", background: G.green }} />}
+    <div style={s.app}>
+      <div style={s.screen}>{render()}</div>
+      <nav style={s.nav}>
+        {tabs.map(t=>(
+          <div key={t.id} style={navItemStyle(tab===t.id)} onClick={()=>setTab(t.id)}>
+            <span style={{ fontSize:19 }}>{t.icon}</span>
+            <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.08em" }}>{t.label}</span>
+            {tab===t.id&&<div style={{ width:4,height:4,borderRadius:"50%",background:G.green }}/>}
           </div>
         ))}
       </nav>
-      <FAB />
+      <FAB/>
     </div>
   );
 }
 
-// ─── CLIENTA: INICIO ──────────────────────────────────────────────────────────
-function ClientaInicio({ clienta, setTab, citas }) {
-  const hoy = new Date().toISOString().slice(0, 10);
-  const ultimaCita = clienta.historial?.[0];
-  const diasDesde = ultimaCita?.fecha
-    ? Math.floor((new Date() - new Date(ultimaCita.fecha)) / (1000 * 60 * 60 * 24))
-    : null;
-  const proxCita = citas.find(c => c.clientaId === clienta._id && c.fecha >= hoy);
-  const diasHastaProxima = proxCita
-    ? Math.floor((new Date(proxCita.fecha) - new Date()) / (1000 * 60 * 60 * 24))
-    : null;
-
-  const curvasUsadas = {};
-  (clienta.historial || []).forEach(h => { curvasUsadas[h.curva] = (curvasUsadas[h.curva] || 0) + 1; });
-  const curvaFav = Object.entries(curvasUsadas).sort((a, b) => b[1] - a[1])[0]?.[0] || clienta.curva || "—";
+function CInicio({ clienta, data, setTab }) {
+  const hoy = hoyISO();
+  const hist = clienta.historial||[];
+  const ultima = hist[hist.length-1];
+  const diasDesde = ultima?.fecha ? Math.floor((new Date()-new Date(ultima.fecha))/(1000*60*60*24)) : null;
+  const proxCita = data.citas.filter(c=>c.clientaId===clienta._id&&c.fecha>=hoy&&c.estado!=="completada").sort((a,b)=>a.fecha.localeCompare(b.fecha))[0];
+  const diasHasta = proxCita ? Math.floor((new Date(proxCita.fecha)-new Date())/(1000*60*60*24)) : null;
+  const curvaFav = clienta.curva||"—";
 
   return (
     <div>
-      <div style={css.topBar}>
-        <h1 style={css.title}>Lash Studio</h1>
-        <p style={css.subtitle}>hola, {clienta.nombre.split(" ")[0].toLowerCase()} 🌿</p>
-      </div>
-      <div style={{ padding: "20px" }}>
+      <div style={s.topBar}><h1 style={s.h1}>Lash Studio</h1><p style={s.sub}>hola, {clienta.nombre?.split(" ")[0].toLowerCase()} 🌿</p></div>
+      <div style={{ padding:"18px" }}>
         {/* Recordatorio service */}
-        {diasDesde >= 14 && (
-          <div style={{ background: "linear-gradient(135deg, rgba(143,189,90,0.15), rgba(143,189,90,0.05))", border: `1px solid ${G.green}`, borderRadius: 16, padding: "16px 18px", marginBottom: 12 }}>
-            <p style={{ margin: "0 0 4px", fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 15, color: G.greenLight }}>es hora del service ✦</p>
-            <p style={{ margin: "0 0 12px", fontFamily: "'Courier New', monospace", fontSize: 11, color: G.textSub }}>hace {diasDesde} días de tu último tratamiento</p>
-            <button style={{ ...css.greenBtn, padding: "10px 16px" }} onClick={() => setTab("agendar")}>agendar ahora →</button>
+        {diasDesde!==null&&diasDesde>=14&&!proxCita&&(
+          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.14),rgba(143,189,90,0.04))", border:`1px solid ${G.green}`, borderRadius:14, padding:"15px 16px", marginBottom:12 }}>
+            <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.greenL }}>¡es hora del service! ✦</p>
+            <p style={{ margin:"0 0 11px", fontFamily:F.sans, fontSize:12, color:G.sub }}>hace {diasDesde} días de tu último tratamiento</p>
+            <button style={{ ...s.btnGreen, padding:"9px 14px" }} onClick={()=>setTab("agendar")}>agendar ahora →</button>
           </div>
         )}
 
         {/* Próxima cita */}
-        {proxCita && (
-          <div style={{ ...css.card, borderColor: G.greenDark, marginBottom: 12 }}>
-            <p style={{ ...css.statLabel, marginBottom: 6 }}>próxima cita</p>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {proxCita&&(
+          <div style={{ ...s.card, borderColor:G.greenD, marginBottom:12 }}>
+            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 7px", textTransform:"lowercase", letterSpacing:"0.08em" }}>próxima cita</p>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
-                <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 16, color: G.white }}>{proxCita.servicio}</p>
-                <p style={{ margin: 0, ...css.subtitle, fontSize: 11 }}>{proxCita.fecha} a las {proxCita.hora}</p>
+                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:16 }}>{proxCita.servicio}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(proxCita.fecha)} · {proxCita.hora}</p>
               </div>
-              {diasHastaProxima !== null && (
-                <div style={{ textAlign: "center", background: G.greenMuted, border: `0.5px solid ${G.green}`, borderRadius: 12, padding: "8px 14px" }}>
-                  <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 20, color: G.greenLight }}>{diasHastaProxima}</p>
-                  <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 9, color: G.textMuted }}>días</p>
+              {diasHasta!==null&&(
+                <div style={{ textAlign:"center", background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:11, padding:"8px 13px" }}>
+                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.greenL }}>{diasHasta}</p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* Widgets stats — CLICKEABLES */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-          {/* Visitas → Historial */}
-          <div
-            style={{ ...css.statCard, flex: 1, cursor: "pointer", transition: "border-color 0.2s" }}
-            onClick={() => setTab("historial")}
-            onMouseEnter={e => e.currentTarget.style.borderColor = G.green}
-            onMouseLeave={e => e.currentTarget.style.borderColor = G.border}
-          >
-            <p style={css.statLabel}>visitas</p>
-            <p style={css.statVal}>{clienta.historial?.length || 0}</p>
-            <p style={{ ...css.subtitle, fontSize: 9, margin: 0, color: G.green }}>ver →</p>
+        {/* Widgets */}
+        <div style={{ display:"flex", gap:9, marginBottom:18 }}>
+          <div onClick={()=>setTab("historial")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"13px 8px" }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px" }}>visitas</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>{hist.length}</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>ver →</p>
           </div>
-          {/* Curva fav → Perfil */}
-          <div
-            style={{ ...css.statCard, flex: 1, cursor: "pointer", transition: "border-color 0.2s" }}
-            onClick={() => setTab("perfil")}
-            onMouseEnter={e => e.currentTarget.style.borderColor = G.green}
-            onMouseLeave={e => e.currentTarget.style.borderColor = G.border}
-          >
-            <p style={css.statLabel}>curva fav.</p>
-            <p style={{ ...css.statVal, fontSize: 24 }}>{curvaFav}</p>
-            <p style={{ ...css.subtitle, fontSize: 9, margin: 0, color: G.green }}>mi ficha →</p>
+          <div onClick={()=>setTab("perfil")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"13px 8px" }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px" }}>curva fav.</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>{curvaFav}</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>mi ficha →</p>
           </div>
-          {/* Agendar → Tab agendar */}
-          <div
-            style={{ ...css.statCard, flex: 1, cursor: "pointer", background: G.greenMuted, border: `0.5px solid ${G.green}`, transition: "opacity 0.2s" }}
-            onClick={() => setTab("agendar")}
-          >
-            <p style={{ ...css.statLabel, color: G.greenLight }}>turno</p>
-            <p style={{ ...css.statVal, fontSize: 22 }}>+</p>
-            <p style={{ ...css.subtitle, fontSize: 9, margin: 0, color: G.greenLight }}>agendar →</p>
+          <div onClick={()=>setTab("agendar")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"13px 8px", background:G.greenM, borderColor:G.green }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:"0 0 4px" }}>turno</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>+</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:0 }}>agendar →</p>
           </div>
         </div>
 
         {/* Último servicio */}
-        {ultimaCita && (
-          <div>
-            <p style={css.sectionTitle}>último servicio</p>
-            <p style={css.sectionSub}>{ultimaCita.fecha}</p>
-            <div style={css.card} onClick={() => setTab("historial")}>
-              <p style={{ margin: "0 0 4px", fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 15 }}>{ultimaCita.servicio}</p>
-              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                <span style={css.tag}>curva {ultimaCita.curva}</span>
-                {ultimaCita.notas && <span style={css.tag}>nota</span>}
-              </div>
-              <p style={{ margin: "10px 0 0", fontFamily: "'Courier New', monospace", fontSize: 10, color: G.textMuted }}>ver historial completo →</p>
+        {ultima&&(
+          <>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>último servicio</p>
+            <p style={{ ...s.sub, marginBottom:10 }}>{fmtFecha(ultima.fecha)}</p>
+            <div style={{ ...s.card, cursor:"pointer" }} onClick={()=>setTab("historial")}>
+              <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{ultima.servicio}</p>
+              <span style={s.tag}>curva {ultima.curva}</span>
+              <p style={{ margin:"9px 0 0", fontFamily:F.sans, fontSize:11, color:G.muted }}>ver historial completo →</p>
             </div>
-          </div>
+          </>
         )}
 
-        <div style={css.divider} />
-
+        <div style={s.divider}/>
         {/* Info estudio */}
-        <p style={css.sectionTitle}>el estudio</p>
-        <div style={css.card}>
-          {[
-            ["📍", "San Lorenzo 3101, San Andrés"],
-            ["📱", "11 2650-9699"],
-            ["📷", "@bychulas.studio"],
-          ].map(([icon, val]) => (
-            <div key={val} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 14 }}>{icon}</span>
-              <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 12, color: G.textSub }}>{val}</p>
+        <div style={s.card}>
+          {[["📍","San Lorenzo 3101, San Andrés"],["📱","11 2650-9699"],["📷","@bychulas.studio"]].map(([ic,v])=>(
+            <div key={v} style={{ display:"flex", gap:10, alignItems:"center", marginBottom:8 }}>
+              <span style={{ fontSize:14 }}>{ic}</span>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</p>
             </div>
           ))}
-          <div style={{ marginTop: 10 }}>
-            <button style={{ ...css.greenBtn, padding: "10px" }} onClick={() => openWA()}>abrir en WhatsApp →</button>
-          </div>
+          <button style={{ ...s.btnGreen, marginTop:8, padding:"9px" }} onClick={()=>openWA()}>abrir en WhatsApp →</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── CLIENTA: AGENDAR ─────────────────────────────────────────────────────────
-const COMBOS = [
-  { id: "c1", nombre: "Pestañas + Perfilado de cejas", servicios: ["Classic Full Set", "Perfilado de Cejas"], duracion: 120, emoji: "✦◎" },
-  { id: "c2", nombre: "Volume + Perfilado de cejas", servicios: ["Volume Set", "Perfilado de Cejas"], duracion: 150, emoji: "✦✦◎" },
-  { id: "c3", nombre: "Lifting + Perfilado de cejas", servicios: ["Lifting + Tinte", "Perfilado de Cejas"], duracion: 90, emoji: "◎◎" },
-  { id: "c4", nombre: "Refill + Perfilado de cejas", servicios: ["Classic Refill", "Perfilado de Cejas"], duracion: 90, emoji: "↺◎" },
-];
-
-function ClientaAgendar({ clienta, servicios, citas }) {
+function CAgendar({ clienta, data }) {
   const [paso, setPaso] = useState(1);
-  const [modoServicio, setModoServicio] = useState("individual"); // "individual" | "combo" | "noSe"
-  const [form, setForm] = useState({ servicio: null, combo: null, fecha: "", hora: "", notas: "" });
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const [modo, setModo] = useState("individual");
+  const [form, setForm] = useState({ servicio:null, fecha:"", hora:"", notas:"" });
+  const [enviado, setEnviado] = useState(false);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const ocupadas = data.citas.filter(c=>c.fecha===form.fecha&&c.estado!=="completada").map(c=>c.hora);
 
-  const horasDisponibles = ["09:00", "10:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00"];
-  const ocupadas = citas.filter(c => c.fecha === form.fecha).map(c => c.hora);
+  const confirmar = () => {
+    const sv = form.servicio?.nombre||"A confirmar con Male";
+    const msg = modo==="noSe"
+      ? `Hola Male! 🌿 Quiero agendar un turno:\n📅 ${form.fecha} a las ${form.hora}\n💭 No sé bien qué hacerme, me gustaría que me asesores${form.notas?`\nNotas: ${form.notas}`:""}\n💚 ${clienta.nombre}`
+      : `Hola Male! 🌿 Quiero agendar:\n✦ ${sv}\n📅 ${form.fecha} a las ${form.hora}${form.notas?`\nNotas: ${form.notas}`:""}\n💚 ${clienta.nombre}`;
+    openWA(msg);
+    setEnviado(true);
+  };
 
-  // Nombre display del servicio elegido
-  const servicioDisplay = modoServicio === "combo" ? form.combo?.nombre
-    : modoServicio === "noSe" ? "A confirmar con Male 💚"
-    : form.servicio?.nombre;
-  const duracionDisplay = modoServicio === "combo" ? form.combo?.duracion
-    : modoServicio === "noSe" ? "—"
-    : form.servicio?.duracion;
-  const precioDisplay = modoServicio === "noSe" ? "a convenir" : modoServicio === "combo" ? "a convenir" : form.servicio?.precio;
-
-  const listo1 = modoServicio === "noSe" || (modoServicio === "individual" && form.servicio) || (modoServicio === "combo" && form.combo);
+  if(enviado) return (
+    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, textAlign:"center" }}>
+      <div style={{ fontSize:44, marginBottom:12 }}>🌿</div>
+      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.greenL, margin:"0 0 8px" }}>¡solicitud enviada!</p>
+      <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 24px", lineHeight:1.7 }}>Male va a confirmar tu turno por WhatsApp. ¡Nos vemos pronto!</p>
+      <button style={s.btnGreen} onClick={()=>{ setEnviado(false); setPaso(1); setForm({ servicio:null, fecha:"", hora:"", notas:"" }); }}>volver →</button>
+    </div>
+  );
 
   return (
     <div>
-      <div style={css.topBar}>
-        <h1 style={css.title}>Agendar</h1>
-        <p style={css.subtitle}>paso {paso} de 3</p>
-      </div>
-      <div style={{ padding: "20px" }}>
-        {/* Progress */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 24 }}>
-          {[1, 2, 3].map(p => (
-            <div key={p} style={{ flex: 1, height: 3, borderRadius: 2, background: p <= paso ? G.green : G.border, transition: "background 0.3s ease" }} />
-          ))}
+      <div style={s.topBar}><h1 style={s.h1}>Agendar</h1><p style={s.sub}>paso {paso} de 3</p></div>
+      <div style={{ padding:"18px" }}>
+        <div style={{ display:"flex", gap:5, marginBottom:20 }}>
+          {[1,2,3].map(p=><div key={p} style={{ flex:1, height:3, borderRadius:2, background:p<=paso?G.green:G.border, transition:"background 0.3s" }}/>)}
         </div>
 
-        {/* ── PASO 1: ELEGIR SERVICIO ── */}
-        {paso === 1 && (
+        {paso===1&&(
           <div>
-            <p style={css.sectionTitle}>¿qué querés hacerte?</p>
-            {/* Selector de modo */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-              {[
-                { id: "individual", label: "servicio" },
-                { id: "combo", label: "combo ✦" },
-                { id: "noSe", label: "no sé aún" },
-              ].map(m => (
-                <button key={m.id}
-                  style={{ ...css.glassBtn, flex: 1, fontSize: 10, background: modoServicio === m.id ? G.greenMuted : G.bgCard, borderColor: modoServicio === m.id ? G.green : G.border, color: modoServicio === m.id ? G.greenLight : G.textSub }}
-                  onClick={() => { setModoServicio(m.id); set("servicio", null); set("combo", null); }}>
-                  {m.label}
-                </button>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 14px" }}>¿qué querés hacerte?</p>
+            <div style={{ display:"flex", gap:7, marginBottom:16 }}>
+              {[["individual","servicio"],["noSe","no sé aún"]].map(([m,l])=>(
+                <button key={m} onClick={()=>{ setModo(m); set("servicio",null); }} style={{ ...s.btnGlass, flex:1, fontSize:11, background:modo===m?G.greenM:G.glass, borderColor:modo===m?G.green:G.border, color:modo===m?G.greenL:G.sub }}>{l}</button>
               ))}
             </div>
 
-            {/* SERVICIOS INDIVIDUALES */}
-            {modoServicio === "individual" && servicios.map(s => (
-              <div key={s.id}
-                style={{ ...css.card, borderColor: form.servicio?.id === s.id ? G.green : G.border, background: form.servicio?.id === s.id ? "rgba(143,189,90,0.06)" : G.bgCard }}
-                onClick={() => { set("servicio", s); setPaso(2); }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: "0 0 4px", fontFamily: "'Georgia', serif", fontSize: 14 }}>{s.nombre}</p>
-                    <p style={{ margin: "0 0 8px", ...css.subtitle, fontSize: 10 }}>{s.desc}</p>
-                    <span style={css.tag}>{s.duracion}min</span>
-                  </div>
-                  <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontWeight: 700, color: G.green, fontSize: 15 }}>${s.precio.toLocaleString("es-AR")}</p>
-                </div>
-              </div>
-            ))}
-
-            {/* COMBOS */}
-            {modoServicio === "combo" && (
-              <div>
-                <p style={{ ...css.sectionSub, marginBottom: 12 }}>servicios que podés combinar en una sola visita</p>
-                {COMBOS.map(c => (
-                  <div key={c.id}
-                    style={{ ...css.card, borderColor: form.combo?.id === c.id ? G.green : G.border, background: form.combo?.id === c.id ? "rgba(143,189,90,0.06)" : G.bgCard }}
-                    onClick={() => { set("combo", c); setPaso(2); }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                          <span style={{ color: G.green, fontSize: 12 }}>{c.emoji}</span>
-                          <p style={{ margin: 0, fontFamily: "'Georgia', serif", fontSize: 14 }}>{c.nombre}</p>
-                        </div>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {c.servicios.map(s => <span key={s} style={{ ...css.tag, fontSize: 9 }}>{s}</span>)}
-                        </div>
+            {modo==="individual"&&(
+              data.servicios.length===0
+                ? <p style={{ color:G.muted, fontSize:13 }}>los servicios se están cargando...</p>
+                : data.servicios.map(sv=>(
+                  <div key={sv._id} style={{ ...s.card, borderColor:form.servicio?._id===sv._id?G.green:G.border, background:form.servicio?._id===sv._id?"rgba(143,189,90,0.06)":G.card }} onClick={()=>{ set("servicio",sv); setPaso(2); }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                      <div style={{ flex:1 }}>
+                        <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontSize:14 }}>{sv.nombre}</p>
+                        {sv.descripcion&&<p style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
+                        <span style={s.tag}>{sv.duracion}min</span>
                       </div>
-                      <div style={{ textAlign: "right", marginLeft: 8 }}>
-                        <span style={css.tag}>{c.duracion}min</span>
-                        <p style={{ margin: "4px 0 0", fontFamily: "'Courier New', monospace", fontSize: 10, color: G.textMuted }}>precio a convenir</p>
-                      </div>
+                      <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:15 }}>{fmtPesos(sv.precio)}</p>
                     </div>
                   </div>
-                ))}
-              </div>
+                ))
             )}
 
-            {/* NO SÉ */}
-            {modoServicio === "noSe" && (
+            {modo==="noSe"&&(
               <div>
-                <div style={{ ...css.card, background: "rgba(143,189,90,0.05)", borderColor: G.greenDark, textAlign: "center", padding: "24px 20px" }}>
-                  <div style={{ fontSize: 32, marginBottom: 10 }}>🌿</div>
-                  <p style={{ margin: "0 0 6px", fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 16, color: G.greenLight }}>¡no te preocupes!</p>
-                  <p style={{ margin: "0 0 16px", fontFamily: "'Courier New', monospace", fontSize: 11, color: G.textSub, lineHeight: 1.6 }}>
-                    agendá tu turno y Male te va a asesorar personalmente cuando llegues al estudio. podés contarle qué efecto buscás en las notas.
-                  </p>
-                  <button style={{ ...css.greenBtn, padding: "10px 20px" }} onClick={() => setPaso(2)}>
-                    agendar igualmente →
-                  </button>
+                <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, textAlign:"center", padding:"22px 18px" }}>
+                  <div style={{ fontSize:30, marginBottom:9 }}>🌿</div>
+                  <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>¡no te preocupes!</p>
+                  <p style={{ margin:"0 0 14px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.7 }}>Agendá tu turno y Male te va a asesorar personalmente. Podés contarle qué efecto buscás en las notas.</p>
+                  <button style={{ ...s.btnGreen, padding:"10px" }} onClick={()=>setPaso(2)}>agendar igualmente →</button>
                 </div>
-                <div style={{ ...css.card, marginTop: 8 }}>
-                  <p style={{ ...css.sectionSub, margin: "0 0 8px" }}>¿querés que Male te oriente antes?</p>
-                  <button style={{ ...css.glassBtn, width: "100%", borderColor: G.green, color: G.greenLight }}
-                    onClick={() => openWA("Hola Male! No sé bien qué servicio hacerme, ¿me podés orientar? 🌿")}>
-                    💬 consultar por WhatsApp
-                  </button>
+                <div style={{ ...s.card, marginTop:0 }}>
+                  <p style={{ ...s.sub, margin:"0 0 9px" }}>¿querés consultar antes?</p>
+                  <button style={{ ...s.btnGlass, width:"100%", borderColor:G.green, color:G.greenL }} onClick={()=>openWA("Hola Male! No sé bien qué servicio hacerme, ¿me podés orientar? 🌿")}>💬 consultar por WhatsApp</button>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ── PASO 2: FECHA Y HORA ── */}
-        {paso === 2 && (
+        {paso===2&&(
           <div>
-            <button style={{ ...css.glassBtn, marginBottom: 16, fontSize: 11 }} onClick={() => setPaso(1)}>← cambiar servicio</button>
-            {/* Chip del servicio elegido */}
-            <div style={{ ...css.card, background: "rgba(143,189,90,0.05)", borderColor: G.greenDark, marginBottom: 20, padding: "10px 14px" }}>
-              <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 11, color: G.greenLight }}>✦ {servicioDisplay}</p>
-            </div>
-            <p style={css.sectionTitle}>elegí la fecha</p>
-            <input style={{ ...css.input, marginBottom: 20 }} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} />
-            {form.fecha && (
+            <button style={{ ...s.btnGlass, marginBottom:14, fontSize:12 }} onClick={()=>setPaso(1)}>← cambiar servicio</button>
+            {form.servicio&&<div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:16, padding:"9px 13px" }}>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL }}>✦ {form.servicio.nombre}</p>
+            </div>}
+            <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/></Field>
+            {form.fecha&&(
               <>
-                <p style={css.sectionSub}>horarios disponibles</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
-                  {horasDisponibles.map(h => {
-                    const ocupado = ocupadas.includes(h);
-                    return (
-                      <button key={h} disabled={ocupado}
-                        style={{ ...css.glassBtn, padding: "10px 14px", opacity: ocupado ? 0.3 : 1, background: form.hora === h ? G.greenMuted : G.bgCard, borderColor: form.hora === h ? G.green : G.border, color: form.hora === h ? G.greenLight : G.textSub, cursor: ocupado ? "not-allowed" : "pointer" }}
-                        onClick={() => !ocupado && set("hora", h)}>
-                        {h}{ocupado ? " ✕" : ""}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={css.label}>notas para Male (opcional)</label>
-                  <textarea style={{ ...css.input, height: 70, resize: "none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder={modoServicio === "noSe" ? "contame qué efecto buscás, largo, volumen..." : "indicaciones especiales..."} />
-                </div>
-                {form.hora && <button style={css.greenBtn} onClick={() => setPaso(3)}>confirmar horario →</button>}
+                <Field label="hora disponible">
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+                    {SLOTS.map(h=>{
+                      const oc=ocupadas.includes(h);
+                      return <button key={h} disabled={oc} onClick={()=>set("hora",h)} style={{ ...s.btnGlass, padding:"9px 12px", fontSize:12, opacity:oc?0.3:1, background:form.hora===h?G.greenM:G.glass, borderColor:form.hora===h?G.green:G.border, color:form.hora===h?G.greenL:G.sub, cursor:oc?"not-allowed":"pointer" }}>
+                        {h}{oc?" ✕":""}
+                      </button>;
+                    })}
+                  </div>
+                </Field>
+                <Field label={modo==="noSe"?"contanos qué efecto buscás":"notas (opcional)"}>
+                  <textarea style={{ ...s.input, height:65, resize:"none" }} value={form.notas} onChange={e=>set("notas",e.target.value)} placeholder={modo==="noSe"?"largo, volumen, ocasión especial...":"indicaciones especiales..."}/>
+                </Field>
+                {form.hora&&<button style={s.btnGreen} onClick={()=>setPaso(3)}>confirmar horario →</button>}
               </>
             )}
           </div>
         )}
 
-        {/* ── PASO 3: CONFIRMACIÓN ── */}
-        {paso === 3 && (
+        {paso===3&&(
           <div>
-            <p style={css.sectionTitle}>confirmá tu cita</p>
-            <p style={css.sectionSub}>revisá los detalles</p>
-            <div style={{ ...css.card, background: "rgba(143,189,90,0.06)", borderColor: G.greenDark }}>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>confirmá tu cita</p>
+            <p style={{ ...s.sub, marginBottom:14 }}>revisá los detalles antes de enviar</p>
+            <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD }}>
               {[
-                ["servicio", servicioDisplay],
-                ["fecha", form.fecha],
+                ["servicio", form.servicio?.nombre||"A confirmar con Male"],
+                ["fecha", fmtFecha(form.fecha)],
                 ["hora", form.hora],
-                ["duración aprox.", duracionDisplay ? `${duracionDisplay} min` : "a confirmar"],
-                ["precio", typeof precioDisplay === "number" ? `$${precioDisplay.toLocaleString("es-AR")}` : precioDisplay],
-                ...(form.notas ? [["notas", form.notas]] : []),
-              ].map(([k, v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `0.5px solid ${G.border}` }}>
-                  <span style={{ ...css.label, margin: 0 }}>{k}</span>
-                  <span style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: G.textSub, maxWidth: "60%", textAlign: "right" }}>{v}</span>
+                ["duración aprox.", form.servicio?.duracion?`${form.servicio.duracion}min`:"a confirmar"],
+                ...(form.notas?[["notas",form.notas]]:[]),
+              ].map(([k,v])=>(
+                <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`0.5px solid ${G.border}` }}>
+                  <span style={{ ...s.label, margin:0 }}>{k}</span>
+                  <span style={{ fontFamily:F.sans, fontSize:12, color:G.sub, maxWidth:"60%", textAlign:"right" }}>{v}</span>
                 </div>
               ))}
             </div>
-            <button style={{ ...css.greenBtn, marginTop: 16 }} onClick={() => {
-              const msg = modoServicio === "noSe"
-                ? `Hola Male! Quiero agendar un turno:\n📅 ${form.fecha} a las ${form.hora}\n💭 Todavía no sé qué servicio, me gustaría que me asesores 🌿${form.notas ? `\nNotas: ${form.notas}` : ""}\n💚 ${clienta.nombre}`
-                : `Hola Male! Quiero agendar:\n✦ ${servicioDisplay}\n📅 ${form.fecha} a las ${form.hora}${form.notas ? `\nNotas: ${form.notas}` : ""}\n💚 ${clienta.nombre}`;
-              openWA(msg);
-            }}>
-              confirmar y avisar a Male →
-            </button>
-            <button style={{ ...css.glassBtn, marginTop: 10, width: "100%" }} onClick={() => setPaso(1)}>modificar</button>
+            <button style={{ ...s.btnGreen, marginTop:14 }} onClick={confirmar}>confirmar y avisar a Male →</button>
+            <button style={{ ...s.btnGlass, marginTop:9, width:"100%" }} onClick={()=>setPaso(1)}>modificar</button>
           </div>
         )}
       </div>
@@ -1857,56 +1596,48 @@ function ClientaAgendar({ clienta, servicios, citas }) {
   );
 }
 
-// ─── CLIENTA: HISTORIAL ───────────────────────────────────────────────────────
-function ClientaHistorial({ clienta }) {
-  const totalVisitas = clienta.historial.length;
+function CHistorial({ clienta }) {
+  const hist = clienta.historial||[];
   const curvasUsadas = {};
-  clienta.historial.forEach(h => { curvasUsadas[h.curva] = (curvasUsadas[h.curva] || 0) + 1; });
-  const curvaFav = Object.entries(curvasUsadas).sort((a, b) => b[1] - a[1])[0];
+  hist.forEach(h=>{ curvasUsadas[h.curva]=(curvasUsadas[h.curva]||0)+1; });
+  const curvaFav = Object.entries(curvasUsadas).sort((a,b)=>b[1]-a[1])[0]?.[0]||clienta.curva||"—";
+  const badge = hist.length>=10?"✦ clienta VIP":hist.length>=5?"✦ clienta frecuente":hist.length>=2?"✦ clienta activa":null;
 
   return (
     <div>
-      <div style={css.topBar}>
-        <h1 style={css.title}>Historial</h1>
-        <p style={css.subtitle}>{totalVisitas} visitas al estudio</p>
-      </div>
-      <div style={{ padding: "20px" }}>
-        {/* Stats */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-          <div style={{ ...css.statCard, flex: 1, textAlign: "center" }}>
-            <p style={{ ...css.statVal, fontSize: 28, color: G.green }}>{totalVisitas}</p>
-            <p style={css.statLabel}>visitas</p>
+      <div style={s.topBar}><h1 style={s.h1}>Historial</h1><p style={s.sub}>{hist.length} visitas al estudio</p></div>
+      <div style={{ padding:"18px" }}>
+        <div style={{ display:"flex", gap:9, marginBottom:16 }}>
+          <div style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"13px 8px" }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px" }}>visitas</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:24, color:G.green, margin:0 }}>{hist.length}</p>
           </div>
-          <div style={{ ...css.statCard, flex: 1, textAlign: "center" }}>
-            <p style={{ ...css.statVal, fontSize: 28 }}>{curvaFav?.[0]}</p>
-            <p style={css.statLabel}>curva fav.</p>
+          <div style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"13px 8px" }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px" }}>curva fav.</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:24, margin:0 }}>{curvaFav}</p>
           </div>
         </div>
 
-        {/* Motivación */}
-        <div style={{ ...css.card, textAlign: "center", padding: "20px", background: "rgba(143,189,90,0.05)", borderColor: G.greenDark, marginBottom: 16 }}>
-          <div style={{ fontSize: 28, marginBottom: 8 }}>🌿</div>
-          <p style={{ margin: "0 0 6px", fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 15, color: G.greenLight }}>
-            {totalVisitas >= 3 ? "¡sos una clienta VIP! ✦" : totalVisitas >= 1 ? "gracias por tu confianza 💚" : "tu primera visita te espera"}
-          </p>
-          <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 11, color: G.textMuted }}>
-            {totalVisitas >= 3 ? `${totalVisitas} visitas y siempre hermosa` : "el cuidado de tus pestañas en buenas manos"}
-          </p>
-        </div>
+        {badge&&(
+          <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, textAlign:"center", padding:"16px", marginBottom:14 }}>
+            <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>{badge}</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{hist.length} visitas y siempre hermosa 💚</p>
+          </div>
+        )}
 
-        {/* Historial */}
-        <p style={css.sectionTitle}>tus visitas</p>
-        <p style={css.sectionSub}>más recientes primero</p>
-        {clienta.historial.map((h, i) => (
-          <div key={i} style={css.card}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>tus visitas</p>
+        <p style={{ ...s.sub, marginBottom:12 }}>más recientes primero</p>
+        {hist.length===0&&<p style={{ color:G.muted, fontSize:13 }}>tu historial estará aquí después de tu primera visita ✦</p>}
+        {[...hist].reverse().map((h,i)=>(
+          <div key={i} style={s.card}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
               <div>
-                <p style={{ margin: "0 0 2px", fontFamily: "'Georgia', serif", fontSize: 14 }}>{h.servicio}</p>
-                <p style={{ margin: 0, ...css.subtitle, fontSize: 10 }}>{h.fecha}</p>
+                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtFecha(h.fecha)}</p>
               </div>
-              <span style={css.tag}>curva {h.curva}</span>
+              <span style={s.tag}>curva {h.curva}</span>
             </div>
-            {h.notas && <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 11, color: G.textMuted }}>✦ {h.notas}</p>}
+            {h.notas&&<p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>✦ {h.notas}</p>}
           </div>
         ))}
       </div>
@@ -1914,145 +1645,71 @@ function ClientaHistorial({ clienta }) {
   );
 }
 
-// ─── CLIENTA: PERFIL ──────────────────────────────────────────────────────────
-function ClientaPerfil({ clienta, onLogout }) {
+function CPerfil({ clienta, onLogout }) {
   const [editando, setEditando] = useState(false);
-  const [foto, setFoto] = useState(null); // base64 de la foto
+  const [foto, setFoto] = useState(null);
 
-  const handleFoto = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setFoto(ev.target.result);
-    reader.readAsDataURL(file);
+  const onFoto = (e) => {
+    const f=e.target.files?.[0]; if(!f) return;
+    const r=new FileReader(); r.onload=ev=>setFoto(ev.target.result); r.readAsDataURL(f);
   };
-
-  const iniciales = clienta.nombre.split(" ").slice(0, 2).map(n => n[0]).join("");
 
   return (
     <div>
-      <div style={css.topBar}>
-        <h1 style={css.title}>Mi Perfil</h1>
-        <p style={css.subtitle}>tus datos</p>
-      </div>
-      <div style={{ padding: "20px" }}>
+      <div style={s.topBar}><h1 style={s.h1}>Mi Perfil</h1><p style={s.sub}>tus datos</p></div>
+      <div style={{ padding:"18px" }}>
+        {/* Avatar */}
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:22 }}>
+          <div style={{ position:"relative", marginBottom:10 }}>
+            {foto
+              ? <img src={foto} alt="perfil" style={{ width:78, height:78, borderRadius:"50%", objectFit:"cover", border:`2px solid ${G.green}` }}/>
+              : <Avatar nombre={clienta.nombre} size={78}/>
+            }
+            <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:editando?G.green:"rgba(10,10,10,0.8)", border:`1.5px solid ${editando?G.bg:G.border}`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}>📷</label>
+            <input id="foto-input" type="file" accept="image/*" style={{ display:"none" }} onChange={onFoto}/>
+          </div>
+          <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:18 }}>{clienta.nombre}</p>
+          <span style={s.tag}>clienta activa</span>
+        </div>
 
-        {/* ── AVATAR con edición de foto ── */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 24 }}>
-          <div style={{ position: "relative", marginBottom: 12 }}>
-            {foto ? (
-              <img src={foto} alt="perfil" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: `2px solid ${G.green}` }} />
-            ) : (
-              <div style={{ width: 80, height: 80, borderRadius: "50%", background: G.greenMuted, border: `2px solid ${G.green}`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 28, color: G.greenLight }}>
-                {iniciales}
+        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+          <button style={{ ...s.btnGlass, flex:1, fontSize:12 }} onClick={()=>setEditando(e=>!e)}>{editando?"cancelar":"✎ editar"}</button>
+          <button style={{ ...s.btnGlass, flex:1, fontSize:12 }} onClick={()=>openWA()}>💬 contactar</button>
+        </div>
+
+        <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12 }}>
+          {[["nombre",clienta.nombre],["email",clienta.email||"—"],["teléfono",clienta.telefono||"—"]].map(([l,v])=>(
+            <div key={l}>
+              <label style={s.label}>{l}</label>
+              {editando ? <input style={s.input} defaultValue={v}/> : <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</p>}
+            </div>
+          ))}
+          {editando&&<Field label="contacto de emergencia"><input style={s.input} placeholder="nombre y teléfono..."/></Field>}
+        </div>
+
+        <div style={{ marginTop:12 }}>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>mis preferencias</p>
+          <div style={s.card}>
+            {[["curva habitual",clienta.curva||"—"],["grosor",clienta.grosor?`${clienta.grosor}mm`:"—"],["largo",clienta.largo||"—"]].map(([l,v])=>(
+              <div key={l} style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                <span style={{ ...s.label, margin:0 }}>{l}</span>
+                <span style={s.tag}>{v}</span>
               </div>
-            )}
-            {/* Botón de cámara — siempre visible, más prominente al editar */}
-            <label htmlFor="foto-input" style={{
-              position: "absolute", bottom: 0, right: 0,
-              width: 26, height: 26, borderRadius: "50%",
-              background: editando ? G.green : "rgba(10,10,10,0.8)",
-              border: `1.5px solid ${editando ? "#0a0a0a" : G.border}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", fontSize: 13, transition: "all 0.2s",
-            }}>
-              📷
-            </label>
-            <input id="foto-input" type="file" accept="image/*" style={{ display: "none" }} onChange={handleFoto} />
-          </div>
-          <p style={{ margin: "0 0 4px", fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 18 }}>{clienta.nombre}</p>
-          <span style={css.tag}>clienta activa</span>
-          {editando && (
-            <p style={{ margin: "8px 0 0", fontFamily: "'Courier New', monospace", fontSize: 10, color: G.textMuted, textAlign: "center" }}>
-              tocá 📷 para cambiar tu foto
-            </p>
-          )}
-        </div>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          <button style={{ ...css.glassBtn, flex: 1, fontSize: 10 }} onClick={() => setEditando(!editando)}>{editando ? "cancelar" : "editar perfil"}</button>
-          <button style={{ ...css.glassBtn, flex: 1, fontSize: 10 }} onClick={() => openWA()}>contactar</button>
-        </div>
-
-        {/* Datos */}
-        <div style={{ ...css.card, display: "flex", flexDirection: "column", gap: 12 }}>
-          {[
-            ["nombre", clienta.nombre],
-            ["teléfono", clienta.telefono],
-            ["mail", clienta.mail],
-          ].map(([label, val]) => (
-            <div key={label}>
-              <label style={css.label}>{label}</label>
-              {editando ? <input style={css.input} defaultValue={val} /> : <p style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 13, color: G.textSub }}>{val}</p>}
-            </div>
-          ))}
-          {editando && (
-            <div>
-              <label style={css.label}>contacto de emergencia</label>
-              <input style={css.input} placeholder="nombre y teléfono..." />
-            </div>
-          )}
-        </div>
-
-        {/* Preferencias */}
-        <div style={{ marginTop: 12 }}>
-          <p style={css.sectionTitle}>mis preferencias</p>
-          <div style={css.card}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={css.label}>curva habitual</span>
-              <span style={{ ...css.tag, marginRight: 0 }}>{clienta.curva}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={css.label}>grosor</span>
-              <span style={{ ...css.tag, marginRight: 0 }}>{clienta.grosor}mm</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={css.label}>largo</span>
-              <span style={{ ...css.tag, marginRight: 0 }}>{clienta.largo}</span>
-            </div>
+            ))}
           </div>
         </div>
 
-        {/* Políticas */}
-        <div style={{ ...css.card, marginTop: 12, background: "rgba(143,189,90,0.03)", borderColor: G.border }}>
-          <p style={{ margin: "0 0 8px", fontFamily: "'Georgia', serif", fontWeight: 700, fontSize: 14 }}>Políticas del Estudio</p>
-          {[
-            "Cancelaciones con 24hs de anticipación",
-            "Puntualidad necesaria · tolerancia 10min",
-            "No usar rimel ni pestañas postizas 48hs antes",
-            "Retoques gratuitos dentro de las 72hs",
-            "Prohibido el uso de aceites en la zona",
-          ].map((pol, i) => (
-            <p key={i} style={{ margin: "0 0 6px", fontFamily: "'Courier New', monospace", fontSize: 11, color: G.textSub }}>✦ {pol}</p>
+        <div style={{ ...s.card, marginTop:12, background:"rgba(143,189,90,0.03)", borderColor:G.border }}>
+          <p style={{ margin:"0 0 9px", fontFamily:F.serif, fontWeight:700, fontSize:14 }}>Políticas del Estudio</p>
+          {["Cancelaciones con 24hs de anticipación","Puntualidad · tolerancia 10 minutos","No usar rimel 48hs antes","Retoques gratuitos dentro de las 72hs","Prohibido el uso de aceites en la zona"].map((p,i)=>(
+            <p key={i} style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:12, color:G.sub }}>✦ {p}</p>
           ))}
         </div>
 
-        {editando && <button style={{ ...css.greenBtn, marginTop: 12 }}>guardar cambios →</button>}
+        {editando&&<button style={{ ...s.btnGreen, marginTop:12 }}>guardar cambios →</button>}
 
-        <button style={{ ...css.glassBtn, marginTop: 20, width: "100%", borderColor: G.red, color: G.red }} onClick={onLogout}>
-          cerrar sesión
-        </button>
+        <button style={{ ...s.btnRed, marginTop:18, width:"100%" }} onClick={onLogout}>cerrar sesión</button>
       </div>
     </div>
   );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// ─── APP ROOT ─────────────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export default function App() {
-  const [session, setSession] = useState(null);
-  const appData = useAppData();
-
-  const handleLogin = (tipo, data = null) => setSession({ tipo, data });
-  const handleLogout = () => {
-    localStorage.removeItem("ls_session");
-    setSession(null);
-  };
-
-  if (!session) return <LoginScreen onLogin={handleLogin} />;
-  if (session.tipo === "admin") return <AdminApp onLogout={handleLogout} appData={appData} />;
-  if (session.tipo === "clienta") return <ClientaApp clienta={session.data} onLogout={handleLogout} appData={appData} />;
-  return null;
 }
