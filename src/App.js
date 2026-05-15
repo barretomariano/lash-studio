@@ -468,9 +468,10 @@ function AdminAgenda({ data, push }) {
   const citasPorFecha = {};
   data.citas.forEach(c => { if (!citasPorFecha[c.fecha]) citasPorFecha[c.fecha] = []; citasPorFecha[c.fecha].push(c); });
 
-  const fechasBloq  = new Set(data.excepciones.map(e => e.fecha));
+  const fechasBloq    = new Set(data.excepciones.map(e => e.fecha));
+  const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
   const excepDia    = data.excepciones.find(e => e.fecha === diaS);
-  const diaEsBloq   = fechasBloq.has(diaS);
+  const diaEsBloq   = fechasBloq.has(diaS) || !esDiaLaboral(diaS, diasLaborales);
   const citasDia    = citasPorFecha[diaS] || [];
   const slots       = data.getConfig("slots", []);
 
@@ -501,7 +502,10 @@ function AdminAgenda({ data, push }) {
             {Array(diasMes).fill(null).map((_, i) => {
               const dia = i + 1, key = fmtKey(dia);
               const tiene = !!(citasPorFecha[key]?.length);
-              const bloq = fechasBloq.has(key), esH = key === hoy, esSel = key === diaS;
+              const bloqExcep = fechasBloq.has(key);
+              const bloqDia   = !esDiaLaboral(key, diasLaborales);
+              const bloq = bloqExcep || bloqDia;
+              const esH = key === hoy, esSel = key === diaS;
               return (
                 <div key={dia} onClick={() => setDiaS(key)} style={{ textAlign:"center", borderRadius:8, padding:"5px 2px", cursor:"pointer", background:esSel ? G.green : esH ? G.greenM : bloq ? "rgba(224,112,112,0.1)" : "transparent", border:esSel ? "none" : esH ? `0.5px solid ${G.green}` : bloq ? `0.5px solid rgba(224,112,112,0.3)` : "0.5px solid transparent" }}>
                   <span style={{ fontFamily:F.sans, fontSize:12, color:esSel ? "#0a0a0a" : esH ? G.greenL : bloq ? G.red : G.sub, fontWeight:esSel || esH ? 700 : 400, display:"block" }}>{dia}</span>
@@ -521,7 +525,14 @@ function AdminAgenda({ data, push }) {
 
         {diaEsBloq && (
           <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <div><p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:11, color:G.red }}>día no laborable</p><p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{excepDia?.razon || ""}</p></div>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:11, color:G.red }}>
+                {fechasBloq.has(diaS) ? "día bloqueado manualmente" : "día no laborable"}
+              </p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>
+                {excepDia?.razon || (esDiaLaboral(diaS, diasLaborales) ? "" : `los ${DIAS_F[new Date(diaS+"T12:00:00").getDay()]}s no trabajás`)}
+              </p>
+            </div>
             <span style={{ fontSize:18 }}>🚫</span>
           </div>
         )}
@@ -1190,15 +1201,73 @@ function ConfigTecnico({ data, toast }) {
   );
 }
 
+// helpers para verificar días laborales (usado en Agenda y CAgendar)
+const DIAS_SEMANA_IDX = { domingo:0, lunes:1, martes:2, "miércoles":3, jueves:4, viernes:5, sábado:6 };
+const esDiaLaboral = (fechaISO, diasLaborales) => {
+  if (!diasLaborales || diasLaborales.length === 0) return true; // si no configuró, todos son laborales
+  const dow = new Date(fechaISO + "T12:00:00").getDay(); // 0=dom
+  return diasLaborales.includes(dow);
+};
+
 // ── Config Horarios ────────────────────────────────────────────────────────────
 function ConfigHorarios({ data, toast }) {
-  const [tab, setTab] = useState("slots");
+  const [tab, setTab] = useState("dias");
+
+  const DiasConfig = () => {
+    const diasGuardados = data.getConfig("diasLaborales", [1,2,3,4,5,6]); // default lun-sáb
+    const [dias, setDias] = useState(diasGuardados);
+
+    const toggleDia = async (idx) => {
+      const upd = dias.includes(idx) ? dias.filter(d => d !== idx) : [...dias, idx].sort();
+      setDias(upd);
+      await data.saveConfig("diasLaborales", upd);
+      toast("✓ días laborales guardados");
+    };
+
+    const diasInfo = [
+      { idx:1, label:"Lunes",     short:"L"  },
+      { idx:2, label:"Martes",    short:"M"  },
+      { idx:3, label:"Miércoles", short:"Mi" },
+      { idx:4, label:"Jueves",    short:"J"  },
+      { idx:5, label:"Viernes",   short:"V"  },
+      { idx:6, label:"Sábado",    short:"S"  },
+      { idx:0, label:"Domingo",   short:"D"  },
+    ];
+
+    return (
+      <div>
+        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14, lineHeight:1.6 }}>
+          Seleccioná los días en que trabajás. Los días no seleccionados aparecerán bloqueados en el calendario automáticamente.
+        </p>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:7, marginBottom:14 }}>
+          {diasInfo.map(d => {
+            const activo = dias.includes(d.idx);
+            return (
+              <div key={d.idx} onClick={() => toggleDia(d.idx)} style={{ textAlign:"center", borderRadius:12, padding:"12px 4px", cursor:"pointer", background:activo ? G.greenM : "rgba(255,255,255,0.03)", border:`1px solid ${activo ? G.green : G.border}`, transition:"all 0.2s" }}>
+                <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontWeight:activo ? 700 : 400, fontSize:13, color:activo ? G.greenL : G.muted }}>{d.short}</p>
+                <div style={{ width:5, height:5, borderRadius:"50%", background:activo ? G.green : "transparent", margin:"0 auto" }} />
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ ...s.card, background:"rgba(143,189,90,0.04)", borderColor:G.greenD }}>
+          <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0, lineHeight:1.7 }}>
+            ✦ Trabajás <b style={{ color:G.greenL }}>{dias.length}</b> día{dias.length !== 1 ? "s" : ""} por semana<br/>
+            ✦ En el calendario, los días no laborables aparecen sin slots disponibles<br/>
+            ✦ Para bloquear días específicos (feriados, vacaciones) usá la pestaña "días bloqueados"
+          </p>
+        </div>
+      </div>
+    );
+  };
 
   const SlotsConfig = () => {
     const slots = data.getConfig("slots", []);
     const [nuevo, setNuevo] = useState("");
     const agregar = async () => {
       const v = nuevo.trim(); if (!v) return;
+      // Validar formato HH:MM
+      if (!/^\d{1,2}:\d{2}$/.test(v)) { toast("formato: HH:MM (ej: 09:00)"); return; }
       if (slots.includes(v)) { toast("ya existe"); return; }
       const upd = [...slots, v].sort();
       await data.saveConfig("slots", upd); setNuevo(""); toast(`✓ ${v} agregado`);
@@ -1206,7 +1275,7 @@ function ConfigHorarios({ data, toast }) {
     const quitar = async (v) => { await data.saveConfig("slots", slots.filter(x => x !== v)); toast(`${v} eliminado`); };
     return (
       <div>
-        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14, lineHeight:1.6 }}>Estos horarios aparecen en la agenda y en el panel de clientas para agendar.</p>
+        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14, lineHeight:1.6 }}>Horarios disponibles para agendar. Aparecen en la agenda y en el panel de clientas.</p>
         <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:14 }}>
           {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>sin horarios configurados ✦</p>}
           {slots.map(v => (
@@ -1296,10 +1365,11 @@ function ConfigHorarios({ data, toast }) {
   return (
     <div>
       <div style={{ display:"flex", gap:7, marginBottom:16 }}>
-        {[["slots","mis horarios"],["excepciones","días bloqueados"]].map(([v, l]) => (
-          <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:11, background:tab === v ? G.greenM : G.glass, borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.sub }}>{l}</button>
+        {[["dias","días laborales"],["slots","horarios"],["excepciones","días bloqueados"]].map(([v, l]) => (
+          <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:10, background:tab === v ? G.greenM : G.glass, borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.sub, padding:"7px 4px" }}>{l}</button>
         ))}
       </div>
+      {tab === "dias"        && <DiasConfig />}
       {tab === "slots"       && <SlotsConfig />}
       {tab === "excepciones" && <ExcepcionesConfig />}
     </div>
@@ -1319,7 +1389,10 @@ function ConfigEstudio({ data, toast, onLogout }) {
   const [editIdx, setEditIdx] = useState(null);
   const [editTxt, setEditTxt] = useState("");
 
-  useEffect(() => { setPolsLocal(data.getConfig("politicas", [])); }, [data.config]);
+  useEffect(() => {
+    const e = data.getConfig("estudio", {});
+    setForm({ nombre:e.nombre||"", direccion:e.direccion||"", telefono:e.telefono||"", instagram:e.instagram||"", descripcion:e.descripcion||"" });
+  }, [data.config]);
 
   const guardarEstudio = async () => { setSaving(true); await data.saveConfig("estudio", form); setSaving(false); toast("✓ datos guardados"); };
 
@@ -1407,56 +1480,151 @@ function CInicio({ clienta, data, setTab }) {
   const hist  = clienta.historial || [];
   const ultima = [...hist].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0];
   const diasDesde = ultima?.fecha ? Math.floor((new Date() - new Date(ultima.fecha)) / (1000 * 60 * 60 * 24)) : null;
-  const proxCita  = data.citas.filter(c => c.clientaId === clienta._id && c.fecha >= hoy && c.estado !== "completada").sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
+  const proxCita  = data.citas.filter(c => c.clientaId === clienta._id && c.fecha >= hoy && c.estado !== "completada" && c.estado !== "solicitada").sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
+  const citasSolicitadas = data.citas.filter(c => c.clientaId === clienta._id && c.estado === "solicitada");
   const diasHasta = proxCita ? Math.floor((new Date(proxCita.fecha) - new Date()) / (1000 * 60 * 60 * 24)) : null;
   const estudio   = data.getConfig("estudio", {});
-  const curvaFav  = clienta.curva || "—";
+  const curvaFav  = (() => { const cnt = {}; hist.forEach(h => { if(h.curva) cnt[h.curva]=(cnt[h.curva]||0)+1; }); return Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0]?.[0] || clienta.curva || "—"; })();
+
+  // Días hasta cumplir 14 días del service (para el countdown motivacional)
+  const diasParaService = diasDesde !== null ? Math.max(0, 14 - diasDesde) : null;
+  const necesitaService = diasDesde !== null && diasDesde >= 14 && !proxCita;
+
+  const instagramUrl = estudio.instagram
+    ? `https://www.instagram.com/${estudio.instagram.replace("@", "")}`
+    : "https://www.instagram.com/bychulas.studio";
+
+  const ubicacionUrl = estudio.direccion
+    ? `https://maps.google.com/?q=${encodeURIComponent(estudio.direccion)}`
+    : null;
 
   return (
     <div>
-      <div style={s.topBar}><h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1><p style={s.sub}>hola, {clienta.nombre?.split(" ")[0].toLowerCase()} 🌿</p></div>
+      <div style={s.topBar}>
+        <h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1>
+        <p style={s.sub}>hola, {clienta.nombre?.split(" ")[0].toLowerCase()} 🌿</p>
+      </div>
       <div style={{ padding:"18px" }}>
-        {diasDesde !== null && diasDesde >= 14 && !proxCita && (
-          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.14),rgba(143,189,90,0.04))", border:`1px solid ${G.green}`, borderRadius:14, padding:"15px 16px", marginBottom:12 }}>
-            <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.greenL }}>¡es hora del service! ✦</p>
-            <p style={{ margin:"0 0 11px", fontFamily:F.sans, fontSize:12, color:G.sub }}>hace {diasDesde} días de tu último tratamiento</p>
-            <button style={{ ...s.btnG, padding:"9px 14px" }} onClick={() => setTab("agendar")}>agendar ahora →</button>
+
+        {/* ── Banner service vencido ── */}
+        {necesitaService && (
+          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.18),rgba(143,189,90,0.05))", border:`1.5px solid ${G.green}`, borderRadius:16, padding:"16px", marginBottom:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+              <div>
+                <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>¡es hora del service! ✦</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>hace {diasDesde} días de tu último tratamiento</p>
+              </div>
+              <div style={{ textAlign:"center", background:"rgba(143,189,90,0.2)", borderRadius:12, padding:"8px 12px", flexShrink:0 }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.greenL }}>{diasDesde}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>
+              </div>
+            </div>
+            <button style={{ ...s.btnG, padding:"10px 14px" }} onClick={() => setTab("agendar")}>agendar ahora →</button>
           </div>
         )}
+
+        {/* ── Cita solicitada pendiente ── */}
+        {citasSolicitadas.length > 0 && !proxCita && (
+          <div style={{ ...s.card, borderColor:G.amber, background:"rgba(224,184,112,0.06)", marginBottom:12 }}>
+            <p style={{ margin:"0 0 4px", fontFamily:F.sans, fontSize:10, color:G.amber, textTransform:"lowercase", letterSpacing:"0.08em" }}>solicitud pendiente</p>
+            <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{citasSolicitadas[0].servicio}</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(citasSolicitadas[0].fecha)} · {citasSolicitadas[0].hora} · esperando confirmación</p>
+          </div>
+        )}
+
+        {/* ── Próxima cita con countdown ── */}
         {proxCita && (
-          <div style={{ ...s.card, borderColor:G.greenD, marginBottom:12 }}>
+          <div style={{ ...s.card, borderColor:G.greenD, background:"rgba(143,189,90,0.06)", marginBottom:12 }}>
             <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 7px", textTransform:"lowercase" }}>próxima cita</p>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
                 <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:16 }}>{proxCita.servicio}</p>
                 <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(proxCita.fecha)} · {proxCita.hora}</p>
               </div>
-              {diasHasta !== null && (
-                <div style={{ textAlign:"center", background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:11, padding:"8px 13px" }}>
-                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.greenL }}>{diasHasta}</p>
-                  <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>
-                </div>
-              )}
+              <div style={{ textAlign:"center", background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:12, padding:"10px 14px", flexShrink:0 }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:24, color:G.greenL }}>{diasHasta === 0 ? "¡hoy!" : diasHasta}</p>
+                {diasHasta !== 0 && <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>}
+              </div>
             </div>
           </div>
         )}
-        <div style={{ display:"flex", gap:9, marginBottom:18 }}>
-          <div onClick={() => setTab("historial")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"12px 6px" }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px" }}>visitas</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>{hist.length}</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>ver →</p>
+
+        {/* ── Countdown al service (cuando no vence aún) ── */}
+        {diasParaService !== null && diasParaService > 0 && !proxCita && (
+          <div style={{ ...s.card, marginBottom:12 }}>
+            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 8px", textTransform:"lowercase" }}>próximo service recomendado</p>
+            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+              <div style={{ flex:1 }}>
+                {/* Barra de progreso */}
+                <div style={{ height:6, background:G.border, borderRadius:3, marginBottom:6, overflow:"hidden" }}>
+                  <div style={{ height:"100%", width:`${((14 - diasParaService) / 14) * 100}%`, background:`linear-gradient(90deg, ${G.greenD}, ${G.green})`, borderRadius:3, transition:"width 0.5s ease" }} />
+                </div>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.sub }}>
+                  {diasParaService === 1 ? "¡mañana es el momento ideal!" : `en ${diasParaService} días estarás lista para el service`}
+                </p>
+              </div>
+              <div style={{ textAlign:"center", flexShrink:0 }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.green }}>{diasParaService}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>
+              </div>
+            </div>
           </div>
-          <div onClick={() => setTab("perfil")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"12px 6px" }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px" }}>curva fav.</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>{curvaFav}</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>mi ficha →</p>
+        )}
+
+        {/* ── Widgets principales ── */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:9, marginBottom:16 }}>
+          {/* Visitas */}
+          <div onClick={() => setTab("historial")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"14px 6px", gridColumn:"1" }}>
+            <p style={{ fontFamily:F.sans, fontSize:20, margin:"0 0 2px" }}>✦</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.white, margin:"0 0 1px" }}>{hist.length}</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>visitas</p>
           </div>
-          <div onClick={() => setTab("agendar")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"12px 6px", background:G.greenM, borderColor:G.greenD }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:"0 0 3px" }}>turno</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>+</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:0 }}>agendar →</p>
+          {/* Curva favorita */}
+          <div onClick={() => setTab("perfil")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"14px 6px" }}>
+            <p style={{ fontFamily:F.sans, fontSize:20, margin:"0 0 2px" }}>〜</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.white, margin:"0 0 1px" }}>{curvaFav}</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>mi curva</p>
+          </div>
+          {/* Agendar */}
+          <div onClick={() => setTab("agendar")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"14px 6px", background:G.greenM, borderColor:G.green }}>
+            <p style={{ fontFamily:F.sans, fontSize:20, margin:"0 0 2px" }}>◷</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.white, margin:"0 0 1px" }}>+</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:0 }}>agendar</p>
           </div>
         </div>
+
+        {/* ── Widgets de contacto ── */}
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>el estudio</p>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
+          {/* WhatsApp */}
+          <div onClick={() => openWA("Hola! Tengo una consulta 💚")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", background:"rgba(37,211,102,0.08)", borderColor:"rgba(37,211,102,0.25)", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+            <span style={{ fontSize:26 }}>💬</span>
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>WhatsApp</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>consultas y turnos</p>
+          </div>
+          {/* Instagram */}
+          <div onClick={() => window.open(instagramUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", background:"rgba(225,48,108,0.08)", borderColor:"rgba(225,48,108,0.2)", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+            <span style={{ fontSize:26 }}>📷</span>
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Instagram</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{estudio.instagram || "@bychulas.studio"}</p>
+          </div>
+          {/* Ubicación */}
+          {ubicacionUrl && (
+            <div onClick={() => window.open(ubicacionUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", background:"rgba(66,133,244,0.08)", borderColor:"rgba(66,133,244,0.2)", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+              <span style={{ fontSize:26 }}>📍</span>
+              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Cómo llegar</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:"100%" }}>{estudio.direccion}</p>
+            </div>
+          )}
+          {/* Último servicio / historial */}
+          <div onClick={() => setTab("historial")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", background:"rgba(143,189,90,0.06)", borderColor:G.greenD, display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+            <span style={{ fontSize:26 }}>🌿</span>
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Mi historial</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{hist.length > 0 ? `${hist.length} visitas` : "ver mis visitas"}</p>
+          </div>
+        </div>
+
+        {/* ── Último servicio ── */}
         {ultima && (
           <>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>último servicio</p>
@@ -1468,44 +1636,49 @@ function CInicio({ clienta, data, setTab }) {
             </div>
           </>
         )}
-        <div style={s.div} />
-        <div style={s.card}>
-          {[
-            estudio.direccion && ["📍", estudio.direccion],
-            estudio.telefono  && ["📱", estudio.telefono],
-            estudio.instagram && ["📷", estudio.instagram],
-          ].filter(Boolean).map(([ic, v]) => (
-            <div key={v} style={{ display:"flex", gap:10, alignItems:"center", marginBottom:8 }}>
-              <span style={{ fontSize:14 }}>{ic}</span>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</p>
-            </div>
-          ))}
-          {!estudio.direccion && !estudio.telefono && !estudio.instagram && <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>Lash Studio 🌿</p>}
-          <button style={{ ...s.btnG, marginTop:10, padding:"9px" }} onClick={() => openWA()}>abrir en WhatsApp →</button>
-        </div>
       </div>
     </div>
   );
 }
 
 function CAgendar({ clienta, data }) {
-  const [paso, setPaso]     = useState(1);
-  const [modo, setModo]     = useState("individual");
-  const [form, setForm]     = useState({ servicio:null, fecha:"", hora:"", notas:"" });
+  const [paso, setPaso]       = useState(1);
+  const [modo, setModo]       = useState("individual");
+  const [form, setForm]       = useState({ servicio:null, fecha:"", hora:"", notas:"" });
   const [fotoIdx, setFotoIdx] = useState(0);
   const [enviado, setEnviado] = useState(false);
+  const [saving, setSaving]   = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
-  const slots      = data.getConfig("slots", []);
-  const ocupadas   = data.citas.filter(c => c.fecha === form.fecha && c.estado !== "completada").map(c => c.hora);
-  const fechasBloq = new Set(data.excepciones.map(e => e.fecha));
+  const slots         = data.getConfig("slots", []);
+  const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
+  const ocupadas      = data.citas.filter(c => c.fecha === form.fecha && c.estado !== "completada").map(c => c.hora);
+  const fechasBloq    = new Set(data.excepciones.map(e => e.fecha));
 
-  const confirmar = () => {
+  const fechaNoDisponible = (fecha) => !fecha ? false : fechasBloq.has(fecha) || !esDiaLaboral(fecha, diasLaborales);
+
+  const confirmar = async () => {
+    setSaving(true);
+    // Crear la cita pendiente en Firebase (estado "solicitada" — Male confirma)
+    try {
+      await data.crearCita({
+        clientaId:     clienta._id,
+        clientaNombre: clienta.nombre,
+        servicio:      form.servicio?.nombre || "A confirmar",
+        fecha:         form.fecha,
+        hora:          form.hora,
+        notas:         form.notas,
+        estado:        "solicitada",
+      });
+    } catch (e) { console.warn("Firebase write:", e); }
+    // Abrir WA para avisar a Male
     const sv  = form.servicio?.nombre || "A confirmar con Male";
     const msg = modo === "noSe"
       ? `Hola! 🌿 Quiero agendar un turno:\n📅 ${form.fecha} a las ${form.hora}\n💭 No sé bien qué hacerme${form.notas ? `\n${form.notas}` : ""}\n💚 ${clienta.nombre}`
       : `Hola! 🌿 Quiero agendar:\n✦ ${sv}\n📅 ${form.fecha} a las ${form.hora}${form.notas ? `\nNotas: ${form.notas}` : ""}\n💚 ${clienta.nombre}`;
-    openWA(msg); setEnviado(true);
+    openWA(msg);
+    setSaving(false);
+    setEnviado(true);
   };
 
   if (enviado) return (
@@ -1582,8 +1755,8 @@ function CAgendar({ clienta, data }) {
             <button style={{ ...s.btnGl, marginBottom:14, fontSize:12 }} onClick={() => setPaso(1)}>← cambiar servicio</button>
             {form.servicio && <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:16, padding:"9px 13px" }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL }}>✦ {form.servicio.nombre}</p></div>}
             <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} min={hoyISO()} /></Field>
-            {form.fecha && fechasBloq.has(form.fecha) && <p style={{ color:G.red, fontSize:12, marginBottom:12 }}>⚠ Este día no tiene turnos disponibles. Elegí otra fecha.</p>}
-            {form.fecha && !fechasBloq.has(form.fecha) && (
+            {form.fecha && fechaNoDisponible(form.fecha) && <p style={{ color:G.red, fontSize:12, marginBottom:12 }}>⚠ Este día no está disponible. Elegí otra fecha.</p>}
+            {form.fecha && !fechaNoDisponible(form.fecha) && (
               <>
                 <Field label="hora disponible">
                   <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
@@ -1618,7 +1791,7 @@ function CAgendar({ clienta, data }) {
                 </div>
               ))}
             </div>
-            <button style={{ ...s.btnG, marginTop:14 }} onClick={confirmar}>confirmar y avisar a Male →</button>
+            <button style={{ ...s.btnG, marginTop:14, opacity:saving?0.6:1 }} onClick={confirmar} disabled={saving}>{saving?"enviando...":"confirmar y avisar a Male →"}</button>
             <button style={{ ...s.btnGl, marginTop:9, width:"100%" }} onClick={() => setPaso(1)}>modificar</button>
           </div>
         )}
@@ -1664,11 +1837,22 @@ function CHistorial({ clienta }) {
 }
 
 function CPerfil({ clienta, data, onLogout }) {
-  const [editando, setEdit] = useState(false);
-  const [foto, setFoto]     = useState(null);
+  const [editando, setEdit]   = useState(false);
+  const [foto, setFoto]       = useState(null);
+  const [saving, setSaving]   = useState(false);
+  const [formP, setFormP]     = useState({ nombre:clienta.nombre||"", telefono:clienta.telefono||"", emergencia:clienta.emergencia||"" });
+  const setFP = (k, v) => setFormP(f => ({ ...f, [k]:v }));
+
   const politicas = data.getConfig("politicas", []);
   const estudio   = data.getConfig("estudio",   {});
+
   const onFoto = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = ev => setFoto(ev.target.result); r.readAsDataURL(f); };
+
+  const guardar = async () => {
+    setSaving(true);
+    await data.editarClientas(clienta._id, { nombre:formP.nombre, telefono:formP.telefono, emergencia:formP.emergencia });
+    setSaving(false); setEdit(false);
+  };
   return (
     <div>
       <div style={s.topBar}><h1 style={s.h1}>Mi Perfil</h1><p style={s.sub}>tus datos</p></div>
@@ -1687,10 +1871,17 @@ function CPerfil({ clienta, data, onLogout }) {
           <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => openWA()}>💬 contactar</button>
         </div>
         <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12 }}>
-          {[["nombre", clienta.nombre], ["email", clienta.email || "—"], ["teléfono", clienta.telefono || "—"]].map(([l, v]) => (
-            <div key={l}><label style={s.label}>{l}</label>{editando ? <input style={s.input} defaultValue={v} /> : <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</p>}</div>
-          ))}
-          {editando && <Field label="contacto de emergencia"><input style={s.input} placeholder="nombre y teléfono..." /></Field>}
+          {editando ? (
+            <>
+              <Field label="nombre"><input style={s.input} value={formP.nombre} onChange={e => setFP("nombre", e.target.value)} /></Field>
+              <Field label="teléfono"><input style={s.input} type="tel" value={formP.telefono} onChange={e => setFP("telefono", e.target.value)} placeholder="11 XXXX-XXXX" /></Field>
+              <Field label="contacto de emergencia"><input style={s.input} value={formP.emergencia} onChange={e => setFP("emergencia", e.target.value)} placeholder="nombre y teléfono..." /></Field>
+            </>
+          ) : (
+            [["nombre", clienta.nombre], ["email", clienta.email || "—"], ["teléfono", clienta.telefono || "—"], ["emergencia", clienta.emergencia || "—"]].map(([l, v]) => (
+              <div key={l}><label style={s.label}>{l}</label><p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</p></div>
+            ))
+          )}
         </div>
         {(clienta.curva || clienta.grosor || clienta.largo) && (
           <div style={{ marginTop:12 }}>
@@ -1711,7 +1902,7 @@ function CPerfil({ clienta, data, onLogout }) {
             {politicas.map((p, i) => <p key={i} style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:12, color:G.sub }}>✦ {p}</p>)}
           </div>
         )}
-        {editando && <button style={{ ...s.btnG, marginTop:12 }}>guardar cambios →</button>}
+        {editando && <button style={{ ...s.btnG, marginTop:12, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"guardando...":"guardar cambios →"}</button>}
         <button style={{ ...s.btnRed, marginTop:18, width:"100%" }} onClick={onLogout}>cerrar sesión</button>
       </div>
     </div>
