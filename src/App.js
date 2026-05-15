@@ -1,267 +1,207 @@
 import { useState, useEffect, useCallback } from "react";
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// FIREBASE CONFIG
-// ═══════════════════════════════════════════════════════════════════════════════
-const FB = "https://lash-studio-c9cd7-default-rtdb.firebaseio.com";
-const API_KEY = "AIzaSyDq8japdXOWaAAOjBLhESJB1h2qITdnhvk";
-const AUTH = "https://identitytoolkit.googleapis.com/v1/accounts";
+const FB        = "https://lash-studio-c9cd7-default-rtdb.firebaseio.com";
+const API_KEY   = "AIzaSyDq8japdXOWaAAOjBLhESJB1h2qITdnhvk";
+const AUTH_URL  = "https://identitytoolkit.googleapis.com/v1/accounts";
 const ADMIN_EMAIL = "maleocampo3@gmail.com";
-const WA = "541126509699";
+const WA_NUM    = "541126509699";
+const DEPLOY_URL = "https://lash-studio-gilt.vercel.app";
 
-// ─── REST helpers ─────────────────────────────────────────────────────────────
 const db = {
   get: async (path) => {
     const r = await fetch(`${FB}/${path}.json`);
     const d = await r.json();
-    if (!d || typeof d !== "object") return [];
+    if (!d || typeof d !== "object" || Array.isArray(d)) return [];
     return Object.entries(d).map(([k, v]) => ({ ...v, _id: k }));
   },
-  getOne: async (path) => {
-    const r = await fetch(`${FB}/${path}.json`);
-    return await r.json();
-  },
-  set: async (path, data) => {
-    await fetch(`${FB}/${path}.json`, { method: "PUT", body: JSON.stringify(data) });
-  },
-  push: async (path, data) => {
-    const r = await fetch(`${FB}/${path}.json`, { method: "POST", body: JSON.stringify(data) });
-    const j = await r.json();
-    return j.name;
-  },
-  update: async (path, data) => {
-    await fetch(`${FB}/${path}.json`, { method: "PATCH", body: JSON.stringify(data) });
-  },
-  delete: async (path) => {
-    await fetch(`${FB}/${path}.json`, { method: "DELETE" });
-  },
+  getVal: async (path) => { const r = await fetch(`${FB}/${path}.json`); return r.json(); },
+  set:    async (path, data) => { await fetch(`${FB}/${path}.json`, { method:"PUT",    body:JSON.stringify(data) }); },
+  push:   async (path, data) => { const r = await fetch(`${FB}/${path}.json`, { method:"POST",   body:JSON.stringify(data) }); return (await r.json()).name; },
+  update: async (path, data) => { await fetch(`${FB}/${path}.json`, { method:"PATCH",  body:JSON.stringify(data) }); },
+  del:    async (path)       => { await fetch(`${FB}/${path}.json`, { method:"DELETE" }); },
 };
 
-// ─── Auth helpers ──────────────────────────────────────────────────────────────
-const auth = {
-  signIn: async (email, password) => {
-    const r = await fetch(`${AUTH}:signInWithPassword?key=${API_KEY}`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, returnSecureToken: true }),
-    });
-    return await r.json();
-  },
-  createUser: async (email, password) => {
-    const r = await fetch(`${AUTH}:signUp?key=${API_KEY}`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, returnSecureToken: true }),
-    });
-    return await r.json();
-  },
+const fbAuth = {
+  signIn:  async (email, pass) => (await fetch(`${AUTH_URL}:signInWithPassword?key=${API_KEY}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email, password:pass, returnSecureToken:true }) })).json(),
+  create:  async (email, pass) => (await fetch(`${AUTH_URL}:signUp?key=${API_KEY}`,             { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email, password:pass, returnSecureToken:true }) })).json(),
+  resetPw: async (email)       => (await fetch(`${AUTH_URL}:sendOobCode?key=${API_KEY}`,        { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ requestType:"PASSWORD_RESET", email }) })).json(),
 };
 
-const genPassword = () => Math.random().toString(36).slice(2, 8).toUpperCase();
-const openWA = (msg = "") => window.open(`https://wa.me/${WA}?text=${encodeURIComponent(msg)}`, "_blank");
-const hoyISO = () => new Date().toISOString().slice(0, 10);
+const genPass  = () => Math.random().toString(36).slice(2, 8).toUpperCase();
+const hoyISO   = () => new Date().toISOString().slice(0, 10);
+const mesISO   = () => new Date().toISOString().slice(0, 7);
 const fmtPesos = (n) => `$${Number(n || 0).toLocaleString("es-AR")}`;
-const fmtFecha = (iso) => {
-  if (!iso) return "";
-  const [y, m, d] = iso.split("-");
-  const meses = ["", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-  return `${parseInt(d)} ${meses[parseInt(m)]} ${y}`;
-};
+const fmtFecha = (iso) => { if (!iso) return ""; const [,m,d] = iso.split("-"); const M = ["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]; return `${parseInt(d)} ${M[parseInt(m)]}`; };
+const openWA   = (msg = "") => window.open(`https://wa.me/${WA_NUM}?text=${encodeURIComponent(msg)}`, "_blank");
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════════
-// CONSTANTES UI (solo para calendarios y UI, NO datos del negocio)
-// ═══════════════════════════════════════════════════════════════════════════════
 const MESES  = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const DIAS_C = ["D","L","M","X","J","V","S"];
 const DIAS_F = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ESTILOS
-// ═══════════════════════════════════════════════════════════════════════════════
 const G = {
-  bg:"#0a0a0a", card:"rgba(255,255,255,0.04)", cardHov:"rgba(255,255,255,0.07)",
-  glass:"rgba(255,255,255,0.06)", border:"rgba(255,255,255,0.08)", borderHov:"rgba(255,255,255,0.16)",
+  bg:"#0a0a0a", card:"rgba(255,255,255,0.04)", glass:"rgba(255,255,255,0.06)",
+  border:"rgba(255,255,255,0.08)", borderHov:"rgba(255,255,255,0.16)",
   green:"#8fbd5a", greenD:"#5c8f2e", greenL:"#b5d98a", greenM:"rgba(143,189,90,0.15)",
   text:"#f0f0f0", muted:"rgba(240,240,240,0.45)", sub:"rgba(240,240,240,0.65)",
-  white:"#ffffff", red:"#e07070", amber:"#e0b870",
+  white:"#fff", red:"#e07070", amber:"#e0b870",
 };
-const F = { serif:"'Playfair Display', Georgia, serif", sans:"'DM Sans', 'Segoe UI', sans-serif" };
+const F = { serif:"'Playfair Display',Georgia,serif", sans:"'DM Sans','Segoe UI',sans-serif" };
 
 const s = {
-  app:{ minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, maxWidth:430, margin:"0 auto", position:"relative", overflowX:"hidden" },
-  screen:{ minHeight:"100vh", paddingBottom:100 },
-  topBar:{ padding:"52px 20px 14px", borderBottom:`0.5px solid ${G.border}`, background:"rgba(10,10,10,0.94)", backdropFilter:"blur(20px)", position:"sticky", top:0, zIndex:10 },
-  h1:{ fontFamily:F.serif, fontWeight:700, fontSize:24, letterSpacing:"-0.5px", color:G.white, margin:0 },
-  sub:{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"3px 0 0", letterSpacing:"0.04em" },
-  card:{ background:G.card, border:`0.5px solid ${G.border}`, borderRadius:14, padding:"14px 16px", marginBottom:10, backdropFilter:"blur(10px)", transition:"all 0.2s" },
-  input:{ background:"rgba(255,255,255,0.06)", border:`0.5px solid ${G.border}`, borderRadius:10, padding:"11px 14px", color:G.text, fontFamily:F.sans, fontSize:14, width:"100%", outline:"none", boxSizing:"border-box" },
-  label:{ fontFamily:F.sans, fontSize:11, color:G.muted, display:"block", marginBottom:5, letterSpacing:"0.03em" },
-  btnGreen:{ background:G.green, border:"none", borderRadius:12, padding:"13px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:13, fontWeight:700, cursor:"pointer", width:"100%", transition:"opacity 0.2s" },
-  btnGlass:{ background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:11, padding:"9px 16px", color:G.text, fontFamily:F.sans, fontSize:13, cursor:"pointer", backdropFilter:"blur(8px)", transition:"all 0.2s" },
-  btnRed:{ background:"rgba(224,112,112,0.12)", border:`0.5px solid ${G.red}`, borderRadius:11, padding:"9px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" },
-  tag:{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"3px 10px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3 },
-  nav:{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:430, background:"rgba(10,10,10,0.94)", backdropFilter:"blur(20px)", borderTop:`0.5px solid ${G.border}`, display:"flex", zIndex:20, padding:"8px 0 20px" },
-  fab:{ position:"fixed", bottom:88, right:18, width:50, height:50, borderRadius:"50%", background:G.green, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, boxShadow:`0 4px 20px rgba(143,189,90,0.4)`, zIndex:30 },
-  divider:{ height:"0.5px", background:G.border, margin:"16px 0" },
-  statCard:{ background:G.card, border:`0.5px solid ${G.border}`, borderRadius:13, padding:"13px 14px", flex:1 },
+  app:    { minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, maxWidth:430, margin:"0 auto", position:"relative", overflowX:"hidden" },
+  screen: { minHeight:"100vh", paddingBottom:110 },
+  topBar: { padding:"52px 20px 14px", borderBottom:`0.5px solid ${G.border}`, background:"rgba(10,10,10,0.94)", backdropFilter:"blur(20px)", position:"sticky", top:0, zIndex:10 },
+  h1:     { fontFamily:F.serif, fontWeight:700, fontSize:24, letterSpacing:"-0.5px", color:G.white, margin:0 },
+  sub:    { fontFamily:F.sans, fontSize:11, color:G.muted, margin:"3px 0 0" },
+  card:   { background:G.card, border:`0.5px solid ${G.border}`, borderRadius:14, padding:"14px 16px", marginBottom:10, backdropFilter:"blur(10px)", transition:"all 0.2s" },
+  input:  { background:"rgba(255,255,255,0.06)", border:`0.5px solid ${G.border}`, borderRadius:10, padding:"11px 14px", color:G.text, fontFamily:F.sans, fontSize:14, width:"100%", outline:"none", boxSizing:"border-box" },
+  label:  { fontFamily:F.sans, fontSize:11, color:G.muted, display:"block", marginBottom:5 },
+  btnG:   { background:G.green, border:"none", borderRadius:12, padding:"13px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:13, fontWeight:700, cursor:"pointer", width:"100%", transition:"opacity 0.2s" },
+  btnGl:  { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:11, padding:"9px 16px", color:G.text, fontFamily:F.sans, fontSize:13, cursor:"pointer", backdropFilter:"blur(8px)", transition:"all 0.2s" },
+  btnRed: { background:"rgba(224,112,112,0.12)", border:`0.5px solid ${G.red}`, borderRadius:11, padding:"9px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" },
+  tag:    { background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"3px 10px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3 },
+  div:    { height:"0.5px", background:G.border, margin:"14px 0" },
+  nav: { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:"rgba(20,20,20,0.88)", backdropFilter:"blur(24px) saturate(180%)", border:`0.5px solid rgba(255,255,255,0.12)`, borderRadius:28, display:"flex", zIndex:20, padding:"8px 6px", boxShadow:"0 8px 32px rgba(0,0,0,0.5)" },
+  fab:  { position:"fixed", bottom:90, right:18, width:50, height:50, borderRadius:"50%", background:G.green, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, boxShadow:`0 4px 20px rgba(143,189,90,0.4)`, zIndex:30 },
 };
 
-const navItemStyle = (active) => ({
-  flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3,
-  padding:"8px 0", cursor:"pointer", color: active ? G.green : G.muted, transition:"color 0.2s",
-});
+const navItmSty = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.2s", borderRadius:22, background:active ? "rgba(143,189,90,0.12)" : "transparent" });
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// COMPONENTES COMUNES
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── useData ────────────────────────────────────────────────────────────────────
+function useData() {
+  const [servicios, setServicios]     = useState([]);
+  const [clientas, setClientas]       = useState([]);
+  const [citas, setCitas]             = useState([]);
+  const [excepciones, setExcepciones] = useState([]);
+  const [config, setConfig]           = useState({});
+  const [loading, setLoading]         = useState(true);
+
+  const recargar = useCallback(async () => {
+    setLoading(true);
+    const [sv, cl, ct, ex, cfg] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.getVal("config")]);
+    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setConfig(cfg || {});
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { recargar(); }, []);
+
+  const getConfig  = (key, def) => config?.[key] ?? def;
+  const saveConfig = async (key, val) => { await db.update("config", { [key]: val }); setConfig(p => ({ ...p, [key]: val })); };
+
+  const crearServicio  = async (d)     => { const id = await db.push("servicios", d); setServicios(p => [...p, { ...d, _id:id }]); };
+  const editarServicio = async (id, d) => { await db.set(`servicios/${id}`, d); setServicios(p => p.map(x => x._id === id ? { ...d, _id:id } : x)); };
+  const borrarServicio = async (id)    => { await db.del(`servicios/${id}`); setServicios(p => p.filter(x => x._id !== id)); };
+
+  const crearClientas = async (datos) => {
+    const pass = genPass();
+    const res  = await fbAuth.create(datos.email, pass);
+    if (res.error) return { error: res.error.message };
+    const id = await db.push("clientas", { ...datos, uid:res.localId, creadaEn:hoyISO() });
+    setClientas(p => [...p, { ...datos, uid:res.localId, creadaEn:hoyISO(), _id:id, historial:[] }]);
+    return { ok:true, pass, email:datos.email };
+  };
+  const editarClientas        = async (id, d) => { await db.update(`clientas/${id}`, d); setClientas(p => p.map(x => x._id === id ? { ...x, ...d } : x)); };
+  const resetPasswordClientas = async (email)  => { await fbAuth.resetPw(email); };
+
+  const crearCita  = async (d)     => { const id = await db.push("citas", { ...d, creadaEn:hoyISO() }); setCitas(p => [...p, { ...d, creadaEn:hoyISO(), _id:id }]); return id; };
+  const editarCita = async (id, d) => { await db.update(`citas/${id}`, d); setCitas(p => p.map(x => x._id === id ? { ...x, ...d } : x)); };
+  const borrarCita = async (id)    => { await db.del(`citas/${id}`); setCitas(p => p.filter(x => x._id !== id)); };
+
+  const registrarPago = async (clientaId, citaId, reg) => {
+    await db.push(`clientas/${clientaId}/historial`, reg);
+    await editarCita(citaId, { estado:"completada" });
+    setClientas(p => p.map(c => {
+      if (c._id !== clientaId) return c;
+      const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
+      return { ...c, historial:[...h, reg] };
+    }));
+  };
+
+  return { servicios, clientas, citas, excepciones, config, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago };
+}
+
+// ── Componentes UI comunes ─────────────────────────────────────────────────────
 function Loader({ msg = "cargando..." }) {
-  return (
-    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:14 }}>
-      <span style={{ fontSize:36 }}>🌿</span>
-      <p style={{ ...s.sub, fontSize:13, color:G.sub }}>{msg}</p>
-    </div>
-  );
+  return <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:14 }}><span style={{ fontSize:36 }}>🌿</span><p style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{msg}</p></div>;
 }
-
 function Avatar({ nombre = "?", size = 40 }) {
-  const ini = (nombre || "?").split(" ").slice(0,2).map(n=>n[0]||"").join("").toUpperCase();
-  return (
-    <div style={{ width:size, height:size, borderRadius:"50%", background:G.greenM, border:`1px solid ${G.green}`, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:F.serif, fontWeight:700, fontSize:size*0.3, color:G.greenL, flexShrink:0 }}>
-      {ini}
-    </div>
-  );
+  const ini = (nombre || "?").split(" ").slice(0, 2).map(n => n[0] || "").join("").toUpperCase();
+  return <div style={{ width:size, height:size, borderRadius:"50%", background:G.greenM, border:`1px solid ${G.green}`, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:F.serif, fontWeight:700, fontSize:size * 0.3, color:G.greenL, flexShrink:0 }}>{ini}</div>;
 }
-
-function FAB() {
-  return <button style={s.fab} onClick={()=>openWA("Hola Male! Tengo una consulta 💚")}>💬</button>;
-}
-
-function Back({ onClick, label="volver" }) {
-  return <button onClick={onClick} style={{ ...s.btnGlass, marginBottom:14, fontSize:12 }}>← {label}</button>;
-}
-
-function NavFlotante({ items, active, onChange }) {
-  return (
-    <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:430, display:"flex", justifyContent:"center", padding:"0 0 24px", zIndex:20, pointerEvents:"none" }}>
-      <nav style={{ ...NAV_STYLE, pointerEvents:"all" }}>
-        {items.map(n=>(
-          <div key={n.id} style={navItemSt(active===n.id)} onClick={()=>onChange(n.id)}>
-            <span style={{ fontSize:18 }}>{n.icon}</span>
-            <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.06em" }}>{n.label}</span>
-          </div>
-        ))}
-      </nav>
-    </div>
-  );
-}
-
-function StatBox({ label, val, sub, color=G.white, onClick }) {
-  return (
-    <div onClick={onClick} style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"13px 8px", cursor:onClick?"pointer":"default" }}>
-      <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"lowercase", letterSpacing:"0.08em" }}>{label}</p>
-      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:21, color, margin:"0 0 2px" }}>{val}</p>
-      {sub&&<p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>{sub}</p>}
-    </div>
-  );
-}
-
-function Field({ label, children }) {
-  return <div style={{ marginBottom:12 }}><label style={s.label}>{label}</label>{children}</div>;
-}
-
-function ChipSelector({ options, value, onChange }) {
-  return (
-    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-      {options.map(o => (
-        <button key={o} onClick={()=>onChange(o)}
-          style={{ ...s.btnGlass, padding:"6px 12px", fontSize:12,
-            background: value===o ? G.greenM : G.glass,
-            borderColor: value===o ? G.green : G.border,
-            color: value===o ? G.greenL : G.sub }}>
-          {o}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function Toast({ msg, onDone }) {
-  useEffect(()=>{ const t=setTimeout(onDone,2200); return ()=>clearTimeout(t); },[]);
-  return (
-    <div style={{ position:"fixed", bottom:110, left:"50%", transform:"translateX(-50%)", background:G.green, color:"#0a0a0a", borderRadius:12, padding:"10px 20px", fontFamily:F.sans, fontWeight:700, fontSize:13, zIndex:99, boxShadow:"0 4px 20px rgba(0,0,0,0.4)", whiteSpace:"nowrap" }}>
-      {msg}
-    </div>
-  );
+  useEffect(() => { const t = setTimeout(onDone, 2200); return () => clearTimeout(t); }, []);
+  return <div style={{ position:"fixed", bottom:110, left:"50%", transform:"translateX(-50%)", background:G.green, color:"#0a0a0a", borderRadius:12, padding:"10px 20px", fontFamily:F.sans, fontWeight:700, fontSize:13, zIndex:99, boxShadow:"0 4px 20px rgba(0,0,0,0.4)", whiteSpace:"nowrap" }}>{msg}</div>;
 }
-
-// Modal de confirmación / alerta
-function Modal({ titulo, msg, onOk, onCancel, okLabel="confirmar", danger=false }) {
+function Modal({ titulo, msg, onOk, onCancel, okLabel = "confirmar", danger = false }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
       <div style={{ background:"#111", border:`0.5px solid ${G.border}`, borderRadius:18, padding:24, width:"100%", maxWidth:360 }}>
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.white, margin:"0 0 8px" }}>{titulo}</p>
         <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 20px", lineHeight:1.6 }}>{msg}</p>
         <div style={{ display:"flex", gap:10 }}>
-          {onCancel && <button style={{ ...s.btnGlass, flex:1 }} onClick={onCancel}>cancelar</button>}
-          <button style={{ ...s.btnGreen, flex:1, background: danger ? G.red : G.green }} onClick={onOk}>{okLabel}</button>
+          {onCancel && <button style={{ ...s.btnGl, flex:1 }} onClick={onCancel}>cancelar</button>}
+          <button style={{ ...s.btnG, flex:1, background:danger ? G.red : G.green }} onClick={onOk}>{okLabel}</button>
         </div>
       </div>
     </div>
   );
 }
-
-// Bottom Sheet genérico
 function Sheet({ titulo, onClose, children }) {
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", backdropFilter:"blur(8px)", zIndex:100, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
-      onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", backdropFilter:"blur(8px)", zIndex:100, display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ background:"#111", border:`0.5px solid ${G.border}`, borderRadius:"18px 18px 0 0", width:"100%", maxWidth:430, maxHeight:"92vh", overflowY:"auto", padding:"20px 20px 40px" }}>
-        <div style={{ width:34, height:4, background:G.border, borderRadius:2, margin:"0 auto 16px" }}/>
+        <div style={{ width:34, height:4, background:G.border, borderRadius:2, margin:"0 auto 16px" }} />
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
           <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.white, margin:0 }}>{titulo}</p>
-          <button style={{ ...s.btnGlass, padding:"6px 12px", fontSize:13 }} onClick={onClose}>✕</button>
+          <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:13 }} onClick={onClose}>✕</button>
         </div>
         {children}
       </div>
     </div>
   );
 }
+function Field({ label, children, hint }) {
+  return <div style={{ marginBottom:12 }}><label style={s.label}>{label}</label>{children}{hint && <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"4px 0 0", lineHeight:1.5 }}>{hint}</p>}</div>;
+}
+function Chips({ options = [], value, onChange }) {
+  return <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>{options.map(o => <button key={o} onClick={() => onChange(o)} style={{ ...s.btnGl, padding:"6px 12px", fontSize:12, background:value === o ? G.greenM : G.glass, borderColor:value === o ? G.green : G.border, color:value === o ? G.greenL : G.sub }}>{o}</button>)}</div>;
+}
+function Back({ onClick, label = "volver" }) {
+  return <button onClick={onClick} style={{ ...s.btnGl, marginBottom:14, fontSize:12 }}>← {label}</button>;
+}
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// LOGIN
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── Login ──────────────────────────────────────────────────────────────────────
 function Login({ onLogin }) {
-  const [modo, setModo] = useState(null);
-  const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [modo, setModo]         = useState(null);
+  const [email, setEmail]       = useState("");
+  const [pass, setPass]         = useState("");
+  const [err, setErr]           = useState("");
+  const [loading, setLoading]   = useState(false);
   const [recordar, setRecordar] = useState(true);
 
-  useEffect(()=>{
+  useEffect(() => {
     const g = localStorage.getItem("ls_session");
-    if(g){ try{ const p=JSON.parse(g); if(p.expiry>Date.now()) onLogin(p.tipo,p.data); }catch{} }
-  },[]);
+    if (g) { try { const p = JSON.parse(g); if (p.expiry > Date.now()) onLogin(p.tipo, p.data); } catch {} }
+  }, []);
 
-  const guardar = (tipo, data=null) => {
-    if(recordar) localStorage.setItem("ls_session", JSON.stringify({ tipo, data, expiry: Date.now()+1000*60*60*24*30 }));
+  const guardar = (tipo, data = null) => {
+    if (recordar) localStorage.setItem("ls_session", JSON.stringify({ tipo, data, expiry:Date.now() + 1000 * 60 * 60 * 24 * 30 }));
   };
 
   const entrar = async () => {
-    if(!email||!pass){ setErr("completá los campos"); return; }
+    if (!email || !pass) { setErr("completá los campos"); return; }
     setLoading(true); setErr("");
-    const r = await auth.signIn(email, pass);
-    if(r.error){ setErr("credenciales incorrectas"); setLoading(false); return; }
-
-    if(email.toLowerCase() === ADMIN_EMAIL.toLowerCase()){
+    const r = await fbAuth.signIn(email, pass);
+    if (r.error) { setErr("email o contraseña incorrectos"); setLoading(false); return; }
+    if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
       guardar("admin"); onLogin("admin");
     } else {
-      // Buscar clienta por email
       const todas = await db.get("clientas");
-      const c = todas.find(x=>x.email?.toLowerCase()===email.toLowerCase());
-      if(!c){ setErr("no encontramos tu cuenta"); setLoading(false); return; }
+      const c = todas.find(x => x.email?.toLowerCase() === email.toLowerCase());
+      if (!c) { setErr("cuenta no encontrada"); setLoading(false); return; }
       const hist = c.historial ? Object.values(c.historial) : [];
-      const data = { ...c, historial: hist };
-      guardar("clienta", data); onLogin("clienta", data);
+      const d = { ...c, historial:hist };
+      guardar("clienta", d); onLogin("clienta", d);
     }
     setLoading(false);
   };
@@ -270,154 +210,58 @@ function Login({ onLogin }) {
     <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28 }}>
       <div style={{ textAlign:"center", marginBottom:44 }}>
         <div style={{ fontSize:44, marginBottom:10 }}>🌿</div>
-        <h1 style={{ ...s.h1, fontSize:32, letterSpacing:2 }}>Lash Studio</h1>
-        <p style={{ ...s.sub, marginTop:6 }}>by chulas</p>
-        <div style={{ width:36, height:1, background:G.green, margin:"14px auto" }}/>
-        <p style={{ ...s.sub, color:G.muted }}>san andrés · buenos aires</p>
+        <h1 style={{ ...s.h1, fontSize:32, letterSpacing:2, textAlign:"center" }}>Lash Studio</h1>
+        <p style={{ ...s.sub, marginTop:6, textAlign:"center" }}>by chulas</p>
+        <div style={{ width:36, height:1, background:G.green, margin:"14px auto" }} />
+        <p style={{ ...s.sub, color:G.muted, textAlign:"center" }}>san andrés · buenos aires</p>
       </div>
-
       {!modo ? (
         <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:10 }}>
           <p style={{ ...s.sub, textAlign:"center", marginBottom:6 }}>acceder como</p>
-          <div style={{ ...s.card, textAlign:"center", cursor:"pointer", border:`0.5px solid ${G.green}` }} onClick={()=>{ setModo("admin"); setEmail(ADMIN_EMAIL); }}>
+          <div style={{ ...s.card, textAlign:"center", cursor:"pointer", border:`0.5px solid ${G.green}` }} onClick={() => { setModo("admin"); setEmail(ADMIN_EMAIL); }}>
             <div style={{ fontSize:26, marginBottom:6 }}>👑</div>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 2px" }}>Lashista</p>
-            <p style={{ ...s.sub }}>panel de male</p>
+            <p style={s.sub}>panel de male</p>
           </div>
-          <div style={{ ...s.card, textAlign:"center", cursor:"pointer" }} onClick={()=>setModo("clienta")}>
+          <div style={{ ...s.card, textAlign:"center", cursor:"pointer" }} onClick={() => setModo("clienta")}>
             <div style={{ fontSize:26, marginBottom:6 }}>🌸</div>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 2px" }}>Clienta</p>
-            <p style={{ ...s.sub }}>mi espacio personal</p>
+            <p style={s.sub}>mi espacio personal</p>
           </div>
         </div>
-      ):(
+      ) : (
         <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:11 }}>
-          <button onClick={()=>{ setModo(null); setErr(""); setEmail(""); setPass(""); }} style={{ ...s.btnGlass, alignSelf:"flex-start", marginBottom:6 }}>← volver</button>
-          <span style={{ ...s.tag, alignSelf:"center" }}>{modo==="admin"?"panel lashista":"acceso clienta"}</span>
-          <Field label="email">
-            <input style={s.input} value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" type="email" autoComplete="username"/>
-          </Field>
-          <Field label="contraseña">
-            <input style={s.input} value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••" type="password" autoComplete="current-password" onKeyDown={e=>e.key==="Enter"&&entrar()}/>
-          </Field>
-          <div style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setRecordar(r=>!r)}>
-            <div style={{ width:18,height:18,borderRadius:5,border:`1.5px solid ${recordar?G.green:G.border}`,background:recordar?G.greenM:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>
-              {recordar&&<span style={{ color:G.green, fontSize:12 }}>✓</span>}
+          <button onClick={() => { setModo(null); setErr(""); setEmail(""); setPass(""); }} style={{ ...s.btnGl, alignSelf:"flex-start", marginBottom:6 }}>← volver</button>
+          <span style={{ ...s.tag, alignSelf:"center" }}>{modo === "admin" ? "panel lashista" : "acceso clienta"}</span>
+          <Field label="email"><input style={s.input} value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" type="email" autoComplete="username" /></Field>
+          <Field label="contraseña"><input style={s.input} value={pass} onChange={e => setPass(e.target.value)} placeholder="••••••" type="password" autoComplete="current-password" onKeyDown={e => e.key === "Enter" && entrar()} /></Field>
+          <div style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={() => setRecordar(r => !r)}>
+            <div style={{ width:18, height:18, borderRadius:5, border:`1.5px solid ${recordar ? G.green : G.border}`, background:recordar ? G.greenM : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              {recordar && <span style={{ color:G.green, fontSize:12 }}>✓</span>}
             </div>
             <p style={{ ...s.sub, margin:0, fontSize:12, color:G.sub }}>mantener sesión iniciada</p>
           </div>
-          {err&&<p style={{ color:G.red, fontSize:12, textAlign:"center", fontFamily:F.sans }}>{err}</p>}
-          <button style={{ ...s.btnGreen, opacity:loading?0.6:1 }} onClick={entrar} disabled={loading}>
-            {loading?"ingresando...":"ingresar →"}
-          </button>
+          {err && <p style={{ color:G.red, fontSize:12, textAlign:"center", fontFamily:F.sans }}>{err}</p>}
+          <button style={{ ...s.btnG, opacity:loading ? 0.6 : 1 }} onClick={entrar} disabled={loading}>{loading ? "ingresando..." : "ingresar →"}</button>
         </div>
       )}
-
       <div style={{ marginTop:36, display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-        <p style={{ ...s.sub, color:G.muted, fontSize:11 }}>
-          consultas → <span style={{ color:G.green, cursor:"pointer" }} onClick={()=>openWA()}>whatsapp</span>
-        </p>
-        <p style={{ ...s.sub, color:G.muted, fontSize:11 }}>
-          ¿primera vez? → <span style={{ color:G.green, cursor:"pointer" }} onClick={()=>openWA("Hola Male! Quiero registrarme en Lash Studio 🌿")}>registrate acá</span>
-        </p>
+        <p style={{ ...s.sub, color:G.muted, fontSize:11 }}>consultas → <span style={{ color:G.green, cursor:"pointer" }} onClick={() => openWA()}>whatsapp</span></p>
+        <p style={{ ...s.sub, color:G.muted, fontSize:11 }}>¿primera vez? → <span style={{ color:G.green, cursor:"pointer" }} onClick={() => openWA("Hola! Quiero registrarme en Lash Studio 🌿")}>registrate acá</span></p>
       </div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HOOK DE DATOS GLOBALES
-// ═══════════════════════════════════════════════════════════════════════════════
-function useData() {
-  const [servicios, setServicios] = useState([]);
-  const [clientas, setClientas] = useState([]);
-  const [citas, setCitas] = useState([]);
-  const [excepciones, setExcepciones] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const recargar = useCallback(async () => {
-    setLoading(true);
-    const [sv, cl, ct, ex] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones")]);
-    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex);
-    setLoading(false);
-  }, []);
-
-  useEffect(()=>{ recargar(); }, []);
-
-  // ── Servicios ──────────────────────────────────────────────────────────────
-  const crearServicio = async (data) => {
-    const id = await db.push("servicios", data);
-    setServicios(p=>[...p, { ...data, _id:id }]);
-  };
-  const editarServicio = async (id, data) => {
-    await db.set(`servicios/${id}`, data);
-    setServicios(p=>p.map(x=>x._id===id?{ ...data, _id:id }:x));
-  };
-  const borrarServicio = async (id) => {
-    await db.delete(`servicios/${id}`);
-    setServicios(p=>p.filter(x=>x._id!==id));
-  };
-
-  // ── Clientas ───────────────────────────────────────────────────────────────
-  const crearClientas = async (datos) => {
-    // 1. Crear usuario en Firebase Auth
-    const pass = genPassword();
-    const emailUsar = datos.email;
-    const authRes = await auth.createUser(emailUsar, pass);
-    if(authRes.error) return { error: authRes.error.message };
-    // 2. Guardar en DB
-    const id = await db.push("clientas", { ...datos, uid: authRes.localId, creadaEn: hoyISO() });
-    const nueva = { ...datos, uid: authRes.localId, creadaEn: hoyISO(), _id: id, historial: [] };
-    setClientas(p=>[...p, nueva]);
-    return { ok: true, pass, email: emailUsar };
-  };
-  const editarClientas = async (id, datos) => {
-    await db.update(`clientas/${id}`, datos);
-    setClientas(p=>p.map(x=>x._id===id?{ ...x, ...datos }:x));
-  };
-
-  // ── Citas ──────────────────────────────────────────────────────────────────
-  const crearCita = async (data) => {
-    const id = await db.push("citas", { ...data, creadaEn: hoyISO() });
-    setCitas(p=>[...p, { ...data, creadaEn: hoyISO(), _id: id }]);
-    return id;
-  };
-  const editarCita = async (id, data) => {
-    await db.update(`citas/${id}`, data);
-    setCitas(p=>p.map(x=>x._id===id?{ ...x, ...data }:x));
-  };
-  const borrarCita = async (id) => {
-    await db.delete(`citas/${id}`);
-    setCitas(p=>p.filter(x=>x._id!==id));
-  };
-
-  // ── Historial (registrar pago al cerrar cita) ──────────────────────────────
-  const registrarPago = async (clientaId, citaId, registro) => {
-    await db.push(`clientas/${clientaId}/historial`, registro);
-    await editarCita(citaId, { estado:"completada" });
-    setClientas(p=>p.map(c=>{
-      if(c._id!==clientaId) return c;
-      const hist = Array.isArray(c.historial) ? c.historial : [];
-      return { ...c, historial: [...hist, registro] };
-    }));
-  };
-
-  return { servicios, clientas, citas, excepciones, loading, recargar, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, crearCita, editarCita, borrarCita, registrarPago };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// APP ROOT
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── App Root ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [session, setSession] = useState(null);
   const data = useData();
-
-  const login = (tipo, d=null) => setSession({ tipo, data:d });
+  const login  = (tipo, d = null) => setSession({ tipo, data:d });
   const logout = () => { localStorage.removeItem("ls_session"); setSession(null); };
-
-  if(!session) return <Login onLogin={login}/>;
-  if(session.tipo==="admin") return <AdminApp data={data} onLogout={logout}/>;
-  if(session.tipo==="clienta") return <ClientaApp clienta={session.data} data={data} onLogout={logout}/>;
+  if (!session) return <Login onLogin={login} />;
+  if (session.tipo === "admin")   return <AdminApp   data={data} onLogout={logout} />;
+  if (session.tipo === "clienta") return <ClientaApp clienta={session.data} data={data} onLogout={logout} />;
   return null;
 }
 
@@ -425,104 +269,116 @@ export default function App() {
 // ADMIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
 function AdminApp({ data, onLogout }) {
-  const [tab, setTab] = useState("inicio");
-  const [stack, setStack] = useState([]); // [{screen, props}]
+  const [tab, setTab]     = useState("inicio");
+  const [stack, setStack] = useState([]);
   const [toast, setToast] = useState(null);
 
-  const push = (screen, props={}) => setStack(p=>[...p, { screen, props }]);
-  const pop = () => setStack(p=>p.slice(0,-1));
-  const showToast = (msg) => setToast(msg);
-
-  const cur = stack[stack.length-1];
+  const push     = (screen, props = {}) => setStack(p => [...p, { screen, props }]);
+  const pop      = ()                   => setStack(p => p.slice(0, -1));
+  const shwToast = (msg)                => setToast(msg);
+  const cur      = stack[stack.length - 1];
 
   const navItems = [
-    { id:"inicio", icon:"⬡", label:"inicio" },
-    { id:"agenda", icon:"◷", label:"agenda" },
+    { id:"inicio",   icon:"⬡", label:"inicio"   },
+    { id:"agenda",   icon:"◷", label:"agenda"   },
     { id:"clientas", icon:"✿", label:"clientas" },
     { id:"finanzas", icon:"◈", label:"finanzas" },
-    { id:"config", icon:"⚙", label:"config" },
+    { id:"config",   icon:"⚙", label:"config"   },
   ];
 
   const renderScreen = () => {
-    if(cur) {
-      const p = { ...cur.props, pop, push, data, toast: showToast };
-      switch(cur.screen){
-        case "clienta-detalle": return <ClientaDetalle {...p}/>;
-        case "nueva-cita": return <NuevaCita {...p}/>;
-        case "cita-detalle": return <CitaDetalle {...p}/>;
+    if (cur) {
+      const p = { ...cur.props, pop, push, data, toast:shwToast, onLogout };
+      switch (cur.screen) {
+        case "clienta-detalle": return <ClientaDetalle {...p} />;
+        case "nueva-cita":      return <NuevaCita      {...p} />;
+        case "cita-detalle":    return <CitaDetalle     {...p} />;
         default: return null;
       }
     }
-    const p = { push, data, toast: showToast };
-    switch(tab){
-      case "inicio": return <AdminInicio {...p} setTab={setTab}/>;
-      case "agenda": return <AdminAgenda {...p}/>;
-      case "clientas": return <AdminClientas {...p}/>;
-      case "finanzas": return <AdminFinanzas {...p}/>;
-      case "config": return <AdminConfig {...p}/>;
-      default: return <AdminInicio {...p} setTab={setTab}/>;
+    const p = { push, data, toast:shwToast, onLogout };
+    switch (tab) {
+      case "inicio":   return <AdminInicio   {...p} setTab={setTab} />;
+      case "agenda":   return <AdminAgenda   {...p} />;
+      case "clientas": return <AdminClientas {...p} />;
+      case "finanzas": return <AdminFinanzas {...p} />;
+      case "config":   return <AdminConfig   {...p} />;
+      default:         return <AdminInicio   {...p} setTab={setTab} />;
     }
   };
 
-  if(data.loading) return <Loader/>;
+  if (data.loading) return <Loader />;
 
   return (
     <div style={s.app}>
       <div style={s.screen}>{renderScreen()}</div>
+      {!cur && <button style={s.fab} onClick={() => setTab("agenda")} title="Agenda">📅</button>}
       {!cur && (
         <nav style={s.nav}>
-          {navItems.map(n=>(
-            <div key={n.id} style={navItemStyle(tab===n.id)} onClick={()=>setTab(n.id)}>
-              <span style={{ fontSize:19 }}>{n.icon}</span>
+          {navItems.map(n => (
+            <div key={n.id} style={navItmSty(tab === n.id)} onClick={() => setTab(n.id)}>
+              <span style={{ fontSize:18 }}>{n.icon}</span>
               <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.08em" }}>{n.label}</span>
-              {tab===n.id&&<div style={{ width:4,height:4,borderRadius:"50%",background:G.green }}/>}
             </div>
           ))}
         </nav>
       )}
-      <FAB/>
-      {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
+      {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
     </div>
   );
 }
 
-// ─── ADMIN: INICIO ─────────────────────────────────────────────────────────────
+// ── Admin Inicio ───────────────────────────────────────────────────────────────
 function AdminInicio({ data, push, setTab }) {
   const hoy = hoyISO();
-  const mesActual = hoy.slice(0,7);
-  const citasHoy = data.citas.filter(c=>c.fecha===hoy && c.estado!=="completada");
-  const proximas = data.citas.filter(c=>c.fecha>hoy && c.estado!=="completada").sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora)).slice(0,4);
-  const totalMes = data.clientas.flatMap(c=>c.historial||[]).filter(h=>h.fecha?.startsWith(mesActual)).reduce((a,h)=>a+(h.monto||0),0);
+  const mes = mesISO();
+  const citasHoy    = data.citas.filter(c => c.fecha === hoy && c.estado !== "completada");
+  const proximas    = data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)).slice(0, 4);
+  const todoHist    = data.clientas.flatMap(c => Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []));
+  const ingresosMes = todoHist.filter(h => h.fecha?.startsWith(mes)).reduce((a, h) => a + (h.monto || 0), 0);
+  const estudio     = data.getConfig("estudio", {});
+
+  const sinCita = data.clientas.filter(c => {
+    if (c.estado === "pausada") return false;
+    const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
+    if (!h.length) return false;
+    const ult = [...h].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0];
+    if (!ult?.fecha) return false;
+    const dias = Math.floor((new Date() - new Date(ult.fecha)) / (1000 * 60 * 60 * 24));
+    const tieneProx = data.citas.some(ci => ci.clientaId === c._id && ci.fecha >= hoy && ci.estado !== "completada");
+    return dias >= 14 && !tieneProx;
+  });
+
+  const topSv = (() => {
+    const cnt = {};
+    todoHist.filter(h => h.fecha?.startsWith(mes)).forEach(h => { cnt[h.servicio] = (cnt[h.servicio] || 0) + 1; });
+    return Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  })();
 
   return (
     <div>
-      <div style={s.topBar}>
-        <h1 style={s.h1}>Lash Studio</h1>
-        <p style={s.sub}>bienvenida, Male 🌿</p>
-      </div>
+      <div style={s.topBar}><h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1><p style={s.sub}>bienvenida 🌿</p></div>
       <div style={{ padding:"18px 18px 0" }}>
-        {/* Stats */}
-        <div style={{ display:"flex", gap:9, marginBottom:18 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:9, marginBottom:18 }}>
           {[
-            { label:"hoy", val:citasHoy.length, action:()=>setTab("agenda") },
-            { label:"este mes", val:totalMes>0?`${(totalMes/1000).toFixed(0)}k`:"$0", action:()=>setTab("finanzas") },
-            { label:"clientas", val:data.clientas.length, action:()=>setTab("clientas") },
-          ].map(w=>(
-            <div key={w.label} onClick={w.action} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"13px 8px" }}>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"lowercase", letterSpacing:"0.08em" }}>{w.label}</p>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:21, color:G.white, margin:"0 0 2px" }}>{w.val}</p>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>ver →</p>
+            { label:"hoy",       val:citasHoy.length,          sub:`${data.citas.filter(c => c.fecha === hoy).length} citas`,      action:() => setTab("agenda")   },
+            { label:"este mes",  val:fmtPesos(ingresosMes),    sub:`${todoHist.filter(h => h.fecha?.startsWith(mes)).length} serv`, action:() => setTab("finanzas"), hl:true },
+            { label:"clientas",  val:data.clientas.length,     sub:`activas`,                                                       action:() => setTab("clientas") },
+          ].map(w => (
+            <div key={w.label} onClick={w.action} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"12px 6px", background:w.hl ? "rgba(143,189,90,0.08)" : G.card, borderColor:w.hl ? G.greenD : G.border }}>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase", letterSpacing:"0.08em" }}>{w.label}</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:w.label === "este mes" ? 14 : 20, color:w.hl ? G.greenL : G.white, margin:"0 0 2px", lineHeight:1.2 }}>{w.val}</p>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>{w.sub}</p>
             </div>
           ))}
         </div>
 
-        {/* Citas de hoy */}
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>hoy</p>
-        <p style={{ ...s.sub, marginBottom:12 }}>{new Date().toLocaleDateString("es-AR",{ weekday:"long", day:"numeric", month:"long" })}</p>
-        {citasHoy.length===0
-          ? <p style={{ color:G.muted, fontSize:13, marginBottom:16 }}>sin citas para hoy ✦</p>
-          : citasHoy.map(c=>(
-            <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={()=>push("cita-detalle",{cita:c})}>
+        <p style={{ ...s.sub, marginBottom:12 }}>{new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
+        {citasHoy.length === 0
+          ? <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>sin citas para hoy ✦</p>
+          : citasHoy.map(c => (
+            <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
               <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center", minWidth:48 }}>
                 <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.greenL }}>{c.hora}</p>
               </div>
@@ -535,354 +391,356 @@ function AdminInicio({ data, push, setTab }) {
           ))
         }
 
-        <div style={s.divider}/>
-
-        {/* Próximas */}
+        <div style={s.div} />
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>próximas</p>
         <p style={{ ...s.sub, marginBottom:12 }}>turnos confirmados</p>
-        {proximas.length===0
-          ? <p style={{ color:G.muted, fontSize:13 }}>no hay citas agendadas ✦</p>
-          : proximas.map(c=>(
-            <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={()=>push("cita-detalle",{cita:c})}>
+        {proximas.length === 0
+          ? <p style={{ color:G.muted, fontSize:13 }}>sin citas agendadas ✦</p>
+          : proximas.map(c => (
+            <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
               <div style={{ textAlign:"center", minWidth:40 }}>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{c.fecha?.slice(5).replace("-","/")}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{c.fecha?.slice(5).replace("-", "/")}</p>
                 <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.green }}>{c.hora}</p>
               </div>
-              <div style={{ flex:1 }}>
-                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{c.clientaNombre}</p>
-                <p style={{ margin:0, ...s.sub, fontSize:11 }}>{c.servicio}</p>
-              </div>
+              <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.clientaNombre}</p><p style={{ margin:0, ...s.sub, fontSize:11 }}>{c.servicio}</p></div>
             </div>
           ))
         }
-        <button style={{ ...s.btnGreen, marginTop:10 }} onClick={()=>setTab("agenda")}>ver agenda completa →</button>
+        <button style={{ ...s.btnG, marginTop:10 }} onClick={() => setTab("agenda")}>ver agenda completa →</button>
+
+        {sinCita.length > 0 && (
+          <>
+            <div style={s.div} />
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.amber, margin:"0 0 3px" }}>⚡ pendientes de service</p>
+            <p style={{ ...s.sub, marginBottom:12 }}>{sinCita.length} clienta{sinCita.length > 1 ? "s" : ""} sin cita hace +14 días</p>
+            {sinCita.slice(0, 3).map(c => {
+              const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
+              const ult = [...h].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0];
+              const dias = ult?.fecha ? Math.floor((new Date() - new Date(ult.fecha)) / (1000 * 60 * 60 * 24)) : null;
+              return (
+                <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11, borderColor:"rgba(224,184,112,0.2)" }}>
+                  <Avatar nombre={c.nombre} size={36} />
+                  <div style={{ flex:1 }}>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p>
+                    <p style={{ margin:0, ...s.sub, fontSize:10 }}>{dias ? `hace ${dias}d` : ""}{ult?.servicio ? ` · ${ult.servicio}` : ""}</p>
+                  </div>
+                  <button style={{ ...s.btnGl, fontSize:11, padding:"5px 10px", borderColor:"rgba(37,211,102,0.3)", color:G.greenL }}
+                    onClick={() => openWA(`Hola ${c.nombre?.split(" ")[0]}! 🌿 ¿Cómo están tus pestañas? Ya es momento del service. ¡Te espero! 💚`)}>💬</button>
+                </div>
+              );
+            })}
+          </>
+        )}
+
+        {topSv.length > 0 && (
+          <>
+            <div style={s.div} />
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>top servicios del mes</p>
+            <p style={{ ...s.sub, marginBottom:12 }}>los más solicitados</p>
+            {topSv.map(([nom, cnt], i) => (
+              <div key={nom} style={{ ...s.card, display:"flex", alignItems:"center", gap:12, padding:"11px 14px" }}>
+                <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:i === 0 ? G.green : G.muted, minWidth:20, margin:0 }}>{i + 1}</p>
+                <p style={{ flex:1, margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p>
+                <span style={s.tag}>{cnt}x</span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── ADMIN: AGENDA ─────────────────────────────────────────────────────────────
-function AdminAgenda({ data, push, toast }) {
-  const hoy = hoyISO();
-  const ahora = new Date();
+// ── Admin Agenda ───────────────────────────────────────────────────────────────
+function AdminAgenda({ data, push }) {
+  const hoy    = hoyISO();
+  const ahora  = new Date();
   const [offset, setOffset] = useState(0);
-  const [diaS, setDiaS] = useState(hoy);
+  const [diaS,   setDiaS]   = useState(hoy);
 
-  const mesD = new Date(ahora.getFullYear(), ahora.getMonth()+offset, 1);
-  const anio = mesD.getFullYear();
-  const mes = mesD.getMonth();
-  const primerDia = new Date(anio,mes,1).getDay();
-  const diasMes = new Date(anio,mes+1,0).getDate();
+  const mesD   = new Date(ahora.getFullYear(), ahora.getMonth() + offset, 1);
+  const anio   = mesD.getFullYear();
+  const mes    = mesD.getMonth();
+  const primDia = new Date(anio, mes, 1).getDay();
+  const diasMes = new Date(anio, mes + 1, 0).getDate();
+  const fmtKey  = (d) => `${anio}-${String(mes + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 
   const citasPorFecha = {};
-  data.citas.forEach(c=>{ if(!citasPorFecha[c.fecha]) citasPorFecha[c.fecha]=[]; citasPorFecha[c.fecha].push(c); });
+  data.citas.forEach(c => { if (!citasPorFecha[c.fecha]) citasPorFecha[c.fecha] = []; citasPorFecha[c.fecha].push(c); });
 
-  // Excepciones: set de fechas bloqueadas
-  const fechasBloqueadas = new Set(data.excepciones.map(e=>e.fecha));
-  const excepcionDia = data.excepciones.find(e=>e.fecha===diaS);
-  const diaEsBloqueado = fechasBloqueadas.has(diaS);
+  const fechasBloq  = new Set(data.excepciones.map(e => e.fecha));
+  const excepDia    = data.excepciones.find(e => e.fecha === diaS);
+  const diaEsBloq   = fechasBloq.has(diaS);
+  const citasDia    = citasPorFecha[diaS] || [];
+  const slots       = data.getConfig("slots", []);
 
-  const fmtKey = (d) => `${anio}-${String(mes+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-  const citasDia = citasPorFecha[diaS]||[];
-
-  // recordatorio mañana
-  const dtManana = new Date(diaS+"T12:00:00"); dtManana.setDate(dtManana.getDate()+1);
-  const mananaKey = dtManana.toISOString().slice(0,10);
-  const citasManana = citasPorFecha[mananaKey]||[];
+  const dtManana = new Date(diaS + "T12:00:00"); dtManana.setDate(dtManana.getDate() + 1);
+  const keyManana = dtManana.toISOString().slice(0, 10);
+  const citasManana = citasPorFecha[keyManana] || [];
 
   return (
     <div>
       <div style={s.topBar}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div><h1 style={s.h1}>Agenda</h1><p style={s.sub}>calendario del estudio</p></div>
-          <button style={{ ...s.btnGreen, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={()=>push("nueva-cita")}>+ nueva cita</button>
+          <button style={{ ...s.btnG, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={() => push("nueva-cita")}>+ nueva</button>
         </div>
       </div>
       <div style={{ padding:"18px 14px 0" }}>
-        {/* Calendario */}
         <div style={{ ...s.card, padding:"14px 10px", marginBottom:18 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-            <button style={{ ...s.btnGlass, padding:"6px 12px", fontSize:15 }} onClick={()=>setOffset(o=>o-1)}>‹</button>
+            <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o - 1)}>‹</button>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
-            <button style={{ ...s.btnGlass, padding:"6px 12px", fontSize:15 }} onClick={()=>setOffset(o=>o+1)}>›</button>
+            <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o + 1)}>›</button>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4 }}>
-            {DIAS_C.map(d=><div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:10, color:G.muted, padding:"2px 0" }}>{d}</div>)}
+            {DIAS_C.map(d => <div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:10, color:G.muted, padding:"2px 0" }}>{d}</div>)}
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
-            {Array(primerDia).fill(null).map((_,i)=><div key={"e"+i}/>)}
-            {Array(diasMes).fill(null).map((_,i)=>{
-              const dia=i+1, key=fmtKey(dia);
-              const tieneCitas=!!(citasPorFecha[key]?.length);
-              const esBloqueado=fechasBloqueadas.has(key);
-              const esHoy=key===hoy, esSel=key===diaS;
+            {Array(primDia).fill(null).map((_, i) => <div key={"e" + i} />)}
+            {Array(diasMes).fill(null).map((_, i) => {
+              const dia = i + 1, key = fmtKey(dia);
+              const tiene = !!(citasPorFecha[key]?.length);
+              const bloq = fechasBloq.has(key), esH = key === hoy, esSel = key === diaS;
               return (
-                <div key={dia} onClick={()=>setDiaS(key)} style={{ textAlign:"center", borderRadius:8, padding:"5px 2px", cursor:"pointer", background:esSel?G.green:esHoy?G.greenM:esBloqueado?"rgba(224,112,112,0.1)":"transparent", border:esSel?"none":esHoy?`0.5px solid ${G.green}`:esBloqueado?`0.5px solid rgba(224,112,112,0.3)`:"0.5px solid transparent" }}>
-                  <span style={{ fontFamily:F.sans, fontSize:12, color:esSel?"#0a0a0a":esHoy?G.greenL:esBloqueado?G.red:G.sub, fontWeight:esSel||esHoy?700:400, display:"block" }}>{dia}</span>
-                  {tieneCitas&&<div style={{ display:"flex", justifyContent:"center", gap:2, marginTop:2 }}>
-                    {Array(Math.min(citasPorFecha[key].length,3)).fill(null).map((_,pi)=>(
-                      <div key={pi} style={{ width:3,height:3,borderRadius:"50%",background:esSel?"rgba(10,10,10,0.5)":G.green }}/>
-                    ))}
-                  </div>}
-                  {esBloqueado&&!tieneCitas&&<div style={{ fontSize:7, color:G.red, lineHeight:1.2 }}>✕</div>}
+                <div key={dia} onClick={() => setDiaS(key)} style={{ textAlign:"center", borderRadius:8, padding:"5px 2px", cursor:"pointer", background:esSel ? G.green : esH ? G.greenM : bloq ? "rgba(224,112,112,0.1)" : "transparent", border:esSel ? "none" : esH ? `0.5px solid ${G.green}` : bloq ? `0.5px solid rgba(224,112,112,0.3)` : "0.5px solid transparent" }}>
+                  <span style={{ fontFamily:F.sans, fontSize:12, color:esSel ? "#0a0a0a" : esH ? G.greenL : bloq ? G.red : G.sub, fontWeight:esSel || esH ? 700 : 400, display:"block" }}>{dia}</span>
+                  {tiene && <div style={{ display:"flex", justifyContent:"center", gap:2, marginTop:2 }}>{Array(Math.min(citasPorFecha[key].length, 3)).fill(null).map((_, pi) => <div key={pi} style={{ width:3, height:3, borderRadius:"50%", background:esSel ? "rgba(10,10,10,0.5)" : G.green }} />)}</div>}
+                  {bloq && !tiene && <div style={{ fontSize:7, color:G.red }}>✕</div>}
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Día seleccionado */}
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-          <div style={{ width:5,height:5,borderRadius:"50%",background:G.green }}/>
-          <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white }}>
-            {DIAS_F[new Date(diaS+"T12:00:00").getDay()]} {fmtFecha(diaS)}
-          </p>
-          {citasDia.length>0&&<span style={s.tag}>{citasDia.length} citas</span>}
+          <div style={{ width:5, height:5, borderRadius:"50%", background:G.green }} />
+          <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white }}>{DIAS_F[new Date(diaS + "T12:00:00").getDay()]} {fmtFecha(diaS)}</p>
+          {citasDia.length > 0 && <span style={s.tag}>{citasDia.length} citas</span>}
         </div>
 
-        {/* Banner día bloqueado */}
-        {diaEsBloqueado&&(
-          <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <div>
-              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:11, color:G.red, letterSpacing:"0.06em" }}>día no laborable</p>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{excepcionDia?.razon}</p>
-            </div>
+        {diaEsBloq && (
+          <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div><p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:11, color:G.red }}>día no laborable</p><p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{excepDia?.razon || ""}</p></div>
             <span style={{ fontSize:18 }}>🚫</span>
           </div>
         )}
 
-        {/* Recordatorio masivo */}
-        {citasManana.length>0&&(
+        {citasManana.length > 0 && (
           <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:12 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
-                <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.greenL, letterSpacing:"0.08em" }}>recordatorio mañana</p>
-                <p style={{ margin:0, fontFamily:F.serif, fontSize:13 }}>{citasManana.length} cita{citasManana.length>1?"s":""} para {mananaKey.slice(8,10)}/{mananaKey.slice(5,7)}</p>
+                <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.greenL }}>recordatorio mañana</p>
+                <p style={{ margin:0, fontFamily:F.serif, fontSize:13 }}>{citasManana.length} cita{citasManana.length > 1 ? "s" : ""} para {keyManana.slice(8, 10)}/{keyManana.slice(5, 7)}</p>
               </div>
-              <button style={{ ...s.btnGlass, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }}
-                onClick={()=>citasManana.forEach(c=>openWA(`Hola ${c.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo que mañana tenés tu cita a las ${c.hora}. ¡Te espero! 💚`))}>
-                avisar a todas →
+              <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }}
+                onClick={() => citasManana.forEach(c => openWA(`Hola ${c.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita mañana a las ${c.hora}. ¡Te espero! 💚`))}>
+                avisar →
               </button>
             </div>
           </div>
         )}
 
-        {/* Slots */}
         <div>
-        {diaEsBloqueado ? (
-          <div style={{ ...s.card, textAlign:"center", padding:"24px", opacity:0.5 }}>
-            <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, margin:0 }}>no hay turnos disponibles este día</p>
-          </div>
-        ) : SLOTS.map(hora=>{
-          const cita = citasDia.find(c=>c.hora===hora);
-          return (
-            <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita?G.card:"rgba(255,255,255,0.01)", border:`0.5px solid ${cita?G.border:"rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita?1:0.55 }}>
-              <div style={{ background:cita?G.greenM:"transparent", border:`0.5px solid ${cita?G.green:G.border}`, borderRadius:8, padding:"5px 8px", minWidth:46, textAlign:"center" }}>
-                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:cita?G.greenL:G.muted }}>{hora}</p>
-              </div>
-              {!cita
-                ? <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          {diaEsBloq ? (
+            <div style={{ ...s.card, textAlign:"center", padding:"24px", opacity:0.5 }}>
+              <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, margin:0 }}>día bloqueado — sin turnos</p>
+            </div>
+          ) : slots.length === 0 ? (
+            <div style={{ ...s.card, textAlign:"center", padding:"20px" }}>
+              <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, margin:"0 0 8px" }}>No configuraste horarios aún</p>
+              <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:0 }}>Andá a Config → Horarios para agregar tus horarios de trabajo</p>
+            </div>
+          ) : slots.map(hora => {
+            const cita = citasDia.find(c => c.hora === hora && c.estado !== "completada");
+            return (
+              <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.6 }}>
+                <div style={{ background:cita ? G.greenM : "transparent", border:`0.5px solid ${cita ? G.green : G.border}`, borderRadius:8, padding:"5px 8px", minWidth:46, textAlign:"center" }}>
+                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:cita ? G.greenL : G.muted }}>{hora}</p>
+                </div>
+                {!cita ? (
+                  <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                     <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>disponible</p>
-                    <button style={{ ...s.btnGlass, fontSize:10, padding:"4px 10px" }} onClick={()=>push("nueva-cita",{ fechaDefault:diaS, horaDefault:hora })}>+ agendar</button>
+                    <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={() => push("nueva-cita", { fechaDefault:diaS, horaDefault:hora })}>+ agendar</button>
                   </div>
-                : <>
+                ) : (
+                  <>
                     <div style={{ flex:1 }}>
                       <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontSize:13 }}>{cita.clientaNombre}</p>
                       <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}</p>
                     </div>
                     <div style={{ display:"flex", gap:6 }}>
                       <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}
-                        onClick={()=>openWA(`Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo que mañana tenés tu cita a las ${cita.hora}. ¡Te espero! 💚`)}>💬</button>
-                      <button style={{ ...s.btnGlass, padding:"5px 9px", fontSize:11 }} onClick={()=>push("cita-detalle",{cita})}>→</button>
+                        onClick={() => openWA(`Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita mañana a las ${cita.hora}. ¡Te espero! 💚`)}>💬</button>
+                      <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => push("cita-detalle", { cita })}>→</button>
                     </div>
                   </>
-              }
-            </div>
-          );
-        })}
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
-// ─── NUEVA CITA ─────────────────────────────────────────────────────────────────
-function NuevaCita({ data, pop, toast, fechaDefault="", horaDefault="" }) {
-  const [form, setForm] = useState({ clientaId:"", fecha:fechaDefault, hora:horaDefault, servicio:"", notas:"" });
+// ── Nueva Cita ─────────────────────────────────────────────────────────────────
+function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clientaIdDefault = "" }) {
+  const [form, setForm] = useState({ clientaId:clientaIdDefault, fecha:fechaDefault, hora:horaDefault, servicio:"", notas:"" });
   const [saving, setSaving] = useState(false);
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const ocupadas = data.citas.filter(c=>c.fecha===form.fecha && c.estado!=="completada").map(c=>c.hora);
+  const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
+  const slots    = data.getConfig("slots", []);
+  const ocupadas = data.citas.filter(c => c.fecha === form.fecha && c.estado !== "completada").map(c => c.hora);
 
   const guardar = async () => {
-    if(!form.clientaId||!form.fecha||!form.hora||!form.servicio){ toast("completá todos los campos"); return; }
+    if (!form.clientaId || !form.fecha || !form.hora || !form.servicio) { toast("completá todos los campos"); return; }
     setSaving(true);
-    const clienta = data.clientas.find(c=>c._id===form.clientaId);
-    await data.crearCita({ ...form, clientaNombre: clienta?.nombre||"", estado:"confirmada" });
-    toast("✓ cita agendada");
-    pop();
+    const clienta = data.clientas.find(c => c._id === form.clientaId);
+    await data.crearCita({ ...form, clientaNombre:clienta?.nombre || "", estado:"confirmada" });
+    toast("✓ cita agendada"); pop();
   };
 
   return (
     <div>
-      <div style={s.topBar}><Back onClick={pop} label="agenda"/><h1 style={s.h1}>Nueva Cita</h1></div>
+      <div style={s.topBar}><Back onClick={pop} label="agenda" /><h1 style={s.h1}>Nueva Cita</h1></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           <Field label="clienta">
-            <select style={{ ...s.input, appearance:"none" }} value={form.clientaId} onChange={e=>set("clientaId",e.target.value)}>
+            <select style={{ ...s.input, appearance:"none" }} value={form.clientaId} onChange={e => set("clientaId", e.target.value)}>
               <option value="">seleccionar clienta...</option>
-              {data.clientas.map(c=><option key={c._id} value={c._id}>{c.nombre}</option>)}
+              {[...data.clientas].sort((a, b) => a.nombre?.localeCompare(b.nombre)).map(c => <option key={c._id} value={c._id}>{c.nombre}</option>)}
             </select>
           </Field>
           <Field label="servicio">
-            <select style={{ ...s.input, appearance:"none" }} value={form.servicio} onChange={e=>set("servicio",e.target.value)}>
+            <select style={{ ...s.input, appearance:"none" }} value={form.servicio} onChange={e => set("servicio", e.target.value)}>
               <option value="">seleccionar servicio...</option>
-              {data.servicios.map(sv=><option key={sv._id} value={sv.nombre}>{sv.nombre} · {fmtPesos(sv.precio)}</option>)}
+              {data.servicios.map(sv => <option key={sv._id} value={sv.nombre}>{sv.nombre} · {fmtPesos(sv.precio)}</option>)}
             </select>
           </Field>
-          <Field label="fecha">
-            <input style={s.input} type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/>
-          </Field>
+          <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} /></Field>
           <Field label="hora">
             <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
-              {SLOTS.map(h=>{
-                const oc=ocupadas.includes(h);
-                return <button key={h} disabled={oc} onClick={()=>set("hora",h)}
-                  style={{ ...s.btnGlass, padding:"8px 12px", fontSize:12, opacity:oc?0.3:1,
-                    background:form.hora===h?G.greenM:G.glass,
-                    borderColor:form.hora===h?G.green:G.border,
-                    color:form.hora===h?G.greenL:G.sub,
-                    cursor:oc?"not-allowed":"pointer" }}>
-                  {h}{oc?" ✕":""}
-                </button>;
-              })}
+              {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>Configurá los horarios en Config → Horarios</p>}
+              {slots.map(h => { const oc = ocupadas.includes(h); return <button key={h} disabled={oc} onClick={() => set("hora", h)} style={{ ...s.btnGl, padding:"8px 12px", fontSize:12, opacity:oc ? 0.3 : 1, background:form.hora === h ? G.greenM : G.glass, borderColor:form.hora === h ? G.green : G.border, color:form.hora === h ? G.greenL : G.sub, cursor:oc ? "not-allowed" : "pointer" }}>{h}{oc ? " ✕" : ""}</button>; })}
             </div>
           </Field>
-          <Field label="notas (opcional)">
-            <textarea style={{ ...s.input, height:70, resize:"none" }} value={form.notas} onChange={e=>set("notas",e.target.value)} placeholder="indicaciones especiales..."/>
-          </Field>
-          <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"guardando...":"confirmar cita →"}</button>
+          <Field label="notas (opcional)"><textarea style={{ ...s.input, height:70, resize:"none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder="indicaciones especiales..." /></Field>
+          <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : "confirmar cita →"}</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── DETALLE DE CITA ───────────────────────────────────────────────────────────
+// ── Detalle Cita ───────────────────────────────────────────────────────────────
 function CitaDetalle({ data, pop, toast, cita:citaInit }) {
-  const [cita, setCita] = useState(citaInit);
-  const [modalPago, setModalPago] = useState(false);
-  const [pago, setPago] = useState({ metodo:"efectivo", monto:"" });
-  const [modalBorrar, setModalBorrar] = useState(false);
-
-  const servicio = data.servicios.find(s=>s.nombre===cita.servicio);
-  const clienta = data.clientas.find(c=>c._id===cita.clientaId);
+  const [cita, setCita]      = useState(citaInit);
+  const [modalPago, setMP]   = useState(false);
+  const [modalBorrar, setMB] = useState(false);
+  const [pago, setPago]      = useState({ metodo:"efectivo", monto:"" });
+  const sv      = data.servicios.find(s => s.nombre === cita.servicio);
+  const clienta = data.clientas.find(c => c._id === cita.clientaId);
 
   const completar = async () => {
-    if(!pago.monto){ toast("ingresá el monto"); return; }
-    await data.registrarPago(cita.clientaId, cita._id, { fecha:cita.fecha, servicio:cita.servicio, curva:clienta?.curva||"", monto:Number(pago.monto), pago:pago.metodo, notas:cita.notas||"" });
+    if (!pago.monto) { toast("ingresá el monto"); return; }
+    await data.registrarPago(cita.clientaId, cita._id, { fecha:cita.fecha, servicio:cita.servicio, curva:clienta?.curva || "", monto:Number(pago.monto), pago:pago.metodo, notas:cita.notas || "" });
     toast("✓ cita completada y pago registrado");
-    setModalPago(false);
-    setCita(p=>({...p, estado:"completada"}));
+    setMP(false); setCita(p => ({ ...p, estado:"completada" }));
   };
-
-  const borrar = async () => {
-    await data.borrarCita(cita._id);
-    toast("cita eliminada");
-    pop();
-  };
+  const borrar = async () => { await data.borrarCita(cita._id); toast("cita eliminada"); pop(); };
 
   return (
     <div>
-      <div style={s.topBar}><Back onClick={pop}/><h1 style={s.h1}>Detalle de Cita</h1><p style={s.sub}>{cita.fecha} · {cita.hora}</p></div>
+      <div style={s.topBar}><Back onClick={pop} /><h1 style={s.h1}>Detalle de Cita</h1><p style={s.sub}>{cita.fecha} · {cita.hora}</p></div>
       <div style={{ padding:"18px" }}>
-        {/* Clienta */}
-        {clienta&&(
+        {clienta && (
           <div style={{ ...s.card, display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
-            <Avatar nombre={clienta.nombre} size={46}/>
+            <Avatar nombre={clienta.nombre} size={46} />
             <div>
               <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{clienta.nombre}</p>
-              <p style={{ margin:0, ...s.sub, fontSize:11 }}>curva {clienta.curva} · {clienta.largo}</p>
-              {clienta.alergias&&clienta.alergias!=="Ninguna"&&<p style={{ margin:"3px 0 0", color:G.red, fontSize:10 }}>⚠ {clienta.alergias}</p>}
+              {clienta.curva && <p style={{ margin:0, ...s.sub, fontSize:11 }}>curva {clienta.curva}{clienta.largo ? ` · ${clienta.largo}` : ""}</p>}
+              {clienta.alergias && clienta.alergias !== "Ninguna" && <p style={{ margin:"3px 0 0", color:G.red, fontSize:10 }}>⚠ {clienta.alergias}</p>}
             </div>
           </div>
         )}
-
-        {/* Servicio */}
         <div style={{ ...s.card, marginBottom:12 }}>
-          <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 6px", textTransform:"lowercase", letterSpacing:"0.08em" }}>servicio</p>
+          <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 6px", textTransform:"lowercase" }}>servicio</p>
           <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 6px" }}>{cita.servicio}</p>
-          {servicio&&<p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{servicio.descripcion}</p>}
+          {sv?.descripcion && <p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
           <div style={{ display:"flex", gap:8 }}>
             <div style={{ flex:1, background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px" }}>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>duración</p>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, margin:0 }}>{servicio?.duracion||"—"}min</p>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>duración est.</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, margin:0 }}>{sv?.duracion || "—"}min</p>
             </div>
             <div style={{ flex:1, background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px" }}>
               <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>precio</p>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.green, margin:0 }}>{fmtPesos(servicio?.precio)}</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.green, margin:0 }}>{fmtPesos(sv?.precio)}</p>
             </div>
           </div>
         </div>
-
-        {cita.notas&&<div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:12 }}>
-          <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 4px" }}>notas</p>
-          <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{cita.notas}</p>
-        </div>}
-
+        {cita.notas && <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:12 }}><p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 4px" }}>notas</p><p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{cita.notas}</p></div>}
         <span style={{ ...s.tag, marginBottom:16, display:"inline-block" }}>{cita.estado}</span>
-
-        {/* Acciones */}
-        {cita.estado!=="completada"&&(
+        {cita.estado !== "completada" && (
           <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
-            <button style={s.btnGreen} onClick={()=>setModalPago(true)}>✓ marcar como completada</button>
-            <button style={{ ...s.btnGlass, width:"100%" }} onClick={()=>openWA(`Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita el ${cita.fecha} a las ${cita.hora}. ¡Te espero! 💚`)}>💬 recordatorio WA</button>
-            <button style={{ ...s.btnRed, width:"100%" }} onClick={()=>setModalBorrar(true)}>eliminar cita</button>
+            <button style={s.btnG} onClick={() => setMP(true)}>✓ marcar como completada</button>
+            <button style={{ ...s.btnGl, width:"100%" }} onClick={() => openWA(`Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita el ${fmtFecha(cita.fecha)} a las ${cita.hora}. ¡Te espero! 💚`)}>💬 enviar recordatorio</button>
+            <button style={{ ...s.btnRed, width:"100%" }} onClick={() => setMB(true)}>eliminar cita</button>
           </div>
         )}
-        {cita.estado==="completada"&&<p style={{ color:G.green, fontFamily:F.sans, fontSize:13, textAlign:"center" }}>✓ cita completada y pago registrado</p>}
+        {cita.estado === "completada" && <p style={{ color:G.green, fontFamily:F.sans, fontSize:13, textAlign:"center" }}>✓ cita completada y pago registrado</p>}
       </div>
-
-      {/* Modal pago */}
-      {modalPago&&(
-        <Sheet titulo="Registrar pago" onClose={()=>setModalPago(false)}>
+      {modalPago && (
+        <Sheet titulo="Registrar pago" onClose={() => setMP(false)}>
           <Field label="método de pago">
             <div style={{ display:"flex", gap:8 }}>
-              {["efectivo","transferencia"].map(m=>(
-                <button key={m} onClick={()=>setPago(p=>({...p,metodo:m}))} style={{ ...s.btnGlass, flex:1, background:pago.metodo===m?G.greenM:G.glass, borderColor:pago.metodo===m?G.green:G.border, color:pago.metodo===m?G.greenL:G.sub }}>{m}</button>
-              ))}
+              {["efectivo", "transferencia"].map(m => <button key={m} onClick={() => setPago(p => ({ ...p, metodo:m }))} style={{ ...s.btnGl, flex:1, background:pago.metodo === m ? G.greenM : G.glass, borderColor:pago.metodo === m ? G.green : G.border, color:pago.metodo === m ? G.greenL : G.sub }}>{m}</button>)}
             </div>
           </Field>
-          <Field label="monto cobrado">
-            <input style={s.input} type="number" value={pago.monto} onChange={e=>setPago(p=>({...p,monto:e.target.value}))} placeholder={fmtPesos(servicio?.precio)}/>
-          </Field>
-          <button style={s.btnGreen} onClick={completar}>guardar y cerrar cita →</button>
+          <Field label="monto cobrado"><input style={s.input} type="number" value={pago.monto} onChange={e => setPago(p => ({ ...p, monto:e.target.value }))} placeholder={fmtPesos(sv?.precio)} /></Field>
+          <button style={s.btnG} onClick={completar}>guardar y cerrar cita →</button>
         </Sheet>
       )}
-
-      {modalBorrar&&<Modal titulo="Eliminar cita" msg={`¿Segura que querés eliminar la cita de ${cita.clientaNombre}?`} onOk={borrar} onCancel={()=>setModalBorrar(false)} okLabel="eliminar" danger/>}
+      {modalBorrar && <Modal titulo="Eliminar cita" msg={`¿Segura que querés eliminar la cita de ${cita.clientaNombre}?`} onOk={borrar} onCancel={() => setMB(false)} okLabel="eliminar" danger />}
     </div>
   );
 }
 
-// ─── ADMIN: CLIENTAS ───────────────────────────────────────────────────────────
+// ── Admin Clientas ─────────────────────────────────────────────────────────────
 function AdminClientas({ data, push, toast }) {
-  const [search, setSearch] = useState("");
-  const [sheet, setSheet] = useState(false);
-  const [form, setForm] = useState({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"" });
-  const [saving, setSaving] = useState(false);
-  const [credenciales, setCredenciales] = useState(null);
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const [search, setSearch]     = useState("");
+  const [orden, setOrden]       = useState("az");
+  const [sheet, setSheet]       = useState(false);
+  const [creds, setCreds]       = useState(null);
+  const [saving, setSaving]     = useState(false);
+  const [form, setForm]         = useState({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"" });
+  const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
-  const filtradas = data.clientas.filter(c=>c.nombre?.toLowerCase().includes(search.toLowerCase()));
+  const opcCurvas = data.getConfig("curvas",   []);
+  const opcGrosor = data.getConfig("grosores", []);
+  const opcLargo  = data.getConfig("largos",   []);
+
+  const getUlt = (c) => {
+    const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
+    return h.length ? [...h].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0] : null;
+  };
+
+  const filtradas = data.clientas
+    .filter(c => c.nombre?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      if (orden === "az") return a.nombre?.localeCompare(b.nombre);
+      const ua = getUlt(a)?.fecha || ""; const ub = getUlt(b)?.fecha || "";
+      return ub.localeCompare(ua);
+    });
 
   const guardar = async () => {
-    if(!form.nombre||!form.email){ toast("nombre y email son obligatorios"); return; }
+    if (!form.nombre || !form.email) { toast("nombre y email son obligatorios"); return; }
     setSaving(true);
     const res = await data.crearClientas(form);
     setSaving(false);
-    if(res.error){ toast("error: "+res.error); return; }
+    if (res.error) { toast("error: " + res.error); return; }
     setSheet(false);
-    setCredenciales({ email: res.email, pass: res.pass, nombre: form.nombre });
+    setCreds({ email:res.email, pass:res.pass, nombre:form.nombre });
     setForm({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"" });
   };
 
@@ -890,272 +748,291 @@ function AdminClientas({ data, push, toast }) {
     <div>
       <div style={s.topBar}><h1 style={s.h1}>Clientas</h1><p style={s.sub}>{data.clientas.length} registradas</p></div>
       <div style={{ padding:"18px" }}>
-        <div style={{ display:"flex", gap:9, marginBottom:14 }}>
-          <input style={{ ...s.input, flex:1, margin:0 }} placeholder="🔍 buscar..." value={search} onChange={e=>setSearch(e.target.value)}/>
-          <button style={{ ...s.btnGreen, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={()=>setSheet(true)}>+ nueva</button>
+        <div style={{ display:"flex", gap:9, marginBottom:12 }}>
+          <input style={{ ...s.input, flex:1, margin:0 }} placeholder="🔍 buscar..." value={search} onChange={e => setSearch(e.target.value)} />
+          <button style={{ ...s.btnG, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={() => setSheet(true)}>+ nueva</button>
         </div>
-        {filtradas.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin clientas aún ✦</p>}
-        {filtradas.map(c=>(<div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11, cursor:"pointer" }} onClick={()=>push("clienta-detalle",{clienta:c})}>
-          <Avatar nombre={c.nombre}/>
-          <div style={{ flex:1 }}>
-            <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{c.nombre}</p>
-            <p style={{ margin:0, ...s.sub, fontSize:11 }}>curva {c.curva} · {c.grosor}mm · {c.largo}</p>
-            {c.alergias&&c.alergias!=="Ninguna"&&<p style={{ margin:"3px 0 0", color:G.red, fontSize:10 }}>⚠ {c.alergias}</p>}
-          </div>
-          <span style={{ fontSize:15, color:G.muted }}>→</span>
-        </div>))}
+        <div style={{ display:"flex", gap:7, marginBottom:14 }}>
+          {[["az", "A → Z"], ["reciente", "última visita"]].map(([v, l]) => (
+            <button key={v} onClick={() => setOrden(v)} style={{ ...s.btnGl, fontSize:11, background:orden === v ? G.greenM : G.glass, borderColor:orden === v ? G.green : G.border, color:orden === v ? G.greenL : G.sub, padding:"6px 12px" }}>{l}</button>
+          ))}
+        </div>
+        {filtradas.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin clientas aún ✦</p>}
+        {filtradas.map(c => {
+          const ult = getUlt(c);
+          const hist = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
+          const dias = ult?.fecha ? Math.floor((new Date() - new Date(ult.fecha)) / (1000 * 60 * 60 * 24)) : null;
+          return (
+            <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11, cursor:"pointer", opacity:c.estado === "pausada" ? 0.5 : 1 }} onClick={() => push("clienta-detalle", { clienta:c })}>
+              <Avatar nombre={c.nombre} />
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                  <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.nombre}</p>
+                  {c.estado === "pausada" && <span style={{ ...s.tag, fontSize:9, background:"rgba(224,112,112,0.12)", borderColor:G.red, color:G.red }}>pausada</span>}
+                </div>
+                <p style={{ margin:0, ...s.sub, fontSize:11 }}>{ult ? `última visita: ${fmtFecha(ult.fecha)}` : "sin visitas aún"}{dias !== null ? ` · hace ${dias}d` : ""}</p>
+              </div>
+              <div style={{ textAlign:"right", flexShrink:0 }}>
+                <p style={{ margin:"0 0 2px", ...s.sub, fontSize:10 }}>{hist.length} vis.</p>
+                <span style={{ fontSize:15, color:G.muted }}>→</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Sheet nueva clienta */}
-      {sheet&&(
-        <Sheet titulo="Nueva Clienta" onClose={()=>setSheet(false)}>
+      {sheet && (
+        <Sheet titulo="Nueva Clienta" onClose={() => setSheet(false)}>
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            <Field label="nombre y apellido *"><input style={s.input} value={form.nombre} onChange={e=>set("nombre",e.target.value)} placeholder="Nombre Apellido"/></Field>
-            <Field label="email * (será su usuario de acceso)"><input style={s.input} type="email" value={form.email} onChange={e=>set("email",e.target.value)} placeholder="vale@gmail.com"/></Field>
-            <Field label="teléfono"><input style={s.input} type="tel" value={form.telefono} onChange={e=>set("telefono",e.target.value)} placeholder="11 XXXX-XXXX"/></Field>
-            <div style={s.divider}/>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>Ficha técnica</p>
-            <Field label="curva habitual"><ChipSelector options={CURVAS} value={form.curva} onChange={v=>set("curva",v)}/></Field>
-            <Field label="grosor"><ChipSelector options={GROSOR} value={form.grosor} onChange={v=>set("grosor",v)}/></Field>
-            <Field label="largo"><ChipSelector options={LARGO} value={form.largo} onChange={v=>set("largo",v)}/></Field>
-            <div style={s.divider}/>
-            <Field label="alergias / condiciones"><input style={s.input} value={form.alergias} onChange={e=>set("alergias",e.target.value)} placeholder="Ninguna"/></Field>
-            <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e=>set("observaciones",e.target.value)} placeholder="preferencias, notas..."/></Field>
-            <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"creando cuenta...":"crear clienta →"}</button>
-            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, textAlign:"center" }}>Se creará un usuario automáticamente con una contraseña generada</p>
+            <Field label="nombre y apellido *"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="Nombre Apellido" /></Field>
+            <Field label="email * (será su usuario)" hint="Lo usará para iniciar sesión en la app"><input style={s.input} type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="email@ejemplo.com" /></Field>
+            <Field label="teléfono"><input style={s.input} type="tel" value={form.telefono} onChange={e => set("telefono", e.target.value)} placeholder="11 XXXX-XXXX" /></Field>
+            <div style={s.div} />
+            {opcCurvas.length > 0 && <Field label="curva habitual"><Chips options={opcCurvas} value={form.curva} onChange={v => set("curva", v)} /></Field>}
+            {opcGrosor.length > 0 && <Field label="grosor"><Chips options={opcGrosor} value={form.grosor} onChange={v => set("grosor", v)} /></Field>}
+            {opcLargo.length  > 0 && <Field label="largo"><Chips  options={opcLargo}  value={form.largo}  onChange={v => set("largo",  v)} /></Field>}
+            {(opcCurvas.length === 0 && opcGrosor.length === 0 && opcLargo.length === 0) && <p style={{ color:G.muted, fontSize:12 }}>Agregá opciones técnicas desde Config → Técnico</p>}
+            <div style={s.div} />
+            <Field label="alergias / condiciones"><input style={s.input} value={form.alergias} onChange={e => set("alergias", e.target.value)} placeholder="Ninguna, o especificar..." /></Field>
+            <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e => set("observaciones", e.target.value)} placeholder="preferencias, notas..." /></Field>
+            <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>{saving ? "creando cuenta..." : "crear clienta →"}</button>
+            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, textAlign:"center" }}>Se genera una contraseña automática para enviarle por WhatsApp</p>
           </div>
         </Sheet>
       )}
 
-      {/* Sheet credenciales generadas */}
-      {credenciales&&(
-        <Sheet titulo="✓ Clienta creada" onClose={()=>setCredenciales(null)}>
+      {creds && (
+        <Sheet titulo="✓ Clienta creada" onClose={() => setCreds(null)}>
           <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
-            <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"0 0 4px" }}>enviá estas credenciales a {credenciales.nombre}:</p>
-            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 3px" }}>📧 <b style={{ color:G.white }}>{credenciales.email}</b></p>
-            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}>🔑 contraseña: <b style={{ color:G.white }}>{credenciales.pass}</b></p>
+            <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"0 0 8px" }}>accesos para {creds.nombre}:</p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 4px" }}>📧 <b style={{ color:G.white }}>{creds.email}</b></p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}>🔑 contraseña: <b style={{ color:G.white, letterSpacing:"0.1em" }}>{creds.pass}</b></p>
           </div>
-          <button style={s.btnGreen} onClick={()=>{ openWA(`Hola ${credenciales.nombre?.split(" ")[0]}! 🌿 Te creé tu acceso a Lash Studio:\n\n📧 Email: ${credenciales.email}\n🔑 Contraseña: ${credenciales.pass}\n\nEntrá desde: https://lash-studio-gilt.vercel.app`); setCredenciales(null); }}>
-            💬 enviar por WhatsApp →
-          </button>
+          <button style={s.btnG} onClick={() => { openWA(`Hola ${creds.nombre?.split(" ")[0]}! 🌿 Te creé tu acceso en Lash Studio:\n\n📧 Email: ${creds.email}\n🔑 Contraseña: ${creds.pass}\n\n👉 Entrá desde: ${DEPLOY_URL}\n\nPodés ver tus citas, historial y más 💚`); setCreds(null); }}>💬 enviar por WhatsApp →</button>
+          <button style={{ ...s.btnGl, marginTop:9, width:"100%" }} onClick={() => setCreds(null)}>cerrar</button>
         </Sheet>
       )}
     </div>
   );
 }
 
-// ─── DETALLE CLIENTA (ADMIN) ───────────────────────────────────────────────────
+// ── Detalle Clienta (Admin) ────────────────────────────────────────────────────
 function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
-  const [clienta, setClienta] = useState(cInit);
-  const [tab, setTab] = useState("info");
-  const [editando, setEditando] = useState(false);
-  const [form, setForm] = useState({ nombre:cInit.nombre, telefono:cInit.telefono||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"" });
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const hist = Array.isArray(clienta.historial) ? clienta.historial : (clienta.historial ? Object.values(clienta.historial) : []);
-  const citasClientas = data.citas.filter(c=>c.clientaId===clienta._id && c.estado!=="completada").sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const [c, setC]         = useState(cInit);
+  const [tab, setTab]     = useState("info");
+  const [form, setForm]   = useState({ nombre:cInit.nombre||"", telefono:cInit.telefono||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"", estado:cInit.estado||"activa" });
+  const [editing, setEditing] = useState(false);
+  const [pwModal, setPwModal] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
-  const guardar = async () => {
-    await data.editarClientas(clienta._id, form);
-    setClienta(p=>({...p,...form})); setEditando(false); toast("✓ cambios guardados");
+  const opcCurvas = data.getConfig("curvas",   []);
+  const opcGrosor = data.getConfig("grosores", []);
+  const opcLargo  = data.getConfig("largos",   []);
+
+  const hist   = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
+  const citasC = data.citas.filter(ci => ci.clientaId === c._id && ci.estado !== "completada").sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  const mes         = mesISO();
+  const visitasMes  = hist.filter(h => h.fecha?.startsWith(mes)).length;
+  const gastoTotal  = hist.reduce((a, h) => a + (h.monto || 0), 0);
+  const diasDesde   = hist.length ? Math.floor((new Date() - new Date([...hist].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0]?.fecha)) / (1000 * 60 * 60 * 24)) : null;
+  const curvaFav    = (() => { const cnt = {}; hist.forEach(h => { if (h.curva) cnt[h.curva] = (cnt[h.curva] || 0) + 1; }); return Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0] || c.curva || "—"; })();
+
+  const guardar = async () => { await data.editarClientas(c._id, form); setC(p => ({ ...p, ...form })); setEditing(false); toast("✓ guardado"); };
+  const enviarReset = async () => {
+    if (!c.email) { toast("la clienta no tiene email"); return; }
+    await data.resetPasswordClientas(c.email);
+    toast("✓ email de recuperación enviado"); setPwModal(false);
   };
 
   return (
     <div>
       <div style={s.topBar}>
-        <Back onClick={pop} label="clientas"/>
+        <Back onClick={pop} label="clientas" />
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <Avatar nombre={clienta.nombre} size={42}/>
-          <div><h1 style={{ ...s.h1, fontSize:18 }}>{clienta.nombre}</h1><p style={s.sub}>{hist.length} visitas registradas</p></div>
+          <Avatar nombre={c.nombre} size={42} />
+          <div><h1 style={{ ...s.h1, fontSize:18 }}>{c.nombre}</h1><p style={s.sub}>{hist.length} visitas · {form.estado || "activa"}</p></div>
         </div>
       </div>
       <div style={{ padding:"18px" }}>
-        <div style={{ display:"flex", gap:7, marginBottom:16 }}>
-          {["info","ficha","historial","citas"].map(t=>(
-            <button key={t} onClick={()=>setTab(t)} style={{ ...s.btnGlass, flex:1, fontSize:10, padding:"7px 4px", background:tab===t?G.greenM:G.glass, borderColor:tab===t?G.green:G.border, color:tab===t?G.greenL:G.sub }}>{t}</button>
+        <div style={{ display:"flex", gap:6, marginBottom:16 }}>
+          {["info", "ficha", "historial", "citas", "métricas"].map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, flex:1, fontSize:9, padding:"7px 2px", background:tab === t ? G.greenM : G.glass, borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.sub }}>{t}</button>
           ))}
         </div>
 
-        {tab==="info"&&(
+        {tab === "info" && (
           <div>
             <div style={{ display:"flex", gap:9, marginBottom:14 }}>
-              <button style={{ ...s.btnGreen, flex:1 }} onClick={()=>openWA(`Hola ${clienta.nombre?.split(" ")[0]}! 🌿`)}>💬 WhatsApp</button>
-              <button style={{ ...s.btnGlass, flex:1 }} onClick={()=>setEditando(e=>!e)}>{editando?"cancelar":"✎ editar"}</button>
+              <button style={{ ...s.btnG, flex:1 }} onClick={() => openWA(`Hola ${c.nombre?.split(" ")[0]}! 🌿`)}>💬 WhatsApp</button>
+              <button style={{ ...s.btnGl, flex:1 }} onClick={() => setEditing(e => !e)}>{editing ? "cancelar" : "✎ editar"}</button>
             </div>
-            <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:11 }}>
-              {editando
-                ? <>
-                    <Field label="nombre"><input style={s.input} value={form.nombre} onChange={e=>set("nombre",e.target.value)}/></Field>
-                    <Field label="teléfono"><input style={s.input} value={form.telefono} onChange={e=>set("telefono",e.target.value)}/></Field>
-                    <button style={s.btnGreen} onClick={guardar}>guardar →</button>
-                  </>
-                : [["teléfono",clienta.telefono||"—"],["email",clienta.email||"—"],["clienta desde",fmtFecha(clienta.creadaEn)]].map(([k,v])=>(
-                    <div key={k} style={{ display:"flex", justifyContent:"space-between" }}>
-                      <span style={{ ...s.label, margin:0 }}>{k}</span>
-                      <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</span>
+            <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12 }}>
+              {editing ? (
+                <>
+                  <Field label="nombre"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} /></Field>
+                  <Field label="teléfono"><input style={s.input} value={form.telefono} onChange={e => set("telefono", e.target.value)} /></Field>
+                  <Field label="estado">
+                    <div style={{ display:"flex", gap:8 }}>
+                      {["activa", "pausada"].map(v => <button key={v} onClick={() => set("estado", v)} style={{ ...s.btnGl, flex:1, background:form.estado === v ? G.greenM : G.glass, borderColor:form.estado === v ? G.green : G.border, color:form.estado === v ? G.greenL : G.sub }}>{v}</button>)}
                     </div>
-                  ))
-              }
+                  </Field>
+                  <button style={s.btnG} onClick={guardar}>guardar →</button>
+                </>
+              ) : (
+                [["teléfono", c.telefono || "—"], ["email", c.email || "—"], ["estado", c.estado || "activa"], ["clienta desde", fmtFecha(c.creadaEn)]].map(([k, v]) => (
+                  <div key={k} style={{ display:"flex", justifyContent:"space-between" }}>
+                    <span style={{ ...s.label, margin:0 }}>{k}</span>
+                    <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</span>
+                  </div>
+                ))
+              )}
+            </div>
+            <button style={{ ...s.btnGl, width:"100%", marginTop:8 }} onClick={() => setPwModal(true)}>🔑 resetear contraseña</button>
+          </div>
+        )}
+
+        {tab === "ficha" && (
+          <div>
+            <div style={s.card}>
+              {opcCurvas.length > 0 && <Field label="curva"><Chips options={opcCurvas} value={form.curva} onChange={v => { set("curva", v); data.editarClientas(c._id, { curva:v }); toast("✓"); }} /></Field>}
+              {opcGrosor.length > 0 && <Field label="grosor"><Chips options={opcGrosor} value={form.grosor} onChange={v => { set("grosor", v); data.editarClientas(c._id, { grosor:v }); toast("✓"); }} /></Field>}
+              {opcLargo.length  > 0 && <Field label="largo"><Chips  options={opcLargo}  value={form.largo}  onChange={v => { set("largo",  v); data.editarClientas(c._id, { largo:v  }); toast("✓"); }} /></Field>}
+              {(opcCurvas.length === 0 && opcGrosor.length === 0 && opcLargo.length === 0) && <p style={{ color:G.muted, fontSize:12 }}>Configurá opciones en Config → Técnico</p>}
+            </div>
+            <div style={s.card}>
+              <Field label="alergias"><input style={s.input} value={form.alergias} onChange={e => set("alergias", e.target.value)} onBlur={() => { data.editarClientas(c._id, { alergias:form.alergias }); toast("✓"); }} /></Field>
+              <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e => set("observaciones", e.target.value)} onBlur={() => { data.editarClientas(c._id, { observaciones:form.observaciones }); toast("✓"); }} /></Field>
             </div>
           </div>
         )}
 
-        {tab==="ficha"&&(
+        {tab === "historial" && (
           <div>
-            <div style={{ ...s.card }}>
-              <Field label="curva"><ChipSelector options={CURVAS} value={form.curva} onChange={v=>{ set("curva",v); data.editarClientas(clienta._id,{curva:v}); }}/></Field>
-              <Field label="grosor"><ChipSelector options={GROSOR} value={form.grosor} onChange={v=>{ set("grosor",v); data.editarClientas(clienta._id,{grosor:v}); }}/></Field>
-              <Field label="largo"><ChipSelector options={LARGO} value={form.largo} onChange={v=>{ set("largo",v); data.editarClientas(clienta._id,{largo:v}); }}/></Field>
-            </div>
-            <div style={{ ...s.card }}>
-              <Field label="alergias / condiciones">
-                <input style={s.input} value={form.alergias} onChange={e=>set("alergias",e.target.value)} onBlur={()=>data.editarClientas(clienta._id,{alergias:form.alergias})}/>
-              </Field>
-              <Field label="observaciones">
-                <textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e=>set("observaciones",e.target.value)} onBlur={()=>data.editarClientas(clienta._id,{observaciones:form.observaciones})}/>
-              </Field>
-            </div>
-          </div>
-        )}
-
-        {tab==="historial"&&(
-          <div>
-            {hist.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin historial aún ✦</p>}
-            {[...hist].reverse().map((h,i)=>(
+            {hist.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin historial aún ✦</p>}
+            {[...hist].reverse().map((h, i) => (
               <div key={i} style={s.card}>
                 <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                  <div>
-                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p>
-                    <p style={{ margin:0, ...s.sub, fontSize:11 }}>{fmtFecha(h.fecha)} · curva {h.curva}</p>
-                  </div>
-                  <div style={{ textAlign:"right" }}>
-                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(h.monto)}</p>
-                    <span style={s.tag}>{h.pago}</span>
-                  </div>
+                  <div><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p><p style={{ margin:0, ...s.sub, fontSize:11 }}>{fmtFecha(h.fecha)}{h.curva ? ` · curva ${h.curva}` : ""}</p></div>
+                  <div style={{ textAlign:"right" }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(h.monto)}</p><span style={s.tag}>{h.pago}</span></div>
                 </div>
-                {h.notas&&<p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{h.notas}</p>}
+                {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{h.notas}</p>}
               </div>
             ))}
           </div>
         )}
 
-        {tab==="citas"&&(
+        {tab === "citas" && (
           <div>
-            <button style={{ ...s.btnGreen, marginBottom:14 }} onClick={()=>push("nueva-cita",{clientaIdDefault:clienta._id})}>+ nueva cita para {clienta.nombre?.split(" ")[0]}</button>
-            {citasClientas.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin citas próximas ✦</p>}
-            {citasClientas.map(c=>(
-              <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={()=>push("cita-detalle",{cita:c})}>
+            <button style={{ ...s.btnG, marginBottom:14 }} onClick={() => push("nueva-cita", { clientaIdDefault:c._id })}>+ nueva cita para {c.nombre?.split(" ")[0]}</button>
+            {citasC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin citas próximas ✦</p>}
+            {citasC.map(ci => (
+              <div key={ci._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:ci })}>
                 <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center" }}>
-                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{c.fecha?.slice(5).replace("-","/")}</p>
-                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.greenL }}>{c.hora}</p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{ci.fecha?.slice(5).replace("-", "/")}</p>
+                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.greenL }}>{ci.hora}</p>
                 </div>
-                <div style={{ flex:1 }}>
-                  <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{c.servicio}</p>
-                  <span style={s.tag}>{c.estado}</span>
-                </div>
+                <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{ci.servicio}</p><span style={s.tag}>{ci.estado}</span></div>
               </div>
             ))}
+          </div>
+        )}
+
+        {tab === "métricas" && (
+          <div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:14 }}>
+              {[["total visitas", hist.length], ["este mes", visitasMes], ["gasto histórico", fmtPesos(gastoTotal)], ["curva fav.", curvaFav], ["días desde últ. visita", diasDesde !== null ? `${diasDesde}d` : "—"], ["servicios únicos", [...new Set(hist.map(h => h.servicio))].length]].map(([l, v]) => (
+                <div key={l} style={{ ...s.card, margin:0, textAlign:"center", padding:"12px 8px" }}>
+                  <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"lowercase", lineHeight:1.4 }}>{l}</p>
+                  <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.white, margin:0 }}>{v}</p>
+                </div>
+              ))}
+            </div>
+            {(() => {
+              const cnt = {}; hist.forEach(h => { cnt[h.servicio] = (cnt[h.servicio] || 0) + 1; });
+              const sorted = Object.entries(cnt).sort((a, b) => b[1] - a[1]);
+              if (!sorted.length) return null;
+              const max = sorted[0][1];
+              return (<>
+                <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>servicios realizados</p>
+                {sorted.map(([nom, n]) => (
+                  <div key={nom} style={{ ...s.card, padding:"10px 12px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12 }}>{nom}</p><span style={s.tag}>{n}x</span></div>
+                    <div style={{ height:3, background:G.border, borderRadius:2 }}><div style={{ height:"100%", width:`${(n / max) * 100}%`, background:G.green, borderRadius:2 }} /></div>
+                  </div>
+                ))}
+              </>);
+            })()}
           </div>
         )}
       </div>
+      {pwModal && <Modal titulo="Resetear contraseña" msg={`Se enviará un email a ${c.email} para que ${c.nombre?.split(" ")[0]} pueda crear una nueva contraseña.`} onOk={enviarReset} onCancel={() => setPwModal(false)} okLabel="enviar email" />}
     </div>
   );
 }
 
-// ─── ADMIN: FINANZAS ───────────────────────────────────────────────────────────
+// ── Admin Finanzas ─────────────────────────────────────────────────────────────
 function AdminFinanzas({ data }) {
   const [periodo, setPeriodo] = useState("mes");
-  const hoy = hoyISO();
-  const mes = hoy.slice(0,7);
-  const anio = hoy.slice(0,4);
-
-  const todoElHistorial = data.clientas.flatMap(c=> Array.isArray(c.historial)?c.historial:(c.historial?Object.values(c.historial):[]));
-
-  const filtrar = (h) => {
-    if(periodo==="mes") return h.fecha?.startsWith(mes);
-    if(periodo==="año") return h.fecha?.startsWith(anio);
-    return true;
-  };
-
-  const ingresos = todoElHistorial.filter(filtrar);
-  const total = ingresos.reduce((a,h)=>a+(h.monto||0),0);
-  const transf = ingresos.filter(h=>h.pago==="transferencia").reduce((a,h)=>a+(h.monto||0),0);
-  const efect = ingresos.filter(h=>h.pago==="efectivo").reduce((a,h)=>a+(h.monto||0),0);
-  const denom = transf+efect||1;
-
-  const porServicio = {};
-  ingresos.forEach(h=>{ porServicio[h.servicio]=(porServicio[h.servicio]||0)+(h.monto||0); });
-  const maxSv = Math.max(...Object.values(porServicio),1);
-
-  const topClientas = data.clientas.map(c=>{
-    const hist = Array.isArray(c.historial)?c.historial:(c.historial?Object.values(c.historial):[]);
-    return { ...c, total: hist.filter(filtrar).reduce((a,h)=>a+(h.monto||0),0), visitas: hist.filter(filtrar).length };
-  }).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
+  const hoy  = hoyISO();
+  const mes  = mesISO();
+  const anio = hoy.slice(0, 4);
+  const todoHist = data.clientas.flatMap(c => Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []));
+  const filtrar = (h) => { if (periodo === "hoy") return h.fecha === hoy; if (periodo === "mes") return h.fecha?.startsWith(mes); if (periodo === "año") return h.fecha?.startsWith(anio); return true; };
+  const ings   = todoHist.filter(filtrar);
+  const total  = ings.reduce((a, h) => a + (h.monto || 0), 0);
+  const transf = ings.filter(h => h.pago === "transferencia").reduce((a, h) => a + (h.monto || 0), 0);
+  const efect  = ings.filter(h => h.pago === "efectivo").reduce((a, h) => a + (h.monto || 0), 0);
+  const denom  = transf + efect || 1;
+  const porSv  = {};
+  ings.forEach(h => { porSv[h.servicio] = (porSv[h.servicio] || 0) + (h.monto || 0); });
+  const maxSv = Math.max(...Object.values(porSv), 1);
+  const topC  = data.clientas.map(c => { const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []); const hF = h.filter(filtrar); return { ...c, total:hF.reduce((a, x) => a + (x.monto || 0), 0), vis:hF.length }; }).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
 
   return (
     <div>
       <div style={s.topBar}><h1 style={s.h1}>Finanzas</h1><p style={s.sub}>resumen de ingresos</p></div>
       <div style={{ padding:"18px" }}>
-        <div style={{ display:"flex", gap:8, marginBottom:18 }}>
-          {["mes","año","todo"].map(p=>(
-            <button key={p} onClick={()=>setPeriodo(p)} style={{ ...s.btnGlass, flex:1, fontSize:11, background:periodo===p?G.greenM:G.glass, borderColor:periodo===p?G.green:G.border, color:periodo===p?G.greenL:G.sub }}>{p}</button>
+        <div style={{ display:"flex", gap:7, marginBottom:18 }}>
+          {[["hoy","hoy"],["mes","este mes"],["año","este año"],["todo","histórico"]].map(([v, l]) => (
+            <button key={v} onClick={() => setPeriodo(v)} style={{ ...s.btnGl, flex:1, fontSize:10, background:periodo === v ? G.greenM : G.glass, borderColor:periodo === v ? G.green : G.border, color:periodo === v ? G.greenL : G.sub, padding:"7px 2px" }}>{l}</button>
           ))}
         </div>
-
-        {/* Total */}
         <div style={{ ...s.card, textAlign:"center", padding:"22px 16px", marginBottom:12 }}>
-          <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 6px", textTransform:"lowercase", letterSpacing:"0.08em" }}>total · {periodo==="mes"?new Date().toLocaleDateString("es-AR",{month:"long",year:"numeric"}):periodo==="año"?anio:"histórico"}</p>
+          <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 6px", textTransform:"lowercase", letterSpacing:"0.08em" }}>ingresos · {periodo === "mes" ? new Date().toLocaleDateString("es-AR", { month:"long", year:"numeric" }) : periodo === "año" ? anio : periodo === "hoy" ? "hoy" : "histórico"}</p>
           <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:36, color:G.green, margin:"0 0 4px" }}>{fmtPesos(total)}</p>
-          <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0 }}>{ingresos.length} servicios</p>
+          <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0 }}>{ings.length} servicio{ings.length !== 1 ? "s" : ""}</p>
         </div>
-
-        {/* Efectivo vs Transferencia */}
-        {total>0&&(
+        {total > 0 && (
           <div style={{ display:"flex", gap:9, marginBottom:14 }}>
-            <div style={{ ...s.card, flex:1, margin:0 }}>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>transferencia</p>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.green, margin:"0 0 2px" }}>{fmtPesos(transf)}</p>
-              <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{Math.round(transf/denom*100)}%</p>
-            </div>
-            <div style={{ ...s.card, flex:1, margin:0 }}>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>efectivo</p>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, margin:"0 0 2px" }}>{fmtPesos(efect)}</p>
-              <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{Math.round(efect/denom*100)}%</p>
-            </div>
+            {[["transferencia", transf], ["efectivo", efect]].map(([m, v]) => (
+              <div key={m} style={{ ...s.card, flex:1, margin:0 }}>
+                <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>{m}</p>
+                <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:m === "transferencia" ? G.green : G.white, margin:"0 0 2px" }}>{fmtPesos(v)}</p>
+                <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{Math.round(v / denom * 100)}%</p>
+              </div>
+            ))}
           </div>
         )}
-
-        <div style={s.divider}/>
-
-        {/* Por servicio */}
+        <div style={s.div} />
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>por servicio</p>
         <p style={{ ...s.sub, marginBottom:12 }}>ingresos del período</p>
-        {Object.entries(porServicio).length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin registros en este período ✦</p>}
-        {Object.entries(porServicio).sort((a,b)=>b[1]-a[1]).map(([nom,tot])=>(
+        {Object.entries(porSv).length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin registros en este período ✦</p>}
+        {Object.entries(porSv).sort((a, b) => b[1] - a[1]).map(([nom, tot]) => (
           <div key={nom} style={{ ...s.card, padding:"11px 13px" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p>
-              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmtPesos(tot)}</p>
-            </div>
-            <div style={{ height:3, background:G.border, borderRadius:2 }}>
-              <div style={{ height:"100%", width:`${(tot/maxSv)*100}%`, background:G.green, borderRadius:2 }}/>
-            </div>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p><p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmtPesos(tot)}</p></div>
+            <div style={{ height:3, background:G.border, borderRadius:2 }}><div style={{ height:"100%", width:`${(tot / maxSv) * 100}%`, background:G.green, borderRadius:2 }} /></div>
           </div>
         ))}
-
-        <div style={s.divider}/>
-
-        {/* Top clientas */}
+        <div style={s.div} />
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>top clientas</p>
         <p style={{ ...s.sub, marginBottom:12 }}>por gasto en el período</p>
-        {topClientas.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin datos ✦</p>}
-        {topClientas.map((c,i)=>(
+        {topC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin datos ✦</p>}
+        {topC.map((c, i) => (
           <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11 }}>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i===0?G.green:G.muted, minWidth:22, margin:0 }}>{i+1}</p>
-            <Avatar nombre={c.nombre} size={34}/>
-            <div style={{ flex:1 }}>
-              <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p>
-              <p style={{ margin:0, ...s.sub, fontSize:10 }}>{c.visitas} visitas</p>
-            </div>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i === 0 ? G.green : G.muted, minWidth:22, margin:0 }}>{i + 1}</p>
+            <Avatar nombre={c.nombre} size={34} />
+            <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p><p style={{ margin:0, ...s.sub, fontSize:10 }}>{c.vis} visita{c.vis !== 1 ? "s" : ""}</p></div>
             <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(c.total)}</p>
           </div>
         ))}
@@ -1164,431 +1041,332 @@ function AdminFinanzas({ data }) {
   );
 }
 
-// ─── HORARIOS CONFIG ──────────────────────────────────────────────────────────
-function HorariosConfig({ toast }) {
-  const [excepciones, setExcepciones] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [nuevaFecha, setNuevaFecha] = useState("");
-  const [nuevaRazon, setNuevaRazon] = useState("");
-  const [guardando, setGuardando] = useState(false);
-  const [confirmarBorrar, setConfirmarBorrar] = useState(null);
-
-  useEffect(()=>{
-    db.get("excepciones").then(data=>{ setExcepciones(data.sort((a,b)=>a.fecha?.localeCompare(b.fecha))); setLoading(false); });
-  },[]);
-
-  const agregar = async () => {
-    if(!nuevaFecha){ toast("elegí una fecha"); return; }
-    if(excepciones.find(e=>e.fecha===nuevaFecha)){ toast("esa fecha ya está marcada"); return; }
-    setGuardando(true);
-    const id = await db.push("excepciones", { fecha: nuevaFecha, razon: nuevaRazon||"día no laborable" });
-    const nueva = { fecha: nuevaFecha, razon: nuevaRazon||"día no laborable", _id: id };
-    setExcepciones(p=>[...p, nueva].sort((a,b)=>a.fecha.localeCompare(b.fecha)));
-    setNuevaFecha(""); setNuevaRazon("");
-    setGuardando(false); toast("✓ excepción guardada");
-  };
-
-  const borrar = async (id) => {
-    await db.delete(`excepciones/${id}`);
-    setExcepciones(p=>p.filter(e=>e._id!==id));
-    setConfirmarBorrar(null); toast("excepción eliminada");
-  };
-
-  const hoy = hoyISO();
-  const futuras = excepciones.filter(e=>e.fecha>=hoy);
-  const pasadas = excepciones.filter(e=>e.fecha<hoy);
-
-  return (
-    <div>
-      {/* Agregar excepción */}
-      <div style={{ ...s.card, background:"rgba(143,189,90,0.04)", borderColor:G.greenD, marginBottom:16 }}>
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 12px" }}>marcar día no laborable</p>
-        <Field label="fecha">
-          <input style={s.input} type="date" value={nuevaFecha} min={hoy} onChange={e=>setNuevaFecha(e.target.value)}/>
-        </Field>
-        <Field label="razón (opcional)">
-          <input style={s.input} value={nuevaRazon} onChange={e=>setNuevaRazon(e.target.value)} placeholder="ej: vacaciones, feriado, evento personal..."/>
-        </Field>
-        <button style={{ ...s.btnGreen, opacity:guardando?0.6:1 }} onClick={agregar} disabled={guardando}>
-          {guardando?"guardando...":"agregar excepción →"}
-        </button>
-      </div>
-
-      {loading && <p style={{ color:G.muted, fontSize:13 }}>cargando...</p>}
-
-      {/* Próximas excepciones */}
-      {futuras.length>0&&(
-        <>
-          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>días bloqueados próximos</p>
-          {futuras.map(e=>{
-            const dt = new Date(e.fecha+"T12:00:00");
-            const diasFaltan = Math.ceil((dt-new Date())/(1000*60*60*24));
-            return (
-              <div key={e._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:12 }}>
-                <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center", minWidth:50 }}>
-                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{e.fecha?.slice(5).replace("-","/")} </p>
-                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.greenL }}>{DIAS_F[dt.getDay()].slice(0,3)}</p>
-                </div>
-                <div style={{ flex:1 }}>
-                  <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:13 }}>{e.razon}</p>
-                  <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>
-                    {diasFaltan===0?"hoy":diasFaltan===1?"mañana":`en ${diasFaltan} días`}
-                  </p>
-                </div>
-                <button style={{ ...s.btnRed, padding:"6px 10px", fontSize:12 }} onClick={()=>setConfirmarBorrar(e)}>✕</button>
-              </div>
-            );
-          })}
-        </>
-      )}
-
-      {futuras.length===0&&!loading&&(
-        <p style={{ color:G.muted, fontSize:13, marginBottom:16 }}>no hay días bloqueados próximos ✦</p>
-      )}
-
-      {/* Pasadas (colapsadas) */}
-      {pasadas.length>0&&(
-        <details style={{ marginTop:8 }}>
-          <summary style={{ fontFamily:F.sans, fontSize:12, color:G.muted, cursor:"pointer", padding:"8px 0", letterSpacing:"0.04em" }}>
-            ver excepciones pasadas ({pasadas.length})
-          </summary>
-          <div style={{ marginTop:10 }}>
-            {pasadas.reverse().map(e=>(
-              <div key={e._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:12, opacity:0.5 }}>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted, flex:1 }}>{fmtFecha(e.fecha)} — {e.razon}</p>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-
-      {confirmarBorrar&&<Modal titulo="Eliminar excepción" msg={`¿Eliminar el bloqueo del ${fmtFecha(confirmarBorrar.fecha)}?`} onOk={()=>borrar(confirmarBorrar._id)} onCancel={()=>setConfirmarBorrar(null)} okLabel="eliminar" danger/>}
-    </div>
-  );
-}
-
-// ─── ADMIN: CONFIG ─────────────────────────────────────────────────────────────
+// ── Admin Config ───────────────────────────────────────────────────────────────
 function AdminConfig({ data, toast, onLogout }) {
   const [tab, setTab] = useState("servicios");
   return (
     <div>
       <div style={s.topBar}><h1 style={s.h1}>Configuración</h1><p style={s.sub}>parámetros del estudio</p></div>
       <div style={{ padding:"18px" }}>
-        <div style={{ display:"flex", gap:7, marginBottom:18, overflowX:"auto" }}>
-          {["servicios","técnico","horarios","estudio"].map(t=>(
-            <button key={t} onClick={()=>setTab(t)} style={{ ...s.btnGlass, flexShrink:0, fontSize:11, padding:"7px 14px", background:tab===t?G.greenM:G.glass, borderColor:tab===t?G.green:G.border, color:tab===t?G.greenL:G.sub }}>{t}</button>
+        <div style={{ display:"flex", gap:7, marginBottom:18, flexWrap:"wrap" }}>
+          {["servicios","técnico","horarios","estudio"].map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : G.glass, borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.sub, padding:"7px 14px" }}>{t}</button>
           ))}
         </div>
-        {tab==="servicios" && <ConfigServicios data={data} toast={toast}/>}
-        {tab==="técnico"   && <ConfigTecnico   data={data} toast={toast}/>}
-        {tab==="horarios"  && <ConfigHorarios  data={data} toast={toast}/>}
-        {tab==="estudio"   && <ConfigEstudio   data={data} toast={toast} onLogout={onLogout}/>}
+        {tab === "servicios" && <ConfigServicios data={data} toast={toast} />}
+        {tab === "técnico"   && <ConfigTecnico   data={data} toast={toast} />}
+        {tab === "horarios"  && <ConfigHorarios  data={data} toast={toast} />}
+        {tab === "estudio"   && <ConfigEstudio   data={data} toast={toast} onLogout={onLogout} />}
       </div>
     </div>
   );
 }
 
+// ── Config Servicios ───────────────────────────────────────────────────────────
 function ConfigServicios({ data, toast }) {
-  const [sheet,  setSheet]  = useState(false);
-  const [editSv, setEditSv] = useState(null);
-  const [confirm,setConfirm]= useState(null);
-  const [form, setForm] = useState({ nombre:"", descripcion:"", precio:"", duracion:"", fotos:[] });
-  const [saving, setSaving] = useState(false);
-  const setSv = (k,v) => setForm(f=>({...f,[k]:v}));
+  const [sheet, setSheet]     = useState(false);
+  const [editSv, setEditSv]   = useState(null);
+  const [form, setForm]       = useState({ nombre:"", precio:"", duracion:"", descripcion:"", fotos:[] });
+  const [saving, setSaving]   = useState(false);
+  const [confirm, setConfirm] = useState(null);
+  const [fotoUrl, setFotoUrl] = useState("");
+  const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
-  const abrirNuevo  = () => { setEditSv(null); setForm({ nombre:"", descripcion:"", precio:"", duracion:"", fotos:[] }); setSheet(true); };
-  const abrirEditar = (sv) => { setEditSv(sv); setForm({ nombre:sv.nombre||"", descripcion:sv.descripcion||"", precio:String(sv.precio||""), duracion:String(sv.duracion||""), fotos:sv.fotos||[] }); setSheet(true); };
+  const abrirNuevo  = () => { setEditSv(null); setForm({ nombre:"", precio:"", duracion:"", descripcion:"", fotos:[] }); setFotoUrl(""); setSheet(true); };
+  const abrirEditar = (sv) => { setEditSv(sv); setForm({ nombre:sv.nombre, precio:String(sv.precio||""), duracion:String(sv.duracion||""), descripcion:sv.descripcion||"", fotos:sv.fotos||[] }); setFotoUrl(""); setSheet(true); };
 
-  const onFoto = (e) => {
-    Array.from(e.target.files||[]).forEach(file=>{
-      const r=new FileReader();
-      r.onload=ev=>setSv("fotos",prev=>[...(Array.isArray(prev)?prev:[]),ev.target.result]);
-      r.readAsDataURL(file);
-    });
-  };
+  const addFoto    = () => { if (!fotoUrl.trim()) return; set("fotos", [...(form.fotos||[]), fotoUrl.trim()]); setFotoUrl(""); };
+  const removeFoto = (i) => set("fotos", form.fotos.filter((_, j) => j !== i));
 
   const guardar = async () => {
-    if(!form.nombre||!form.precio){ toast("nombre y precio son obligatorios"); return; }
+    if (!form.nombre || !form.precio) { toast("nombre y precio son obligatorios"); return; }
     setSaving(true);
-    const payload={ nombre:form.nombre, descripcion:form.descripcion, precio:Number(form.precio), duracion:Number(form.duracion)||60, fotos:Array.isArray(form.fotos)?form.fotos:[] };
-    if(editSv) await data.editarServicio(editSv._id, payload);
-    else       await data.crearServicio(payload);
+    const payload = { nombre:form.nombre, precio:Number(form.precio), duracion:Number(form.duracion)||60, descripcion:form.descripcion, fotos:form.fotos||[] };
+    if (editSv) await data.editarServicio(editSv._id, payload);
+    else        await data.crearServicio(payload);
     setSaving(false); setSheet(false);
-    toast(editSv?"✓ actualizado":"✓ servicio creado");
+    toast(editSv ? "✓ servicio actualizado" : "✓ servicio creado");
   };
 
   return (
     <div>
-      <button style={{ ...s.btnGreen, marginBottom:14 }} onClick={abrirNuevo}>+ agregar servicio</button>
-      {data.servicios.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin servicios cargados ✦</p>}
-      {data.servicios.map(sv=>(
+      <button style={{ ...s.btnG, marginBottom:14 }} onClick={abrirNuevo}>+ agregar servicio</button>
+      {data.servicios.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>no hay servicios cargados aún ✦</p>}
+      {data.servicios.map(sv => (
         <div key={sv._id} style={s.card}>
-          {sv.fotos?.length>0&&(
-            <div style={{ display:"flex", gap:6, overflowX:"auto", marginBottom:10 }}>
-              {sv.fotos.map((f,i)=><img key={i} src={f} alt="" style={{ width:80, height:80, borderRadius:9, objectFit:"cover", flexShrink:0 }}/>)}
+          {sv.fotos?.length > 0 && (
+            <div style={{ display:"flex", gap:8, overflowX:"auto", marginBottom:10, paddingBottom:4 }}>
+              {sv.fotos.map((url, i) => <img key={i} src={url} alt="" style={{ width:80, height:80, borderRadius:10, objectFit:"cover", flexShrink:0 }} onError={e => { e.target.style.display = "none"; }} />)}
             </div>
           )}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
             <div style={{ flex:1 }}>
               <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{sv.nombre}</p>
-              {sv.descripcion&&<p style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
-              <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
+              {sv.descripcion && <p style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
+              <div style={{ display:"flex", gap:7 }}>
                 <span style={s.tag}>{sv.duracion}min est.</span>
                 <span style={s.tag}>{fmtPesos(sv.precio)}</span>
               </div>
-              <p style={{ margin:"6px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>* duración estimada, puede variar según cada clienta</p>
             </div>
             <div style={{ display:"flex", gap:6, marginLeft:10 }}>
-              <button style={{ ...s.btnGlass, padding:"6px 10px", fontSize:12 }} onClick={()=>abrirEditar(sv)}>✎</button>
-              <button style={{ ...s.btnRed,   padding:"6px 10px", fontSize:12 }} onClick={()=>setConfirm(sv)}>✕</button>
+              <button style={{ ...s.btnGl, padding:"6px 10px", fontSize:12 }} onClick={() => abrirEditar(sv)}>✎</button>
+              <button style={{ ...s.btnRed, padding:"6px 10px", fontSize:12 }} onClick={() => setConfirm(sv)}>✕</button>
             </div>
           </div>
+          <p style={{ margin:"8px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>✦ La duración es estimada y puede variar según cada clienta</p>
         </div>
       ))}
-
-      {sheet&&(
-        <Sheet titulo={editSv?"Editar Servicio":"Nuevo Servicio"} onClose={()=>setSheet(false)}>
+      {sheet && (
+        <Sheet titulo={editSv ? "Editar Servicio" : "Nuevo Servicio"} onClose={() => setSheet(false)}>
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            <Field label="nombre *"><input style={s.input} value={form.nombre} onChange={e=>setSv("nombre",e.target.value)} placeholder="Nombre del servicio"/></Field>
-            <Field label="descripción"><input style={s.input} value={form.descripcion} onChange={e=>setSv("descripcion",e.target.value)} placeholder="Descripción breve"/></Field>
+            <Field label="nombre del servicio *"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="Nombre del servicio" /></Field>
+            <Field label="descripción"><input style={s.input} value={form.descripcion} onChange={e => set("descripcion", e.target.value)} placeholder="Breve descripción para las clientas" /></Field>
             <div style={{ display:"flex", gap:10 }}>
-              <Field label="precio *" style={{ flex:1 }}><input style={s.input} type="number" value={form.precio} onChange={e=>setSv("precio",e.target.value)} placeholder="0"/></Field>
-              <Field label="duración (min)" style={{ flex:1 }}><input style={s.input} type="number" value={form.duracion} onChange={e=>setSv("duracion",e.target.value)} placeholder="60"/></Field>
+              <Field label="precio *"><input style={{ ...s.input }} type="number" value={form.precio} onChange={e => set("precio", e.target.value)} placeholder="0" /></Field>
+              <Field label="duración (min)"><input style={{ ...s.input }} type="number" value={form.duracion} onChange={e => set("duracion", e.target.value)} placeholder="60" /></Field>
             </div>
-            <p style={{ margin:"-8px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>* duración estimada según cada clienta</p>
-            <Field label="fotos (las clientas verán un carrusel)">
-              {Array.isArray(form.fotos)&&form.fotos.length>0&&(
-                <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
-                  {form.fotos.map((f,i)=>(
-                    <div key={i} style={{ position:"relative" }}>
-                      <img src={f} alt="" style={{ width:72, height:72, borderRadius:9, objectFit:"cover" }}/>
-                      <button onClick={()=>setSv("fotos",form.fotos.filter((_,j)=>j!==i))} style={{ position:"absolute", top:-6, right:-6, width:18, height:18, borderRadius:"50%", background:G.red, border:"none", color:"#fff", fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <label style={{ ...s.btnGlass, display:"block", textAlign:"center", cursor:"pointer", padding:"10px" }}>
-                📷 agregar fotos
-                <input type="file" accept="image/*" multiple style={{ display:"none" }} onChange={onFoto}/>
-              </label>
-            </Field>
-            <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"guardando...":editSv?"guardar cambios →":"crear servicio →"}</button>
+            <div style={s.div} />
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.white, margin:"0 0 4px" }}>Fotos del servicio</p>
+            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 10px" }}>Pegá URLs de fotos para que las clientas vean el resultado al agendar</p>
+            {(form.fotos || []).map((url, i) => (
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:9, marginBottom:7 }}>
+                <img src={url} alt="" style={{ width:50, height:50, borderRadius:8, objectFit:"cover" }} onError={e => { e.target.src = ""; }} />
+                <p style={{ flex:1, margin:0, fontFamily:F.sans, fontSize:11, color:G.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{url}</p>
+                <button style={{ ...s.btnRed, padding:"4px 8px", fontSize:11 }} onClick={() => removeFoto(i)}>✕</button>
+              </div>
+            ))}
+            <div style={{ display:"flex", gap:8 }}>
+              <input style={{ ...s.input, flex:1 }} value={fotoUrl} onChange={e => setFotoUrl(e.target.value)} placeholder="https://...foto.jpg" onKeyDown={e => e.key === "Enter" && addFoto()} />
+              <button style={s.btnGl} onClick={addFoto}>+ agregar</button>
+            </div>
+            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted }}>Podés usar fotos de Google Drive, Instagram o cualquier imagen pública</p>
+            <div style={s.div} />
+            <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : editSv ? "guardar cambios →" : "crear servicio →"}</button>
           </div>
         </Sheet>
       )}
-      {confirm&&<Modal titulo="Eliminar servicio" msg={`¿Eliminar "${confirm.nombre}"?`} onOk={()=>{ data.borrarServicio(confirm._id); setConfirm(null); toast("eliminado"); }} onCancel={()=>setConfirm(null)} okLabel="eliminar" danger/>}
+      {confirm && <Modal titulo="Eliminar servicio" msg={`¿Eliminar "${confirm.nombre}"?`} onOk={async () => { await data.borrarServicio(confirm._id); setConfirm(null); toast("servicio eliminado"); }} onCancel={() => setConfirm(null)} okLabel="eliminar" danger />}
     </div>
   );
 }
 
+// ── Config Técnico ─────────────────────────────────────────────────────────────
 function ConfigTecnico({ data, toast }) {
-  const EditableChips = ({ label, configKey }) => {
-    const valores = data.getConfig(configKey, []);
-    const [nuevo,   setNuevo]   = useState("");
-    const [confirm, setConfirm] = useState(null);
+  const OpcionesEditor = ({ configKey, label, placeholder }) => {
+    const vals = data.getConfig(configKey, []);
+    const [nuevo, setNuevo] = useState("");
     const agregar = async () => {
-      if(!nuevo.trim()){ return; }
-      if(valores.includes(nuevo.trim())){ toast("ya existe"); return; }
-      await data.saveConfig(configKey, [...valores, nuevo.trim()]);
-      setNuevo(""); toast(`✓ ${nuevo.trim()} agregado`);
+      const v = nuevo.trim(); if (!v) return;
+      if (vals.includes(v)) { toast("ya existe"); return; }
+      await data.saveConfig(configKey, [...vals, v]); setNuevo(""); toast(`✓ ${v} agregado`);
     };
-    const quitar = async (v) => {
-      await data.saveConfig(configKey, valores.filter(x=>x!==v));
-      setConfirm(null); toast(`${v} eliminado`);
-    };
+    const quitar = async (v) => { await data.saveConfig(configKey, vals.filter(x => x !== v)); toast(`${v} eliminado`); };
     return (
       <div style={{ ...s.card, marginBottom:12 }}>
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>{label}</p>
         <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:12 }}>
-          {valores.length===0&&<p style={{ color:G.muted, fontSize:12, margin:0 }}>sin opciones cargadas</p>}
-          {valores.map(v=>(
-            <div key={v} style={{ display:"flex", alignItems:"center", gap:4, background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"3px 8px 3px 12px" }}>
+          {vals.length === 0 && <p style={{ color:G.muted, fontSize:12, margin:0 }}>sin opciones aún</p>}
+          {vals.map(v => (
+            <div key={v} style={{ display:"flex", alignItems:"center", gap:4, background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"3px 10px" }}>
               <span style={{ fontFamily:F.sans, fontSize:12, color:G.greenL }}>{v}</span>
-              <button onClick={()=>setConfirm(v)} style={{ background:"none", border:"none", color:G.muted, cursor:"pointer", fontSize:12, padding:"0 2px" }}>✕</button>
+              <button onClick={() => quitar(v)} style={{ background:"none", border:"none", color:G.red, cursor:"pointer", fontSize:12, padding:"0 0 0 4px", lineHeight:1 }}>✕</button>
             </div>
           ))}
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          <input style={{ ...s.input, flex:1 }} value={nuevo} onChange={e=>setNuevo(e.target.value)} placeholder={`nueva opción...`} onKeyDown={e=>e.key==="Enter"&&agregar()}/>
-          <button style={{ ...s.btnGreen, width:"auto", padding:"0 14px", fontSize:13 }} onClick={agregar}>+</button>
+          <input style={{ ...s.input, flex:1 }} value={nuevo} onChange={e => setNuevo(e.target.value)} placeholder={placeholder} onKeyDown={e => e.key === "Enter" && agregar()} />
+          <button style={s.btnGl} onClick={agregar}>+ agregar</button>
         </div>
-        {confirm&&<Modal titulo={`Eliminar "${confirm}"`} msg={`¿Quitar esta opción de ${label}?`} onOk={()=>quitar(confirm)} onCancel={()=>setConfirm(null)} okLabel="quitar" danger/>}
       </div>
     );
   };
   return (
     <div>
-      <p style={{ ...s.sub, marginBottom:14 }}>opciones de la ficha técnica para cada clienta</p>
-      <EditableChips label="Curvas" configKey="curvas"/>
-      <EditableChips label="Grosores" configKey="grosores"/>
-      <EditableChips label="Largos" configKey="largos"/>
+      <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14, lineHeight:1.6 }}>Configurá las opciones que aparecen en la ficha técnica de cada clienta. Agregá solo lo que usés en tu trabajo.</p>
+      <OpcionesEditor configKey="curvas"   label="Curvas de pestañas" placeholder="ej: C, CC, D..." />
+      <OpcionesEditor configKey="grosores" label="Grosores"           placeholder="ej: 0.07, 0.10..." />
+      <OpcionesEditor configKey="largos"   label="Largos"             placeholder="ej: 11mm, 12mm..." />
     </div>
   );
 }
 
+// ── Config Horarios ────────────────────────────────────────────────────────────
 function ConfigHorarios({ data, toast }) {
   const [tab, setTab] = useState("slots");
-  const slots = data.getConfig("slots", []);
 
-  const SlotsEditor = () => {
+  const SlotsConfig = () => {
+    const slots = data.getConfig("slots", []);
     const [nuevo, setNuevo] = useState("");
     const agregar = async () => {
-      if(!nuevo) return;
-      const t=nuevo.trim();
-      if(slots.includes(t)){ toast("ya existe"); return; }
-      await data.saveConfig("slots", [...slots, t].sort());
-      setNuevo(""); toast(`✓ ${t} agregado`);
+      const v = nuevo.trim(); if (!v) return;
+      if (slots.includes(v)) { toast("ya existe"); return; }
+      const upd = [...slots, v].sort();
+      await data.saveConfig("slots", upd); setNuevo(""); toast(`✓ ${v} agregado`);
     };
-    const quitar = async (v) => { await data.saveConfig("slots", slots.filter(x=>x!==v)); toast(`${v} eliminado`); };
+    const quitar = async (v) => { await data.saveConfig("slots", slots.filter(x => x !== v)); toast(`${v} eliminado`); };
     return (
       <div>
-        <p style={{ ...s.sub, marginBottom:12 }}>horarios disponibles para agendar</p>
-        {slots.length===0&&<p style={{ color:G.muted, fontSize:12, marginBottom:12 }}>sin horarios — agregá los que usás</p>}
+        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14, lineHeight:1.6 }}>Estos horarios aparecen en la agenda y en el panel de clientas para agendar.</p>
         <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:14 }}>
-          {slots.map(h=>(
-            <div key={h} style={{ display:"flex", alignItems:"center", gap:4, background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"4px 8px 4px 12px" }}>
-              <span style={{ fontFamily:F.sans, fontSize:13, color:G.greenL }}>{h}</span>
-              <button onClick={()=>quitar(h)} style={{ background:"none", border:"none", color:G.muted, cursor:"pointer", fontSize:12, padding:"0 2px" }}>✕</button>
+          {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>sin horarios configurados ✦</p>}
+          {slots.map(v => (
+            <div key={v} style={{ display:"flex", alignItems:"center", gap:4, background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"5px 12px" }}>
+              <span style={{ fontFamily:F.sans, fontSize:13, color:G.greenL }}>{v}</span>
+              <button onClick={() => quitar(v)} style={{ background:"none", border:"none", color:G.red, cursor:"pointer", fontSize:12, padding:"0 0 0 6px" }}>✕</button>
             </div>
           ))}
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          <input style={{ ...s.input, flex:1 }} type="time" value={nuevo} onChange={e=>setNuevo(e.target.value)}/>
-          <button style={{ ...s.btnGreen, width:"auto", padding:"0 14px" }} onClick={agregar}>+ agregar</button>
+          <input style={{ ...s.input, flex:1 }} value={nuevo} onChange={e => setNuevo(e.target.value)} placeholder="ej: 09:00" onKeyDown={e => e.key === "Enter" && agregar()} />
+          <button style={s.btnGl} onClick={agregar}>+ agregar</button>
         </div>
+      </div>
+    );
+  };
+
+  const ExcepcionesConfig = () => {
+    const [excs, setExcs]     = useState([]);
+    const [loading, setLd]    = useState(true);
+    const [fecha, setFecha]   = useState("");
+    const [razon, setRazon]   = useState("");
+    const [gd, setGd]         = useState(false);
+    const [conf, setConf]     = useState(null);
+
+    useEffect(() => { db.get("excepciones").then(d => { setExcs(d.sort((a, b) => a.fecha?.localeCompare(b.fecha))); setLd(false); }); }, []);
+
+    const agregar = async () => {
+      if (!fecha) { toast("elegí una fecha"); return; }
+      if (excs.find(e => e.fecha === fecha)) { toast("ya está bloqueada"); return; }
+      setGd(true);
+      const id = await db.push("excepciones", { fecha, razon:razon.trim()||"día no laborable" });
+      setExcs(p => [...p, { fecha, razon:razon.trim()||"día no laborable", _id:id }].sort((a, b) => a.fecha.localeCompare(b.fecha)));
+      setFecha(""); setRazon(""); setGd(false); toast("✓ día bloqueado");
+    };
+    const borrar = async (id) => { await db.del(`excepciones/${id}`); setExcs(p => p.filter(e => e._id !== id)); setConf(null); toast("excepción eliminada"); };
+
+    const hoy = hoyISO();
+    const futuras = excs.filter(e => e.fecha >= hoy);
+    const pasadas = excs.filter(e => e.fecha <  hoy);
+
+    return (
+      <div>
+        <div style={{ ...s.card, background:"rgba(143,189,90,0.04)", borderColor:G.greenD, marginBottom:14 }}>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 12px" }}>bloquear un día</p>
+          <Field label="fecha"><input style={s.input} type="date" value={fecha} min={hoy} onChange={e => setFecha(e.target.value)} /></Field>
+          <Field label="razón (opcional)"><input style={s.input} value={razon} onChange={e => setRazon(e.target.value)} placeholder="ej: vacaciones, feriado, evento..." /></Field>
+          <button style={{ ...s.btnG, opacity:gd ? 0.6 : 1 }} onClick={agregar} disabled={gd}>{gd ? "guardando..." : "bloquear día →"}</button>
+        </div>
+        {loading && <p style={{ color:G.muted, fontSize:13 }}>cargando...</p>}
+        {futuras.length > 0 && (
+          <>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>días bloqueados</p>
+            {futuras.map(e => {
+              const dt = new Date(e.fecha + "T12:00:00");
+              const df = Math.ceil((dt - new Date()) / (1000 * 60 * 60 * 24));
+              return (
+                <div key={e._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:12 }}>
+                  <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center", minWidth:50 }}>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{e.fecha?.slice(5).replace("-", "/")}</p>
+                    <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.greenL }}>{DIAS_F[dt.getDay()].slice(0, 3)}</p>
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:13 }}>{e.razon}</p>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{df === 0 ? "hoy" : df === 1 ? "mañana" : `en ${df} días`}</p>
+                  </div>
+                  <button style={{ ...s.btnRed, padding:"6px 10px", fontSize:12 }} onClick={() => setConf(e)}>✕</button>
+                </div>
+              );
+            })}
+          </>
+        )}
+        {futuras.length === 0 && !loading && <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>sin días bloqueados próximos ✦</p>}
+        {pasadas.length > 0 && (
+          <details style={{ marginTop:8 }}>
+            <summary style={{ fontFamily:F.sans, fontSize:12, color:G.muted, cursor:"pointer", padding:"8px 0" }}>ver excepciones pasadas ({pasadas.length})</summary>
+            <div style={{ marginTop:10 }}>
+              {[...pasadas].reverse().map(e => <div key={e._id} style={{ ...s.card, opacity:0.5 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{fmtFecha(e.fecha)} — {e.razon}</p></div>)}
+            </div>
+          </details>
+        )}
+        {conf && <Modal titulo="Eliminar excepción" msg={`¿Eliminar el bloqueo del ${fmtFecha(conf.fecha)}?`} onOk={() => borrar(conf._id)} onCancel={() => setConf(null)} okLabel="eliminar" danger />}
       </div>
     );
   };
 
   return (
     <div>
-      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-        {[["slots","slots disponibles"],["excepciones","días no laborables"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setTab(k)} style={{ ...s.btnGlass, flex:1, fontSize:11, background:tab===k?G.greenM:G.glass, borderColor:tab===k?G.green:G.border, color:tab===k?G.greenL:G.sub }}>{l}</button>
+      <div style={{ display:"flex", gap:7, marginBottom:16 }}>
+        {[["slots","mis horarios"],["excepciones","días bloqueados"]].map(([v, l]) => (
+          <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:11, background:tab === v ? G.greenM : G.glass, borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.sub }}>{l}</button>
         ))}
       </div>
-      {tab==="slots"      && <SlotsEditor/>}
-      {tab==="excepciones"&& <ExcepcionesEditor data={data} toast={toast}/>}
+      {tab === "slots"       && <SlotsConfig />}
+      {tab === "excepciones" && <ExcepcionesConfig />}
     </div>
   );
 }
 
-function ExcepcionesEditor({ data, toast }) {
-  const [fecha,   setFecha]   = useState("");
-  const [razon,   setRazon]   = useState("");
-  const [saving,  setSaving]  = useState(false);
-  const [confirm, setConfirm] = useState(null);
-  const [lista,   setLista]   = useState(data.excepciones||[]);
-  useEffect(()=>setLista(data.excepciones||[]),[data.excepciones]);
-
-  const hoy=hoyISO();
-  const futuras=lista.filter(e=>e.fecha>=hoy).sort((a,b)=>a.fecha.localeCompare(b.fecha));
-  const pasadas =lista.filter(e=>e.fecha<hoy).sort((a,b)=>b.fecha.localeCompare(a.fecha));
-
-  const agregar=async()=>{
-    if(!fecha){ toast("elegí una fecha"); return; }
-    if(lista.find(e=>e.fecha===fecha)){ toast("ya está marcada"); return; }
-    setSaving(true);
-    const id=await db.push("excepciones",{ fecha, razon:razon||"día no laborable" });
-    setLista(p=>[...p,{ fecha, razon:razon||"día no laborable", _id:id }]);
-    setFecha(""); setRazon(""); setSaving(false); toast("✓ guardado");
-  };
-  const borrar=async(e)=>{ await db.delete(`excepciones/${e._id}`); setLista(p=>p.filter(x=>x._id!==e._id)); setConfirm(null); toast("eliminado"); };
-
-  return (
-    <div>
-      <div style={{ ...s.card, background:"rgba(143,189,90,0.04)", borderColor:G.greenD, marginBottom:14 }}>
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 12px" }}>marcar día no laborable</p>
-        <Field label="fecha"><input style={s.input} type="date" value={fecha} min={hoy} onChange={e=>setFecha(e.target.value)}/></Field>
-        <Field label="razón (opcional)"><input style={s.input} value={razon} onChange={e=>setRazon(e.target.value)} placeholder="vacaciones, feriado, personal..."/></Field>
-        <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={agregar} disabled={saving}>{saving?"guardando...":"agregar →"}</button>
-      </div>
-      {futuras.length===0&&<p style={{ color:G.muted, fontSize:13 }}>sin días bloqueados próximos ✦</p>}
-      {futuras.map(e=>(
-        <div key={e._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:12 }}>
-          <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center", minWidth:52 }}>
-            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{e.fecha?.slice(5).replace("-","/")} </p>
-            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.greenL }}>{DIAS_F[new Date(e.fecha+"T12:00:00").getDay()].slice(0,3)}</p>
-          </div>
-          <p style={{ margin:0, fontFamily:F.sans, fontSize:13, flex:1 }}>{e.razon}</p>
-          <button style={{ ...s.btnRed, padding:"6px 10px", fontSize:12 }} onClick={()=>setConfirm(e)}>✕</button>
-        </div>
-      ))}
-      {pasadas.length>0&&(
-        <details style={{ marginTop:10 }}>
-          <summary style={{ fontFamily:F.sans, fontSize:12, color:G.muted, cursor:"pointer", padding:"8px 0" }}>pasados ({pasadas.length})</summary>
-          <div style={{ marginTop:8, opacity:0.5 }}>
-            {pasadas.map(e=><div key={e._id} style={{ ...s.card, padding:"9px 13px" }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{fmtFecha(e.fecha)} — {e.razon}</p></div>)}
-          </div>
-        </details>
-      )}
-      {confirm&&<Modal titulo="Eliminar excepción" msg={`¿Eliminar el bloqueo del ${fmtFecha(confirm.fecha)}?`} onOk={()=>borrar(confirm)} onCancel={()=>setConfirm(null)} okLabel="eliminar" danger/>}
-    </div>
-  );
-}
-
+// ── Config Estudio ─────────────────────────────────────────────────────────────
 function ConfigEstudio({ data, toast, onLogout }) {
-  const init = data.getConfig("estudio", {});
-  const [form, setForm] = useState({ nombre:init.nombre||"", direccion:init.direccion||"", whatsapp:init.whatsapp||"", instagram:init.instagram||"", urlApp:init.urlApp||"" });
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const est  = data.getConfig("estudio", {});
+  const [form, setForm] = useState({ nombre:est.nombre||"", direccion:est.direccion||"", telefono:est.telefono||"", instagram:est.instagram||"", descripcion:est.descripcion||"" });
   const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
+
   const pols = data.getConfig("politicas", []);
-  const [politicas, setPoliticas] = useState(pols);
-  const [nuevaPol,  setNuevaPol]  = useState("");
-  const [editIdx,   setEditIdx]   = useState(null);
-  const [editTxt,   setEditTxt]   = useState("");
+  const [polsLocal, setPolsLocal] = useState(pols);
+  const [newPol, setNewPol] = useState("");
+  const [editIdx, setEditIdx] = useState(null);
+  const [editTxt, setEditTxt] = useState("");
 
-  useEffect(()=>{
-    const e=data.getConfig("estudio",{});
-    setForm({ nombre:e.nombre||"", direccion:e.direccion||"", whatsapp:e.whatsapp||"", instagram:e.instagram||"", urlApp:e.urlApp||"" });
-    setPoliticas(data.getConfig("politicas",[]));
-  },[data.config]);
+  useEffect(() => { setPolsLocal(data.getConfig("politicas", [])); }, [data.config]);
 
-  const guardarEstudio=async()=>{ setSaving(true); await data.saveConfig("estudio",form); setSaving(false); toast("✓ datos guardados"); };
-  const addPol=async()=>{ if(!nuevaPol.trim()) return; const upd=[...politicas,nuevaPol.trim()]; await data.saveConfig("politicas",upd); setPoliticas(upd); setNuevaPol(""); toast("✓ política agregada"); };
-  const savePol=async(i)=>{ const upd=politicas.map((p,j)=>j===i?editTxt:p); await data.saveConfig("politicas",upd); setPoliticas(upd); setEditIdx(null); toast("✓ guardado"); };
-  const delPol=async(i)=>{ const upd=politicas.filter((_,j)=>j!==i); await data.saveConfig("politicas",upd); setPoliticas(upd); toast("eliminada"); };
+  const guardarEstudio = async () => { setSaving(true); await data.saveConfig("estudio", form); setSaving(false); toast("✓ datos guardados"); };
+
+  const addPol  = async () => { if (!newPol.trim()) return; const upd = [...polsLocal, newPol.trim()]; await data.saveConfig("politicas", upd); setPolsLocal(upd); setNewPol(""); toast("✓ política agregada"); };
+  const savePol = async (i) => { const upd = polsLocal.map((p, j) => j === i ? editTxt : p); await data.saveConfig("politicas", upd); setPolsLocal(upd); setEditIdx(null); toast("✓ guardado"); };
+  const delPol  = async (i) => { const upd = polsLocal.filter((_, j) => j !== i); await data.saveConfig("politicas", upd); setPolsLocal(upd); toast("eliminada"); };
 
   return (
     <div>
-      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 12px" }}>datos del estudio</p>
-      <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12, marginBottom:14 }}>
-        <Field label="nombre del estudio"><input style={s.input} value={form.nombre} onChange={e=>set("nombre",e.target.value)}/></Field>
-        <Field label="dirección"><input style={s.input} value={form.direccion} onChange={e=>set("direccion",e.target.value)}/></Field>
-        <Field label="whatsapp (con código de país, ej: 541126509699)"><input style={s.input} value={form.whatsapp} onChange={e=>set("whatsapp",e.target.value)} type="tel"/></Field>
-        <Field label="instagram (@usuario)"><input style={s.input} value={form.instagram} onChange={e=>set("instagram",e.target.value)} placeholder="@usuario"/></Field>
-        <Field label="url de la app"><input style={s.input} value={form.urlApp} onChange={e=>set("urlApp",e.target.value)} placeholder="https://..."/></Field>
-        <button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardarEstudio} disabled={saving}>{saving?"guardando...":"guardar →"}</button>
+      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 12px" }}>datos del estudio</p>
+      <div style={{ display:"flex", flexDirection:"column", gap:12, marginBottom:20 }}>
+        <Field label="nombre del estudio"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="ej: Lash Studio by Chulas" /></Field>
+        <Field label="dirección"><input style={s.input} value={form.direccion} onChange={e => set("direccion", e.target.value)} placeholder="calle, localidad..." /></Field>
+        <Field label="teléfono / WhatsApp"><input style={s.input} value={form.telefono} onChange={e => set("telefono", e.target.value)} placeholder="11 XXXX-XXXX" /></Field>
+        <Field label="instagram"><input style={s.input} value={form.instagram} onChange={e => set("instagram", e.target.value)} placeholder="@tuusuario" /></Field>
+        <Field label="descripción (opcional)" hint="Se muestra a las clientas en la app">
+          <textarea style={{ ...s.input, height:70, resize:"none" }} value={form.descripcion} onChange={e => set("descripcion", e.target.value)} placeholder="Breve descripción del estudio..." />
+        </Field>
+        <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardarEstudio} disabled={saving}>{saving ? "guardando..." : "guardar datos →"}</button>
       </div>
-
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:0 }}>políticas del estudio</p>
-      </div>
-      <p style={{ ...s.sub, marginBottom:12 }}>las clientas las ven en su perfil</p>
-      {politicas.length===0&&<p style={{ color:G.muted, fontSize:13, marginBottom:10 }}>sin políticas cargadas ✦</p>}
-      {politicas.map((p,i)=>(
-        <div key={i} style={{ ...s.card, padding:"10px 14px" }}>
-          {editIdx===i?(
+      <div style={s.div} />
+      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 4px" }}>políticas del estudio</p>
+      <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 14px", lineHeight:1.6 }}>Aparecen en el perfil de las clientas cuando usan la app.</p>
+      {polsLocal.length === 0 && <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>sin políticas cargadas ✦</p>}
+      {polsLocal.map((p, i) => (
+        <div key={i} style={{ ...s.card, padding:"10px 12px", marginBottom:8 }}>
+          {editIdx === i ? (
             <div style={{ display:"flex", gap:8 }}>
-              <input style={{ ...s.input, flex:1 }} value={editTxt} onChange={e=>setEditTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&savePol(i)}/>
-              <button style={{ ...s.btnGreen, width:"auto", padding:"0 12px" }} onClick={()=>savePol(i)}>✓</button>
-              <button style={{ ...s.btnGlass, padding:"0 10px" }} onClick={()=>setEditIdx(null)}>✕</button>
+              <input style={{ ...s.input, flex:1 }} value={editTxt} onChange={e => setEditTxt(e.target.value)} autoFocus onKeyDown={e => e.key === "Enter" && savePol(i)} />
+              <button style={{ ...s.btnG, width:"auto", padding:"8px 12px" }} onClick={() => savePol(i)}>✓</button>
+              <button style={{ ...s.btnGl, padding:"8px 12px" }} onClick={() => setEditIdx(null)}>✕</button>
             </div>
-          ):(
+          ) : (
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <p style={{ margin:0, flex:1, fontFamily:F.sans, fontSize:13, color:G.sub }}>✦ {p}</p>
-              <button style={{ ...s.btnGlass, padding:"5px 9px", fontSize:11 }} onClick={()=>{ setEditIdx(i); setEditTxt(p); }}>✎</button>
-              <button style={{ ...s.btnRed, padding:"5px 9px", fontSize:11 }} onClick={()=>delPol(i)}>✕</button>
+              <p style={{ flex:1, margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>✦ {p}</p>
+              <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => { setEditIdx(i); setEditTxt(p); }}>✎</button>
+              <button style={{ ...s.btnRed, padding:"5px 9px", fontSize:11 }} onClick={() => delPol(i)}>✕</button>
             </div>
           )}
         </div>
       ))}
-      <div style={{ display:"flex", gap:8, marginTop:4 }}>
-        <input style={{ ...s.input, flex:1 }} value={nuevaPol} onChange={e=>setNuevaPol(e.target.value)} placeholder="nueva política..." onKeyDown={e=>e.key==="Enter"&&addPol()}/>
-        <button style={{ ...s.btnGreen, width:"auto", padding:"0 14px" }} onClick={addPol}>+</button>
+      <div style={{ display:"flex", gap:8, marginTop:8 }}>
+        <input style={{ ...s.input, flex:1 }} value={newPol} onChange={e => setNewPol(e.target.value)} placeholder="Nueva política..." onKeyDown={e => e.key === "Enter" && addPol()} />
+        <button style={s.btnGl} onClick={addPol}>+ agregar</button>
       </div>
-      <div style={s.divider}/>
-      <button style={{ ...s.btnRed, width:"100%", marginTop:8 }} onClick={onLogout}>cerrar sesión</button>
+      <div style={s.div} />
+      <button style={{ ...s.btnRed, width:"100%" }} onClick={onLogout}>cerrar sesión</button>
     </div>
   );
 }
@@ -1597,188 +1375,145 @@ function ConfigEstudio({ data, toast, onLogout }) {
 // PANEL CLIENTA
 // ═══════════════════════════════════════════════════════════════════════════════
 function ClientaApp({ clienta, data, onLogout }) {
-  const [tab,   setTab]   = useState("inicio");
-  const [toast, setToast] = useState(null);
+  const [tab, setTab] = useState("inicio");
   const tabs = [{ id:"inicio",icon:"⬡",label:"inicio" },{ id:"agendar",icon:"◷",label:"agendar" },{ id:"historial",icon:"✦",label:"historial" },{ id:"perfil",icon:"✿",label:"perfil" }];
-  const wa = data.getConfig("estudio",{})?.whatsapp;
   const render = () => {
-    switch(tab){
-      case "inicio":    return <CInicio    clienta={clienta} data={data} setTab={setTab}/>;
-      case "agendar":   return <CAgendar   clienta={clienta} data={data}/>;
-      case "historial": return <CHistorial clienta={clienta} data={data}/>;
-      case "perfil":    return <CPerfil    clienta={clienta} data={data} onLogout={onLogout}/>;
-      default:          return <CInicio    clienta={clienta} data={data} setTab={setTab}/>;
+    switch (tab) {
+      case "inicio":    return <CInicio    clienta={clienta} data={data} setTab={setTab} />;
+      case "agendar":   return <CAgendar   clienta={clienta} data={data} />;
+      case "historial": return <CHistorial clienta={clienta} />;
+      case "perfil":    return <CPerfil    clienta={clienta} data={data} onLogout={onLogout} />;
+      default:          return <CInicio    clienta={clienta} data={data} setTab={setTab} />;
     }
   };
   return (
     <div style={s.app}>
       <div style={s.screen}>{render()}</div>
-      <NavFlotante items={tabs} active={tab} onChange={setTab}/>
-      {wa&&<button style={{ position:"fixed", bottom:100, right:18, width:50, height:50, borderRadius:"50%", background:G.green, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, boxShadow:`0 4px 20px rgba(143,189,90,0.4)`, zIndex:30 }} onClick={()=>openWA(wa,"Hola! Tengo una consulta 💚")}>💬</button>}
-      {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
+      <nav style={s.nav}>
+        {tabs.map(t => (
+          <div key={t.id} style={navItmSty(tab === t.id)} onClick={() => setTab(t.id)}>
+            <span style={{ fontSize:18 }}>{t.icon}</span>
+            <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.08em" }}>{t.label}</span>
+          </div>
+        ))}
+      </nav>
+      <button style={s.fab} onClick={() => openWA("Hola! Tengo una consulta 💚")} title="Consultar a Male">💬</button>
     </div>
   );
 }
 
-// ─── CLIENTA: INICIO ──────────────────────────────────────────────────────────
 function CInicio({ clienta, data, setTab }) {
-  const hoy = hoyISO();
-  const hist = Array.isArray(clienta.historial)?clienta.historial:Object.values(clienta.historial||{});
-  hist.sort((a,b)=>b.fecha?.localeCompare(a.fecha));
-  const ultima = hist[0];
-  const diasDesde = ultima?.fecha ? Math.floor((new Date()-new Date(ultima.fecha))/(1000*60*60*24)) : null;
-  const proxCita  = data.citas.filter(c=>c.clientaId===clienta._id&&c.fecha>=hoy&&c.estado!=="completada").sort((a,b)=>a.fecha.localeCompare(b.fecha))[0];
-  const diasHasta = proxCita ? Math.floor((new Date(proxCita.fecha+"T12:00:00")-new Date())/(1000*60*60*24)) : null;
+  const hoy   = hoyISO();
+  const hist  = clienta.historial || [];
+  const ultima = [...hist].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0];
+  const diasDesde = ultima?.fecha ? Math.floor((new Date() - new Date(ultima.fecha)) / (1000 * 60 * 60 * 24)) : null;
+  const proxCita  = data.citas.filter(c => c.clientaId === clienta._id && c.fecha >= hoy && c.estado !== "completada").sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
+  const diasHasta = proxCita ? Math.floor((new Date(proxCita.fecha) - new Date()) / (1000 * 60 * 60 * 24)) : null;
   const estudio   = data.getConfig("estudio", {});
-
-  // Abrir maps con la dirección
-  const abrirMaps = () => {
-    if(estudio.direccion) window.open(`https://maps.google.com/?q=${encodeURIComponent(estudio.direccion)}`, "_blank");
-  };
-  const abrirIG = () => {
-    if(estudio.instagram) window.open(`https://instagram.com/${estudio.instagram.replace("@","")}`, "_blank");
-  };
+  const curvaFav  = clienta.curva || "—";
 
   return (
     <div>
-      <div style={s.topBar}>
-        <h1 style={s.h1}>{estudio.nombre||"Lash Studio"}</h1>
-        <p style={s.sub}>hola, {clienta.nombre?.split(" ")[0]?.toLowerCase()||""} 🌿</p>
-      </div>
+      <div style={s.topBar}><h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1><p style={s.sub}>hola, {clienta.nombre?.split(" ")[0].toLowerCase()} 🌿</p></div>
       <div style={{ padding:"18px" }}>
-
-        {/* Banner recordatorio próxima cita */}
-        {proxCita&&diasHasta!==null&&(
-          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.16),rgba(143,189,90,0.04))", border:`1px solid ${G.green}`, borderRadius:16, padding:"16px 18px", marginBottom:12 }}>
+        {diasDesde !== null && diasDesde >= 14 && !proxCita && (
+          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.14),rgba(143,189,90,0.04))", border:`1px solid ${G.green}`, borderRadius:14, padding:"15px 16px", marginBottom:12 }}>
+            <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.greenL }}>¡es hora del service! ✦</p>
+            <p style={{ margin:"0 0 11px", fontFamily:F.sans, fontSize:12, color:G.sub }}>hace {diasDesde} días de tu último tratamiento</p>
+            <button style={{ ...s.btnG, padding:"9px 14px" }} onClick={() => setTab("agendar")}>agendar ahora →</button>
+          </div>
+        )}
+        {proxCita && (
+          <div style={{ ...s.card, borderColor:G.greenD, marginBottom:12 }}>
+            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 7px", textTransform:"lowercase" }}>próxima cita</p>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
-                <p style={{ margin:"0 0 3px", fontFamily:F.sans, fontSize:10, color:G.greenL, textTransform:"lowercase", letterSpacing:"0.08em" }}>próxima cita</p>
                 <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:16 }}>{proxCita.servicio}</p>
                 <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(proxCita.fecha)} · {proxCita.hora}</p>
               </div>
-              <div style={{ textAlign:"center", background:"rgba(10,10,10,0.4)", border:`0.5px solid rgba(255,255,255,0.1)`, borderRadius:14, padding:"10px 14px", minWidth:58 }}>
-                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:26, color:G.greenL }}>{diasHasta}</p>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>{diasHasta===1?"día":"días"}</p>
-              </div>
+              {diasHasta !== null && (
+                <div style={{ textAlign:"center", background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:11, padding:"8px 13px" }}>
+                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.greenL }}>{diasHasta}</p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>
+                </div>
+              )}
             </div>
           </div>
         )}
-
-        {/* Recordatorio service */}
-        {diasDesde!==null&&diasDesde>=14&&!proxCita&&(
-          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.14),rgba(143,189,90,0.04))", border:`1px solid ${G.green}`, borderRadius:14, padding:"15px 16px", marginBottom:12 }}>
-            <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.greenL }}>
-              {diasDesde>=30?"¡te extrañamos! 💚":"¡es hora del service! ✦"}
-            </p>
-            <p style={{ margin:"0 0 11px", fontFamily:F.sans, fontSize:12, color:G.sub }}>
-              {diasDesde>=30?`hace ${diasDesde} días que no te hacés un tratamiento`:`hace ${diasDesde} días de tu último servicio`}
-            </p>
-            <button style={{ ...s.btnGreen, padding:"9px 14px" }} onClick={()=>setTab("agendar")}>agendar ahora →</button>
+        <div style={{ display:"flex", gap:9, marginBottom:18 }}>
+          <div onClick={() => setTab("historial")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"12px 6px" }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px" }}>visitas</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>{hist.length}</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>ver →</p>
           </div>
-        )}
-
-        {/* Widgets de stats */}
-        <div style={{ display:"flex", gap:9, marginBottom:16 }}>
-          <StatBox label="visitas" val={hist.length} sub="historial →" onClick={()=>setTab("historial")}/>
-          <StatBox label="curva fav." val={clienta.curva||"—"} sub="mi ficha →" onClick={()=>setTab("perfil")}/>
-          <StatBox label="agendar" val="+" sub="reservar →" color={G.green} onClick={()=>setTab("agendar")}/>
-        </div>
-
-        {/* Último servicio */}
-        {ultima&&(
-          <div style={{ ...s.card, cursor:"pointer", marginBottom:14 }} onClick={()=>setTab("historial")}>
-            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 5px" }}>último servicio · {fmtFecha(ultima.fecha)}</p>
-            <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{ultima.servicio}</p>
-            {ultima.curva&&<span style={s.tag}>curva {ultima.curva}</span>}
-            <p style={{ margin:"8px 0 0", fontFamily:F.sans, fontSize:11, color:G.muted }}>ver historial completo →</p>
+          <div onClick={() => setTab("perfil")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"12px 6px" }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px" }}>curva fav.</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>{curvaFav}</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.green, margin:0 }}>mi ficha →</p>
           </div>
-        )}
-
-        {/* Accesos rápidos al estudio */}
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>el estudio</p>
-        <div style={{ display:"flex", gap:10, marginBottom:12 }}>
-          {estudio.whatsapp&&(
-            <button style={{ flex:1, background:"rgba(37,211,102,0.1)", border:`0.5px solid rgba(37,211,102,0.3)`, borderRadius:14, padding:"14px 8px", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}
-              onClick={()=>openWA(estudio.whatsapp,"Hola! Tengo una consulta 💚")}>
-              <span style={{ fontSize:22 }}>💬</span>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:"rgba(37,211,102,0.9)" }}>WhatsApp</p>
-            </button>
-          )}
-          {estudio.direccion&&(
-            <button style={{ flex:1, background:"rgba(66,133,244,0.1)", border:`0.5px solid rgba(66,133,244,0.3)`, borderRadius:14, padding:"14px 8px", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}
-              onClick={abrirMaps}>
-              <span style={{ fontSize:22 }}>📍</span>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:"rgba(66,133,244,0.9)" }}>Cómo llegar</p>
-            </button>
-          )}
-          {estudio.instagram&&(
-            <button style={{ flex:1, background:"rgba(225,48,108,0.1)", border:`0.5px solid rgba(225,48,108,0.3)`, borderRadius:14, padding:"14px 8px", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}
-              onClick={abrirIG}>
-              <span style={{ fontSize:22 }}>📷</span>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:"rgba(225,48,108,0.9)" }}>Instagram</p>
-            </button>
-          )}
+          <div onClick={() => setTab("agendar")} style={{ ...s.card, flex:1, textAlign:"center", cursor:"pointer", margin:0, padding:"12px 6px", background:G.greenM, borderColor:G.greenD }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:"0 0 3px" }}>turno</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px" }}>+</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:0 }}>agendar →</p>
+          </div>
         </div>
-        {estudio.direccion&&<p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, textAlign:"center", marginBottom:4 }}>{estudio.direccion}</p>}
+        {ultima && (
+          <>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>último servicio</p>
+            <p style={{ ...s.sub, marginBottom:10 }}>{fmtFecha(ultima.fecha)}</p>
+            <div style={{ ...s.card, cursor:"pointer" }} onClick={() => setTab("historial")}>
+              <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{ultima.servicio}</p>
+              {ultima.curva && <span style={s.tag}>curva {ultima.curva}</span>}
+              <p style={{ margin:"9px 0 0", fontFamily:F.sans, fontSize:11, color:G.muted }}>ver historial completo →</p>
+            </div>
+          </>
+        )}
+        <div style={s.div} />
+        <div style={s.card}>
+          {[
+            estudio.direccion && ["📍", estudio.direccion],
+            estudio.telefono  && ["📱", estudio.telefono],
+            estudio.instagram && ["📷", estudio.instagram],
+          ].filter(Boolean).map(([ic, v]) => (
+            <div key={v} style={{ display:"flex", gap:10, alignItems:"center", marginBottom:8 }}>
+              <span style={{ fontSize:14 }}>{ic}</span>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</p>
+            </div>
+          ))}
+          {!estudio.direccion && !estudio.telefono && !estudio.instagram && <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>Lash Studio 🌿</p>}
+          <button style={{ ...s.btnG, marginTop:10, padding:"9px" }} onClick={() => openWA()}>abrir en WhatsApp →</button>
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── CLIENTA: AGENDAR ─────────────────────────────────────────────────────────
 function CAgendar({ clienta, data }) {
-  const [paso,    setPaso]    = useState(1);
-  const [modo,    setModo]    = useState("individual");
-  const [svSel,   setSvSel]   = useState(null);
-  const [mes,     setMes]     = useState(0); // offset de mes
-  const [diaS,    setDiaS]    = useState(null);
-  const [horaSel, setHoraSel] = useState(null);
-  const [notas,   setNotas]   = useState("");
+  const [paso, setPaso]     = useState(1);
+  const [modo, setModo]     = useState("individual");
+  const [form, setForm]     = useState({ servicio:null, fecha:"", hora:"", notas:"" });
+  const [fotoIdx, setFotoIdx] = useState(0);
   const [enviado, setEnviado] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
-  const estudio = data.getConfig("estudio", {});
-  const slots   = data.getConfig("slots",   []);
-  const excFechas = new Set(data.excepciones.map(e=>e.fecha));
-
-  // Calendario
-  const ahora = new Date();
-  const mesD  = new Date(ahora.getFullYear(), ahora.getMonth()+mes, 1);
-  const anio  = mesD.getFullYear();
-  const mesN  = mesD.getMonth();
-  const primerDia = new Date(anio,mesN,1).getDay();
-  const diasMes   = new Date(anio,mesN+1,0).getDate();
-  const fmtKey = (d) => `${anio}-${String(mesN+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-  const hoy   = hoyISO();
-
-  // Citas ocupadas por fecha
-  const citasPorFecha={};
-  data.citas.forEach(c=>{ if(c.estado!=="completada"){ if(!citasPorFecha[c.fecha]) citasPorFecha[c.fecha]=[]; citasPorFecha[c.fecha].push(c.hora); } });
-
-  const ocupadasDia = diaS ? (citasPorFecha[diaS]||[]) : [];
-  const diaEsBloqueado = diaS ? excFechas.has(diaS) : false;
-  const slotsDia = slots.filter(h=>!ocupadasDia.includes(h));
+  const slots      = data.getConfig("slots", []);
+  const ocupadas   = data.citas.filter(c => c.fecha === form.fecha && c.estado !== "completada").map(c => c.hora);
+  const fechasBloq = new Set(data.excepciones.map(e => e.fecha));
 
   const confirmar = () => {
-    if(!estudio.whatsapp) return;
-    const msg = modo==="noSe"
-      ? `Hola! 🌿 Quiero agendar:\n📅 ${fmtFecha(diaS)} a las ${horaSel}${notas?`\n💭 ${notas}`:""}\n💚 ${clienta.nombre}`
-      : `Hola! 🌿 Quiero agendar:\n✦ ${svSel?.nombre||"a confirmar"}\n📅 ${fmtFecha(diaS)} a las ${horaSel}${notas?`\n💭 ${notas}`:""}\n💚 ${clienta.nombre}`;
-    openWA(estudio.whatsapp, msg);
-    setEnviado(true);
+    const sv  = form.servicio?.nombre || "A confirmar con Male";
+    const msg = modo === "noSe"
+      ? `Hola! 🌿 Quiero agendar un turno:\n📅 ${form.fecha} a las ${form.hora}\n💭 No sé bien qué hacerme${form.notas ? `\n${form.notas}` : ""}\n💚 ${clienta.nombre}`
+      : `Hola! 🌿 Quiero agendar:\n✦ ${sv}\n📅 ${form.fecha} a las ${form.hora}${form.notas ? `\nNotas: ${form.notas}` : ""}\n💚 ${clienta.nombre}`;
+    openWA(msg); setEnviado(true);
   };
 
-  if(!estudio.whatsapp) return (
-    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:28 }}>
-      <p style={{ color:G.muted, fontSize:13, textAlign:"center" }}>El estudio aún no configuró el contacto.</p>
-    </div>
-  );
-
-  if(enviado) return (
+  if (enviado) return (
     <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, textAlign:"center" }}>
       <div style={{ fontSize:44, marginBottom:12 }}>🌿</div>
       <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.greenL, margin:"0 0 8px" }}>¡solicitud enviada!</p>
-      <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 24px", lineHeight:1.7 }}>Te confirman el turno por WhatsApp. ¡Nos vemos pronto!</p>
-      <button style={s.btnGreen} onClick={()=>{ setEnviado(false); setPaso(1); setSvSel(null); setDiaS(null); setHoraSel(null); setNotas(""); }}>volver →</button>
+      <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 24px", lineHeight:1.7 }}>Male va a confirmar tu turno por WhatsApp. ¡Nos vemos pronto!</p>
+      <button style={s.btnG} onClick={() => { setEnviado(false); setPaso(1); setForm({ servicio:null, fecha:"", hora:"", notas:"" }); }}>volver →</button>
     </div>
   );
 
@@ -1787,174 +1522,104 @@ function CAgendar({ clienta, data }) {
       <div style={s.topBar}><h1 style={s.h1}>Agendar</h1><p style={s.sub}>paso {paso} de 3</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:5, marginBottom:20 }}>
-          {[1,2,3].map(p=><div key={p} style={{ flex:1, height:3, borderRadius:2, background:p<=paso?G.green:G.border, transition:"background 0.3s" }}/>)}
+          {[1,2,3].map(p => <div key={p} style={{ flex:1, height:3, borderRadius:2, background:p <= paso ? G.green : G.border, transition:"background 0.3s" }} />)}
         </div>
 
-        {/* PASO 1: SERVICIO */}
-        {paso===1&&(
+        {paso === 1 && (
           <div>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 14px" }}>¿qué querés hacerte?</p>
-            <div style={{ display:"flex", gap:7, marginBottom:14 }}>
-              {[["individual","servicio"],["noSe","no sé aún"]].map(([m,l])=>(
-                <button key={m} onClick={()=>{ setModo(m); setSvSel(null); }} style={{ ...s.btnGlass, flex:1, fontSize:11, background:modo===m?G.greenM:G.glass, borderColor:modo===m?G.green:G.border, color:modo===m?G.greenL:G.sub }}>{l}</button>
+            <div style={{ display:"flex", gap:7, marginBottom:16 }}>
+              {[["individual","servicio"],["noSe","no sé aún"]].map(([m, l]) => (
+                <button key={m} onClick={() => { setModo(m); set("servicio", null); }} style={{ ...s.btnGl, flex:1, fontSize:11, background:modo === m ? G.greenM : G.glass, borderColor:modo === m ? G.green : G.border, color:modo === m ? G.greenL : G.sub }}>{l}</button>
               ))}
             </div>
-
-            {modo==="individual"&&(
-              data.servicios.length===0
-                ? <p style={{ color:G.muted, fontSize:13 }}>servicios próximamente disponibles...</p>
-                : data.servicios.map(sv=>(
-                  <div key={sv._id} style={{ ...s.card, borderColor:svSel?._id===sv._id?G.green:G.border, background:svSel?._id===sv._id?"rgba(143,189,90,0.06)":G.card, cursor:"pointer" }}
-                    onClick={()=>{ setSvSel(sv); setPaso(2); }}>
-                    {sv.fotos?.length>0&&(
-                      <div style={{ display:"flex", gap:6, overflowX:"auto", marginBottom:10 }}>
-                        {sv.fotos.map((f,i)=><img key={i} src={f} alt="" style={{ width:90, height:70, borderRadius:9, objectFit:"cover", flexShrink:0 }}/>)}
+            {modo === "individual" && (
+              data.servicios.length === 0
+                ? <p style={{ color:G.muted, fontSize:13 }}>los servicios se están configurando, volvé pronto ✦</p>
+                : data.servicios.map(sv => (
+                  <div key={sv._id} style={{ ...s.card, borderColor:form.servicio?._id === sv._id ? G.green : G.border, background:form.servicio?._id === sv._id ? "rgba(143,189,90,0.06)" : G.card }}>
+                    {sv.fotos?.length > 0 && (
+                      <div style={{ marginBottom:10, position:"relative" }}>
+                        <img src={sv.fotos[fotoIdx % sv.fotos.length]} alt={sv.nombre} style={{ width:"100%", height:140, objectFit:"cover", borderRadius:10 }} onError={e => { e.target.style.display = "none"; }} />
+                        {sv.fotos.length > 1 && (
+                          <div style={{ position:"absolute", bottom:6, left:0, right:0, display:"flex", justifyContent:"center", gap:4 }}>
+                            {sv.fotos.map((_, i) => <div key={i} style={{ width:5, height:5, borderRadius:"50%", background:i === fotoIdx % sv.fotos.length ? G.white : "rgba(255,255,255,0.4)", cursor:"pointer" }} onClick={e => { e.stopPropagation(); setFotoIdx(i); }} />)}
+                          </div>
+                        )}
                       </div>
                     )}
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                      <div style={{ flex:1 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }} onClick={() => { set("servicio", sv); setPaso(2); }}>
+                      <div style={{ flex:1, cursor:"pointer" }}>
                         <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontSize:14 }}>{sv.nombre}</p>
-                        {sv.descripcion&&<p style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
-                        <span style={s.tag}>{sv.duracion}min</span>
-                        <p style={{ margin:"4px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>* duración estimada</p>
+                        {sv.descripcion && <p style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
+                        <span style={s.tag}>{sv.duracion}min est.</span>
                       </div>
-                      <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:15 }}>{fmtPesos(sv.precio)}</p>
+                      <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:15, cursor:"pointer" }}>{fmtPesos(sv.precio)}</p>
                     </div>
+                    <p style={{ margin:"8px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>✦ La duración es estimada y puede variar</p>
                   </div>
                 ))
             )}
-
-            {modo==="noSe"&&(
+            {modo === "noSe" && (
               <div>
                 <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, textAlign:"center", padding:"22px 18px" }}>
                   <div style={{ fontSize:30, marginBottom:9 }}>🌿</div>
                   <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>¡no te preocupes!</p>
-                  <p style={{ margin:"0 0 14px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.7 }}>Agendá y te asesoran cuando llegués al estudio. Contá qué efecto buscás en las notas.</p>
-                  <button style={{ ...s.btnGreen, padding:"10px" }} onClick={()=>setPaso(2)}>agendar →</button>
+                  <p style={{ margin:"0 0 14px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.7 }}>Agendá tu turno y Male te va a asesorar personalmente. Contale qué efecto buscás en las notas.</p>
+                  <button style={{ ...s.btnG, padding:"10px" }} onClick={() => setPaso(2)}>agendar igualmente →</button>
                 </div>
-                <div style={{ ...s.card, marginTop:0, cursor:"pointer" }} onClick={()=>openWA(estudio.whatsapp,"Hola! No sé bien qué hacerme, ¿me podés orientar? 🌿")}>
-                  <p style={{ ...s.sub, margin:"0 0 4px" }}>¿consultar antes?</p>
-                  <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.greenL }}>💬 escribir por WhatsApp</p>
+                <div style={{ ...s.card, marginTop:8 }}>
+                  <p style={{ ...s.sub, margin:"0 0 9px" }}>¿querés consultar antes?</p>
+                  <button style={{ ...s.btnGl, width:"100%", borderColor:G.green, color:G.greenL }} onClick={() => openWA("Hola! No sé bien qué servicio hacerme, ¿me podés orientar? 🌿")}>💬 consultar por WhatsApp</button>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* PASO 2: CALENDARIO + HORA */}
-        {paso===2&&(
+        {paso === 2 && (
           <div>
-            <button style={{ ...s.btnGlass, marginBottom:14, fontSize:12 }} onClick={()=>setPaso(1)}>← cambiar servicio</button>
-            {svSel&&<div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:16, padding:"9px 14px" }}>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL }}>✦ {svSel.nombre}</p>
-            </div>}
-
-            {/* Calendario para clienta */}
-            <div style={{ ...s.card, padding:"14px 10px", marginBottom:16 }}>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-                <button style={{ ...s.btnGlass, padding:"6px 12px", fontSize:15 }} onClick={()=>setMes(o=>o-1)}>‹</button>
-                <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mesN]} {anio}</p>
-                <button style={{ ...s.btnGlass, padding:"6px 12px", fontSize:15 }} onClick={()=>setMes(o=>o+1)}>›</button>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4 }}>
-                {DIAS_C.map(d=><div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:10, color:G.muted, padding:"2px 0" }}>{d}</div>)}
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
-                {Array(primerDia).fill(null).map((_,i)=><div key={"e"+i}/>)}
-                {Array(diasMes).fill(null).map((_,i)=>{
-                  const dia=i+1, key=fmtKey(dia);
-                  const esPasado=key<hoy;
-                  const esBloqueado=excFechas.has(key);
-                  const ocupadas=citasPorFecha[key]||[];
-                  const libres=slots.filter(h=>!ocupadas.includes(h));
-                  const sinLugares=libres.length===0&&slots.length>0;
-                  const esHoy=key===hoy, esSel=key===diaS;
-                  const disabled=esPasado||esBloqueado||sinLugares;
-                  return (
-                    <div key={dia} onClick={()=>!disabled&&(setDiaS(key),setHoraSel(null))}
-                      style={{ textAlign:"center", borderRadius:8, padding:"5px 2px", cursor:disabled?"default":"pointer", opacity:disabled?0.3:1,
-                        background:esSel?G.green:esHoy?G.greenM:"transparent",
-                        border:esSel?"none":esHoy?`0.5px solid ${G.green}`:"0.5px solid transparent" }}>
-                      <span style={{ fontFamily:F.sans, fontSize:12, color:esSel?"#0a0a0a":esHoy?G.greenL:G.sub, fontWeight:esSel||esHoy?700:400, display:"block" }}>{dia}</span>
-                      {/* Indicador de slots disponibles */}
-                      {!disabled&&!esSel&&(
-                        <div style={{ display:"flex", justifyContent:"center", gap:1.5, marginTop:2 }}>
-                          {Array(Math.min(libres.length,4)).fill(null).map((_,pi)=>(
-                            <div key={pi} style={{ width:2.5,height:2.5,borderRadius:"50%",background:G.green }}/>
-                          ))}
-                        </div>
-                      )}
-                      {sinLugares&&<span style={{ fontSize:7, color:G.red }}>✕</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, marginBottom:12, textAlign:"center" }}>
-              los puntitos verdes indican horarios disponibles · ✕ = sin lugar
-            </p>
-
-            {/* Slots del día seleccionado */}
-            {diaS&&!diaEsBloqueado&&(
-              <div>
-                <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>
-                  {DIAS_F[new Date(diaS+"T12:00:00").getDay()]} {fmtFecha(diaS)}
-                </p>
-                {slotsDia.length===0?(
-                  <p style={{ color:G.muted, fontSize:13 }}>sin horarios disponibles este día</p>
-                ):(
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:14 }}>
-                    {slots.map(h=>{
-                      const ocupado=ocupadasDia.includes(h);
-                      return (
-                        <button key={h} disabled={ocupado} onClick={()=>setHoraSel(h)}
-                          style={{ ...s.btnGlass, padding:"10px 14px", fontSize:13, opacity:ocupado?0.25:1,
-                            background:horaSel===h?G.greenM:G.glass,
-                            borderColor:horaSel===h?G.green:ocupado?"rgba(255,255,255,0.04)":G.border,
-                            color:horaSel===h?G.greenL:ocupado?G.muted:G.sub,
-                            cursor:ocupado?"not-allowed":"pointer" }}>
-                          {h}
-                          {ocupado&&<span style={{ display:"block", fontSize:9, color:G.red, marginTop:1 }}>ocupado</span>}
-                        </button>
-                      );
-                    })}
+            <button style={{ ...s.btnGl, marginBottom:14, fontSize:12 }} onClick={() => setPaso(1)}>← cambiar servicio</button>
+            {form.servicio && <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:16, padding:"9px 13px" }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL }}>✦ {form.servicio.nombre}</p></div>}
+            <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} min={hoyISO()} /></Field>
+            {form.fecha && fechasBloq.has(form.fecha) && <p style={{ color:G.red, fontSize:12, marginBottom:12 }}>⚠ Este día no tiene turnos disponibles. Elegí otra fecha.</p>}
+            {form.fecha && !fechasBloq.has(form.fecha) && (
+              <>
+                <Field label="hora disponible">
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+                    {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>sin horarios configurados</p>}
+                    {slots.map(h => { const oc = ocupadas.includes(h); return <button key={h} disabled={oc} onClick={() => set("hora", h)} style={{ ...s.btnGl, padding:"9px 12px", fontSize:12, opacity:oc ? 0.3 : 1, background:form.hora === h ? G.greenM : G.glass, borderColor:form.hora === h ? G.green : G.border, color:form.hora === h ? G.greenL : G.sub, cursor:oc ? "not-allowed" : "pointer" }}>{h}{oc ? " ✕" : ""}</button>; })}
                   </div>
-                )}
-                {horaSel&&(
-                  <>
-                    <Field label={modo==="noSe"?"contanos qué efecto buscás (opcional)":"notas (opcional)"}>
-                      <textarea style={{ ...s.input, height:65, resize:"none" }} value={notas} onChange={e=>setNotas(e.target.value)} placeholder={modo==="noSe"?"largo, volumen, ocasión especial...":"indicaciones especiales..."}/>
-                    </Field>
-                    <button style={s.btnGreen} onClick={()=>setPaso(3)}>confirmar →</button>
-                  </>
-                )}
-              </div>
+                </Field>
+                <Field label={modo === "noSe" ? "contanos qué efecto buscás" : "notas (opcional)"}>
+                  <textarea style={{ ...s.input, height:65, resize:"none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder={modo === "noSe" ? "largo, volumen, ocasión especial..." : "indicaciones especiales..."} />
+                </Field>
+                {form.hora && <button style={s.btnG} onClick={() => setPaso(3)}>confirmar horario →</button>}
+              </>
             )}
-            {diaEsBloqueado&&<p style={{ color:G.red, fontSize:13, textAlign:"center" }}>🚫 ese día no trabajamos, elegí otro</p>}
           </div>
         )}
 
-        {/* PASO 3: CONFIRMACIÓN */}
-        {paso===3&&(
+        {paso === 3 && (
           <div>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>confirmá tu cita</p>
-            <p style={{ ...s.sub, marginBottom:14 }}>revisá antes de enviar</p>
+            <p style={{ ...s.sub, marginBottom:14 }}>revisá los detalles antes de enviar</p>
             <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD }}>
               {[
-                ["servicio",    svSel?.nombre||"a confirmar con el estudio"],
-                ["fecha",       fmtFecha(diaS)],
-                ["hora",        horaSel],
-                ["duración",    svSel?.duracion?`${svSel.duracion}min (est.)`:"a confirmar"],
-                ...(notas?[["notas",notas]]:[]),
-              ].map(([k,v])=>(
+                ["servicio",        form.servicio?.nombre || "a confirmar con Male"],
+                ["fecha",           fmtFecha(form.fecha)],
+                ["hora",            form.hora],
+                ["duración aprox.", form.servicio?.duracion ? `${form.servicio.duracion}min est.` : "a confirmar"],
+                ...(form.notas ? [["notas", form.notas]] : []),
+              ].map(([k, v]) => (
                 <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`0.5px solid ${G.border}` }}>
                   <span style={{ ...s.label, margin:0 }}>{k}</span>
-                  <span style={{ fontFamily:F.sans, fontSize:12, color:G.sub, maxWidth:"62%", textAlign:"right" }}>{v}</span>
+                  <span style={{ fontFamily:F.sans, fontSize:12, color:G.sub, maxWidth:"60%", textAlign:"right" }}>{v}</span>
                 </div>
               ))}
             </div>
-            <button style={{ ...s.btnGreen, marginTop:14 }} onClick={confirmar}>confirmar y avisar →</button>
-            <button style={{ ...s.btnGlass, marginTop:9, width:"100%" }} onClick={()=>setPaso(1)}>modificar</button>
+            <button style={{ ...s.btnG, marginTop:14 }} onClick={confirmar}>confirmar y avisar a Male →</button>
+            <button style={{ ...s.btnGl, marginTop:9, width:"100%" }} onClick={() => setPaso(1)}>modificar</button>
           </div>
         )}
       </div>
@@ -1962,67 +1627,35 @@ function CAgendar({ clienta, data }) {
   );
 }
 
-// ─── CLIENTA: HISTORIAL ───────────────────────────────────────────────────────
-function CHistorial({ clienta, data }) {
-  const hist = Array.isArray(clienta.historial)?clienta.historial:Object.values(clienta.historial||{});
-  hist.sort((a,b)=>b.fecha?.localeCompare(a.fecha));
-
-  const curvasUsadas = hist.reduce((acc,h)=>{ if(h.curva) acc[h.curva]=(acc[h.curva]||0)+1; return acc; },{});
-  const curvaFav = Object.entries(curvasUsadas).sort((a,b)=>b[1]-a[1])[0]?.[0]||clienta.curva||"—";
-
-  // Servicios más pedidos
-  const porServicio = hist.reduce((acc,h)=>{ if(h.servicio) acc[h.servicio]=(acc[h.servicio]||0)+1; return acc; },{});
-
-  // Badge de lealtad
-  const badge = hist.length>=10?"⭐ VIP":hist.length>=5?"💎 frecuente":hist.length>=2?"🌿 activa":null;
-
+function CHistorial({ clienta }) {
+  const hist = clienta.historial || [];
+  const cnt  = {}; hist.forEach(h => { cnt[h.curva] = (cnt[h.curva] || 0) + 1; });
+  const curvaFav = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0] || clienta.curva || "—";
+  const badge = hist.length >= 10 ? "✦ clienta VIP" : hist.length >= 5 ? "✦ clienta frecuente" : hist.length >= 2 ? "✦ clienta activa" : null;
   return (
     <div>
       <div style={s.topBar}><h1 style={s.h1}>Historial</h1><p style={s.sub}>{hist.length} visitas al estudio</p></div>
       <div style={{ padding:"18px" }}>
-        {/* Stats */}
-        <div style={{ display:"flex", gap:9, marginBottom:14 }}>
-          <StatBox label="visitas" val={hist.length} color={G.green}/>
-          <StatBox label="curva fav." val={curvaFav}/>
+        <div style={{ display:"flex", gap:9, marginBottom:16 }}>
+          <div style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"12px 6px" }}><p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px" }}>visitas</p><p style={{ fontFamily:F.serif, fontWeight:700, fontSize:24, color:G.green, margin:0 }}>{hist.length}</p></div>
+          <div style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"12px 6px" }}><p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px" }}>curva fav.</p><p style={{ fontFamily:F.serif, fontWeight:700, fontSize:24, margin:0 }}>{curvaFav}</p></div>
         </div>
-
-        {/* Badge */}
-        {badge&&(
+        {badge && (
           <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, textAlign:"center", padding:"16px", marginBottom:14 }}>
-            <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.greenL }}>{badge}</p>
-            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>
-              {hist.length>=10?"sos una clienta VIP del estudio":hist.length>=5?"gracias por tu fidelidad":"gracias por confiar en nosotras"} 💚
-            </p>
+            <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>{badge}</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{hist.length} visitas y siempre hermosa 💚</p>
           </div>
         )}
-
-        {/* Servicios favoritos */}
-        {Object.keys(porServicio).length>1&&(
-          <>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 9px" }}>tus servicios favoritos</p>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
-              {Object.entries(porServicio).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([sv,cnt])=>(
-                <div key={sv} style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:12, padding:"8px 12px" }}>
-                  <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:12, color:G.greenL }}>{sv}</p>
-                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{cnt}x</p>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 9px" }}>todas las visitas</p>
-        {hist.length===0&&<p style={{ color:G.muted, fontSize:13 }}>tu historial estará aquí después de tu primera visita ✦</p>}
-        {hist.map((h,i)=>(
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>tus visitas</p>
+        <p style={{ ...s.sub, marginBottom:12 }}>más recientes primero</p>
+        {hist.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>tu historial estará aquí después de tu primera visita ✦</p>}
+        {[...hist].reverse().map((h, i) => (
           <div key={i} style={s.card}>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-              <div>
-                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtFecha(h.fecha)}</p>
-              </div>
-              {h.curva&&<span style={s.tag}>curva {h.curva}</span>}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:5 }}>
+              <div><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p><p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtFecha(h.fecha)}</p></div>
+              {h.curva && <span style={s.tag}>curva {h.curva}</span>}
             </div>
-            {h.notas&&<p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>✦ {h.notas}</p>}
+            {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>✦ {h.notas}</p>}
           </div>
         ))}
       </div>
@@ -2030,100 +1663,55 @@ function CHistorial({ clienta, data }) {
   );
 }
 
-// ─── CLIENTA: PERFIL ──────────────────────────────────────────────────────────
 function CPerfil({ clienta, data, onLogout }) {
-  const [editando, setEditando] = useState(false);
-  const [foto,     setFoto]     = useState(null);
-  const [form, setForm] = useState({ nombre:clienta.nombre||"", telefono:clienta.telefono||"", emergencia:"" });
-  const [saving,   setSaving]   = useState(false);
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const [editando, setEdit] = useState(false);
+  const [foto, setFoto]     = useState(null);
   const politicas = data.getConfig("politicas", []);
-  const estudio   = data.getConfig("estudio", {});
-
-  const onFoto = (e) => {
-    const f=e.target.files?.[0]; if(!f) return;
-    const r=new FileReader(); r.onload=ev=>setFoto(ev.target.result); r.readAsDataURL(f);
-  };
-
-  // NOTE: guardar cambios actualiza Firebase para los campos editables del perfil
-  const guardar = async () => {
-    setSaving(true);
-    // Solo actualiza campos permitidos (no email, no datos técnicos)
-    await db.update(`clientas/${clienta._id}`, { nombre:form.nombre, telefono:form.telefono, emergencia:form.emergencia });
-    setSaving(false); setEditando(false);
-  };
-
+  const estudio   = data.getConfig("estudio",   {});
+  const onFoto = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = ev => setFoto(ev.target.result); r.readAsDataURL(f); };
   return (
     <div>
       <div style={s.topBar}><h1 style={s.h1}>Mi Perfil</h1><p style={s.sub}>tus datos</p></div>
       <div style={{ padding:"18px" }}>
-        {/* Avatar */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:22 }}>
           <div style={{ position:"relative", marginBottom:10 }}>
-            {foto
-              ?<img src={foto} alt="perfil" style={{ width:78, height:78, borderRadius:"50%", objectFit:"cover", border:`2px solid ${G.green}` }}/>
-              :<Avatar nombre={clienta.nombre} size={78}/>}
-            {editando&&(
-              <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:G.green, border:`1.5px solid #0a0a0a`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}>📷</label>
-            )}
-            <input id="foto-input" type="file" accept="image/*" style={{ display:"none" }} onChange={onFoto}/>
+            {foto ? <img src={foto} alt="perfil" style={{ width:78, height:78, borderRadius:"50%", objectFit:"cover", border:`2px solid ${G.green}` }} /> : <Avatar nombre={clienta.nombre} size={78} />}
+            <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:editando ? G.green : "rgba(10,10,10,0.8)", border:`1.5px solid ${editando ? G.bg : G.border}`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}>📷</label>
+            <input id="foto-input" type="file" accept="image/*" style={{ display:"none" }} onChange={onFoto} />
           </div>
-          <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, fontSize:18 }}>{clienta.nombre}</p>
+          <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:18 }}>{clienta.nombre}</p>
           <span style={s.tag}>clienta activa</span>
         </div>
-
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          <button style={{ ...s.btnGlass, flex:1, fontSize:12 }} onClick={()=>setEditando(e=>!e)}>{editando?"cancelar":"✎ editar mis datos"}</button>
+          <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => setEdit(e => !e)}>{editando ? "cancelar" : "✎ editar"}</button>
+          <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => openWA()}>💬 contactar</button>
         </div>
-
-        {/* Datos editables */}
         <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12 }}>
-          <div>
-            <label style={s.label}>nombre</label>
-            {editando?<input style={s.input} value={form.nombre} onChange={e=>set("nombre",e.target.value)}/>:<p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{clienta.nombre||"—"}</p>}
-          </div>
-          <div>
-            <label style={s.label}>email</label>
-            <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.muted }}>{clienta.email||"—"}</p>
-            {editando&&<p style={{ margin:"4px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted }}>el email no se puede cambiar desde aquí</p>}
-          </div>
-          <div>
-            <label style={s.label}>teléfono</label>
-            {editando?<input style={s.input} value={form.telefono} onChange={e=>set("telefono",e.target.value)} type="tel"/>:<p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{clienta.telefono||"—"}</p>}
-          </div>
-          {editando&&(
-            <div>
-              <label style={s.label}>contacto de emergencia</label>
-              <input style={s.input} value={form.emergencia} onChange={e=>set("emergencia",e.target.value)} placeholder="nombre y teléfono..."/>
-            </div>
-          )}
-          {editando&&<button style={{ ...s.btnGreen, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"guardando...":"guardar cambios →"}</button>}
+          {[["nombre", clienta.nombre], ["email", clienta.email || "—"], ["teléfono", clienta.telefono || "—"]].map(([l, v]) => (
+            <div key={l}><label style={s.label}>{l}</label>{editando ? <input style={s.input} defaultValue={v} /> : <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</p>}</div>
+          ))}
+          {editando && <Field label="contacto de emergencia"><input style={s.input} placeholder="nombre y teléfono..." /></Field>}
         </div>
-
-        {/* Preferencias técnicas (solo lectura) */}
-        {(clienta.curva||clienta.grosor||clienta.largo)&&(
+        {(clienta.curva || clienta.grosor || clienta.largo) && (
           <div style={{ marginTop:12 }}>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 9px" }}>mis preferencias</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>mis preferencias</p>
             <div style={s.card}>
-              {[["curva habitual",clienta.curva],["grosor",clienta.grosor?`${clienta.grosor}`:""],["largo",clienta.largo]].filter(([,v])=>v).map(([l,v])=>(
+              {[["curva habitual", clienta.curva], ["grosor", clienta.grosor ? `${clienta.grosor}mm` : null], ["largo", clienta.largo]].filter(([, v]) => v).map(([l, v]) => (
                 <div key={l} style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
                   <span style={{ ...s.label, margin:0 }}>{l}</span>
                   <span style={s.tag}>{v}</span>
                 </div>
               ))}
-              <p style={{ margin:"6px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted }}>estas preferencias las actualiza tu lashista</p>
             </div>
           </div>
         )}
-
-        {/* Políticas */}
-        {politicas.length>0&&(
+        {politicas.length > 0 && (
           <div style={{ ...s.card, marginTop:12, background:"rgba(143,189,90,0.03)", borderColor:G.border }}>
             <p style={{ margin:"0 0 9px", fontFamily:F.serif, fontWeight:700, fontSize:14 }}>Políticas del Estudio</p>
-            {politicas.map((p,i)=><p key={i} style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>✦ {p}</p>)}
+            {politicas.map((p, i) => <p key={i} style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:12, color:G.sub }}>✦ {p}</p>)}
           </div>
         )}
-
+        {editando && <button style={{ ...s.btnG, marginTop:12 }}>guardar cambios →</button>}
         <button style={{ ...s.btnRed, marginTop:18, width:"100%" }} onClick={onLogout}>cerrar sesión</button>
       </div>
     </div>
