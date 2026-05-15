@@ -646,6 +646,7 @@ function AdminAgenda({ data, push, toast }) {
         )}
 
         {/* Slots */}
+        <div>
         {diaEsBloqueado ? (
           <div style={{ ...s.card, textAlign:"center", padding:"24px", opacity:0.5 }}>
             <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, margin:0 }}>no hay turnos disponibles este día</p>
