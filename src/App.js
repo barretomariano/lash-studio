@@ -27,6 +27,42 @@ const fbAuth = {
   resetPw: async (email)       => (await fetch(`${AUTH_URL}:sendOobCode?key=${API_KEY}`,        { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ requestType:"PASSWORD_RESET", email }) })).json(),
 };
 
+// helper: construir link WA con el teléfono de una clienta (o el de Male como fallback)
+const openWAClienta = (clienta, msg = "") => {
+  const raw = (clienta?.telefono || "").replace(/\D/g, "");
+  const num  = raw.length >= 10 ? `54${raw.slice(-10)}` : WA_NUM;
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, "_blank");
+};
+
+// helper: generar link .ics para agregar al calendario nativo
+const generarICS = (cita, estudio = {}) => {
+  const [y, m, d] = cita.fecha.split("-");
+  const [hh, mm]  = cita.hora.split(":");
+  const pad = (n) => String(n).padStart(2, "0");
+  const dtStart = `${y}${pad(m)}${pad(d)}T${pad(hh)}${pad(mm)}00`;
+  const endH    = parseInt(hh) + 1;
+  const dtEnd   = `${y}${pad(m)}${pad(d)}T${pad(endH)}${pad(mm)}00`;
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//LashStudio//App//ES",
+    "BEGIN:VEVENT",
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${cita.servicio} — ${estudio.nombre || "Lash Studio"}`,
+    `DESCRIPTION:Servicio: ${cita.servicio}\\nEstudio: ${estudio.nombre || "Lash Studio"}`,
+    `LOCATION:${estudio.direccion || ""}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+  const blob = new Blob([ics], { type:"text/calendar" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `cita-lashstudio-${cita.fecha}.ics`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 const genPass  = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 const hoyISO   = () => new Date().toISOString().slice(0, 10);
 const mesISO   = () => new Date().toISOString().slice(0, 7);
@@ -473,7 +509,12 @@ function AdminAgenda({ data, push }) {
   const excepDia    = data.excepciones.find(e => e.fecha === diaS);
   const diaEsBloq   = fechasBloq.has(diaS) || !esDiaLaboral(diaS, diasLaborales);
   const citasDia    = citasPorFecha[diaS] || [];
-  const slots       = data.getConfig("slots", []);
+  const slots = (() => {
+    const global    = data.getConfig("slots", []);
+    const porDia    = data.getConfig("slotsPorDia", {});
+    const dow       = new Date(diaS + "T12:00:00").getDay();
+    return porDia[dow] !== undefined ? porDia[dow] : global;
+  })();
 
   const dtManana = new Date(diaS + "T12:00:00"); dtManana.setDate(dtManana.getDate() + 1);
   const keyManana = dtManana.toISOString().slice(0, 10);
@@ -545,7 +586,10 @@ function AdminAgenda({ data, push }) {
                 <p style={{ margin:0, fontFamily:F.serif, fontSize:13 }}>{citasManana.length} cita{citasManana.length > 1 ? "s" : ""} para {keyManana.slice(8, 10)}/{keyManana.slice(5, 7)}</p>
               </div>
               <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }}
-                onClick={() => citasManana.forEach(c => openWA(`Hola ${c.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita mañana a las ${c.hora}. ¡Te espero! 💚`))}>
+                onClick={() => citasManana.forEach(c => {
+                const cl = data.clientas.find(x => x._id === c.clientaId);
+                openWAClienta(cl, `Hola ${c.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita mañana a las ${c.hora}. ¡Te espero! 💚`);
+              })}>
                 avisar →
               </button>
             </div>
@@ -582,7 +626,10 @@ function AdminAgenda({ data, push }) {
                     </div>
                     <div style={{ display:"flex", gap:6 }}>
                       <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}
-                        onClick={() => openWA(`Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita mañana a las ${cita.hora}. ¡Te espero! 💚`)}>💬</button>
+                        onClick={() => {
+                          const cl = data.clientas.find(c => c._id === cita.clientaId);
+                          openWAClienta(cl, `Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita mañana a las ${cita.hora}. ¡Te espero! 💚`);
+                        }}>💬</button>
                       <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => push("cita-detalle", { cita })}>→</button>
                     </div>
                   </>
@@ -601,7 +648,12 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
   const [form, setForm] = useState({ clientaId:clientaIdDefault, fecha:fechaDefault, hora:horaDefault, servicio:"", notas:"" });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
-  const slots    = data.getConfig("slots", []);
+  const slots = (() => {
+    const global = data.getConfig("slots", []);
+    const porDia = data.getConfig("slotsPorDia", {});
+    const dow    = form.fecha ? new Date(form.fecha + "T12:00:00").getDay() : null;
+    return dow !== null && porDia[dow] !== undefined ? porDia[dow] : global;
+  })();
   const ocupadas = data.citas.filter(c => c.fecha === form.fecha && c.estado !== "completada").map(c => c.hora);
 
   const guardar = async () => {
@@ -649,17 +701,42 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
   const [cita, setCita]      = useState(citaInit);
   const [modalPago, setMP]   = useState(false);
   const [modalBorrar, setMB] = useState(false);
-  const [pago, setPago]      = useState({ metodo:"efectivo", monto:"" });
+  // Pago: soporta efectivo, transferencia o mixto
+  const [pago, setPago] = useState({ metodo:"efectivo", montoEfectivo:"", montoTransf:"", montoTotal:"" });
+
   const sv      = data.servicios.find(s => s.nombre === cita.servicio);
   const clienta = data.clientas.find(c => c._id === cita.clientaId);
+  const estudio = data.getConfig("estudio", {});
+
+  // Calcular total según modo
+  const modoMixto = pago.metodo === "mixto";
+  const totalCalculado = modoMixto
+    ? (Number(pago.montoEfectivo)||0) + (Number(pago.montoTransf)||0)
+    : Number(pago.montoTotal)||0;
 
   const completar = async () => {
-    if (!pago.monto) { toast("ingresá el monto"); return; }
-    await data.registrarPago(cita.clientaId, cita._id, { fecha:cita.fecha, servicio:cita.servicio, curva:clienta?.curva || "", monto:Number(pago.monto), pago:pago.metodo, notas:cita.notas || "" });
+    if (modoMixto && !pago.montoEfectivo && !pago.montoTransf) { toast("ingresá al menos un monto"); return; }
+    if (!modoMixto && !pago.montoTotal) { toast("ingresá el monto"); return; }
+
+    const registro = {
+      fecha:    cita.fecha,
+      servicio: cita.servicio,
+      curva:    clienta?.curva || "",
+      notas:    cita.notas || "",
+      pago:     pago.metodo,
+      monto:    totalCalculado,
+      ...(modoMixto ? { montoEfectivo:Number(pago.montoEfectivo)||0, montoTransf:Number(pago.montoTransf)||0 } : {}),
+    };
+
+    await data.registrarPago(cita.clientaId, cita._id, registro);
     toast("✓ cita completada y pago registrado");
-    setMP(false); setCita(p => ({ ...p, estado:"completada" }));
+    setMP(false);
+    setCita(p => ({ ...p, estado:"completada" }));
   };
+
   const borrar = async () => { await data.borrarCita(cita._id); toast("cita eliminada"); pop(); };
+
+  const msgRecordatorio = `Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita el ${fmtFecha(cita.fecha)} a las ${cita.hora} en ${estudio.nombre || "el estudio"}. ¡Te espero! 💚`;
 
   return (
     <div>
@@ -668,11 +745,14 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
         {clienta && (
           <div style={{ ...s.card, display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
             <Avatar nombre={clienta.nombre} size={46} />
-            <div>
+            <div style={{ flex:1 }}>
               <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{clienta.nombre}</p>
               {clienta.curva && <p style={{ margin:0, ...s.sub, fontSize:11 }}>curva {clienta.curva}{clienta.largo ? ` · ${clienta.largo}` : ""}</p>}
               {clienta.alergias && clienta.alergias !== "Ninguna" && <p style={{ margin:"3px 0 0", color:G.red, fontSize:10 }}>⚠ {clienta.alergias}</p>}
             </div>
+            {/* WA con número de la clienta */}
+            <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:10, width:36, height:36, cursor:"pointer", fontSize:17, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}
+              onClick={() => openWAClienta(clienta, msgRecordatorio)}>💬</button>
           </div>
         )}
         <div style={{ ...s.card, marginBottom:12 }}>
@@ -692,23 +772,52 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
         </div>
         {cita.notas && <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:12 }}><p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 4px" }}>notas</p><p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{cita.notas}</p></div>}
         <span style={{ ...s.tag, marginBottom:16, display:"inline-block" }}>{cita.estado}</span>
+
         {cita.estado !== "completada" && (
           <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
             <button style={s.btnG} onClick={() => setMP(true)}>✓ marcar como completada</button>
-            <button style={{ ...s.btnGl, width:"100%" }} onClick={() => openWA(`Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita el ${fmtFecha(cita.fecha)} a las ${cita.hora}. ¡Te espero! 💚`)}>💬 enviar recordatorio</button>
+            <button style={{ ...s.btnGl, width:"100%" }} onClick={() => openWAClienta(clienta, msgRecordatorio)}>💬 recordatorio a {clienta?.nombre?.split(" ")[0] || "clienta"}</button>
             <button style={{ ...s.btnRed, width:"100%" }} onClick={() => setMB(true)}>eliminar cita</button>
           </div>
         )}
         {cita.estado === "completada" && <p style={{ color:G.green, fontFamily:F.sans, fontSize:13, textAlign:"center" }}>✓ cita completada y pago registrado</p>}
       </div>
+
+      {/* ── Modal Pago con opción mixta ── */}
       {modalPago && (
         <Sheet titulo="Registrar pago" onClose={() => setMP(false)}>
           <Field label="método de pago">
-            <div style={{ display:"flex", gap:8 }}>
-              {["efectivo", "transferencia"].map(m => <button key={m} onClick={() => setPago(p => ({ ...p, metodo:m }))} style={{ ...s.btnGl, flex:1, background:pago.metodo === m ? G.greenM : G.glass, borderColor:pago.metodo === m ? G.green : G.border, color:pago.metodo === m ? G.greenL : G.sub }}>{m}</button>)}
+            <div style={{ display:"flex", gap:7 }}>
+              {[["efectivo","💵 Efectivo"],["transferencia","🏦 Transf."],["mixto","🔀 Mixto"]].map(([m, l]) => (
+                <button key={m} onClick={() => setPago(p => ({ ...p, metodo:m }))}
+                  style={{ ...s.btnGl, flex:1, fontSize:11, padding:"8px 4px", background:pago.metodo === m ? G.greenM : G.glass, borderColor:pago.metodo === m ? G.green : G.border, color:pago.metodo === m ? G.greenL : G.sub }}>
+                  {l}
+                </button>
+              ))}
             </div>
           </Field>
-          <Field label="monto cobrado"><input style={s.input} type="number" value={pago.monto} onChange={e => setPago(p => ({ ...p, monto:e.target.value }))} placeholder={fmtPesos(sv?.precio)} /></Field>
+
+          {pago.metodo === "mixto" ? (
+            <>
+              <Field label="monto en efectivo">
+                <input style={s.input} type="number" value={pago.montoEfectivo} onChange={e => setPago(p => ({ ...p, montoEfectivo:e.target.value }))} placeholder="0" />
+              </Field>
+              <Field label="monto por transferencia">
+                <input style={s.input} type="number" value={pago.montoTransf} onChange={e => setPago(p => ({ ...p, montoTransf:e.target.value }))} placeholder="0" />
+              </Field>
+              {totalCalculado > 0 && (
+                <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, padding:"10px 14px", marginBottom:4 }}>
+                  <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 2px" }}>total a cobrar</p>
+                  <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.green, margin:0 }}>{fmtPesos(totalCalculado)}</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <Field label="monto cobrado" hint={sv?.precio ? `precio sugerido: ${fmtPesos(sv.precio)}` : ""}>
+              <input style={s.input} type="number" value={pago.montoTotal} onChange={e => setPago(p => ({ ...p, montoTotal:e.target.value }))} placeholder={String(sv?.precio || 0)} />
+            </Field>
+          )}
+
           <button style={s.btnG} onClick={completar}>guardar y cerrar cita →</button>
         </Sheet>
       )}
@@ -984,70 +1093,209 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
 
 // ── Admin Finanzas ─────────────────────────────────────────────────────────────
 function AdminFinanzas({ data }) {
+  const [tab, setTab]         = useState("resumen");
   const [periodo, setPeriodo] = useState("mes");
   const hoy  = hoyISO();
   const mes  = mesISO();
   const anio = hoy.slice(0, 4);
+
   const todoHist = data.clientas.flatMap(c => Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []));
-  const filtrar = (h) => { if (periodo === "hoy") return h.fecha === hoy; if (periodo === "mes") return h.fecha?.startsWith(mes); if (periodo === "año") return h.fecha?.startsWith(anio); return true; };
-  const ings   = todoHist.filter(filtrar);
-  const total  = ings.reduce((a, h) => a + (h.monto || 0), 0);
-  const transf = ings.filter(h => h.pago === "transferencia").reduce((a, h) => a + (h.monto || 0), 0);
-  const efect  = ings.filter(h => h.pago === "efectivo").reduce((a, h) => a + (h.monto || 0), 0);
-  const denom  = transf + efect || 1;
-  const porSv  = {};
-  ings.forEach(h => { porSv[h.servicio] = (porSv[h.servicio] || 0) + (h.monto || 0); });
-  const maxSv = Math.max(...Object.values(porSv), 1);
-  const topC  = data.clientas.map(c => { const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []); const hF = h.filter(filtrar); return { ...c, total:hF.reduce((a, x) => a + (x.monto || 0), 0), vis:hF.length }; }).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
 
   return (
     <div>
       <div style={s.topBar}><h1 style={s.h1}>Finanzas</h1><p style={s.sub}>resumen de ingresos</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:7, marginBottom:18 }}>
-          {[["hoy","hoy"],["mes","este mes"],["año","este año"],["todo","histórico"]].map(([v, l]) => (
-            <button key={v} onClick={() => setPeriodo(v)} style={{ ...s.btnGl, flex:1, fontSize:10, background:periodo === v ? G.greenM : G.glass, borderColor:periodo === v ? G.green : G.border, color:periodo === v ? G.greenL : G.sub, padding:"7px 2px" }}>{l}</button>
+          {[["resumen","resumen"],["calendario","calendario"]].map(([v, l]) => (
+            <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:12, background:tab === v ? G.greenM : G.glass, borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.sub }}>{l}</button>
           ))}
         </div>
-        <div style={{ ...s.card, textAlign:"center", padding:"22px 16px", marginBottom:12 }}>
-          <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 6px", textTransform:"lowercase", letterSpacing:"0.08em" }}>ingresos · {periodo === "mes" ? new Date().toLocaleDateString("es-AR", { month:"long", year:"numeric" }) : periodo === "año" ? anio : periodo === "hoy" ? "hoy" : "histórico"}</p>
-          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:36, color:G.green, margin:"0 0 4px" }}>{fmtPesos(total)}</p>
-          <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0 }}>{ings.length} servicio{ings.length !== 1 ? "s" : ""}</p>
-        </div>
-        {total > 0 && (
-          <div style={{ display:"flex", gap:9, marginBottom:14 }}>
-            {[["transferencia", transf], ["efectivo", efect]].map(([m, v]) => (
-              <div key={m} style={{ ...s.card, flex:1, margin:0 }}>
-                <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>{m}</p>
-                <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:m === "transferencia" ? G.green : G.white, margin:"0 0 2px" }}>{fmtPesos(v)}</p>
-                <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{Math.round(v / denom * 100)}%</p>
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={s.div} />
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>por servicio</p>
-        <p style={{ ...s.sub, marginBottom:12 }}>ingresos del período</p>
-        {Object.entries(porSv).length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin registros en este período ✦</p>}
-        {Object.entries(porSv).sort((a, b) => b[1] - a[1]).map(([nom, tot]) => (
-          <div key={nom} style={{ ...s.card, padding:"11px 13px" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p><p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmtPesos(tot)}</p></div>
-            <div style={{ height:3, background:G.border, borderRadius:2 }}><div style={{ height:"100%", width:`${(tot / maxSv) * 100}%`, background:G.green, borderRadius:2 }} /></div>
-          </div>
-        ))}
-        <div style={s.div} />
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>top clientas</p>
-        <p style={{ ...s.sub, marginBottom:12 }}>por gasto en el período</p>
-        {topC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin datos ✦</p>}
-        {topC.map((c, i) => (
-          <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11 }}>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i === 0 ? G.green : G.muted, minWidth:22, margin:0 }}>{i + 1}</p>
-            <Avatar nombre={c.nombre} size={34} />
-            <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p><p style={{ margin:0, ...s.sub, fontSize:10 }}>{c.vis} visita{c.vis !== 1 ? "s" : ""}</p></div>
-            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(c.total)}</p>
-          </div>
+
+        {tab === "resumen" && <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} />}
+        {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} />}
+      </div>
+    </div>
+  );
+}
+
+function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }) {
+  const filtrar = (h) => { if (periodo === "hoy") return h.fecha === hoy; if (periodo === "mes") return h.fecha?.startsWith(mes); if (periodo === "año") return h.fecha?.startsWith(anio); return true; };
+  const ings   = todoHist.filter(filtrar);
+  const total  = ings.reduce((a, h) => a + (h.monto || 0), 0);
+  const transf = ings.filter(h => h.pago === "transferencia" || h.montoTransf > 0).reduce((a, h) => a + (h.montoTransf || (h.pago === "transferencia" ? h.monto : 0)), 0);
+  const efect  = ings.filter(h => h.pago === "efectivo" || h.montoEfectivo > 0).reduce((a, h) => a + (h.montoEfectivo || (h.pago === "efectivo" ? h.monto : 0)), 0);
+  const denom  = transf + efect || 1;
+  const porSv  = {};
+  ings.forEach(h => { porSv[h.servicio] = (porSv[h.servicio] || 0) + (h.monto || 0); });
+  const maxSv  = Math.max(...Object.values(porSv), 1);
+  const topC   = data.clientas.map(c => { const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []); const hF = h.filter(filtrar); return { ...c, total:hF.reduce((a, x) => a + (x.monto || 0), 0), vis:hF.length }; }).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
+
+  return (
+    <div>
+      <div style={{ display:"flex", gap:7, marginBottom:18 }}>
+        {[["hoy","hoy"],["mes","este mes"],["año","este año"],["todo","histórico"]].map(([v, l]) => (
+          <button key={v} onClick={() => setPeriodo(v)} style={{ ...s.btnGl, flex:1, fontSize:10, background:periodo === v ? G.greenM : G.glass, borderColor:periodo === v ? G.green : G.border, color:periodo === v ? G.greenL : G.sub, padding:"7px 2px" }}>{l}</button>
         ))}
       </div>
+      <div style={{ ...s.card, textAlign:"center", padding:"22px 16px", marginBottom:12 }}>
+        <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 6px", textTransform:"lowercase", letterSpacing:"0.08em" }}>ingresos · {periodo === "mes" ? new Date().toLocaleDateString("es-AR", { month:"long", year:"numeric" }) : periodo === "año" ? anio : periodo === "hoy" ? "hoy" : "histórico"}</p>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:36, color:G.green, margin:"0 0 4px" }}>{fmtPesos(total)}</p>
+        <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0 }}>{ings.length} servicio{ings.length !== 1 ? "s" : ""}</p>
+      </div>
+      {total > 0 && (
+        <div style={{ display:"flex", gap:9, marginBottom:14 }}>
+          {[["transferencia", transf], ["efectivo", efect]].map(([m, v]) => (
+            <div key={m} style={{ ...s.card, flex:1, margin:0 }}>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>{m}</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:m === "transferencia" ? G.green : G.white, margin:"0 0 2px" }}>{fmtPesos(v)}</p>
+              <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{Math.round(v / denom * 100)}%</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={s.div} />
+      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>por servicio</p>
+      <p style={{ ...s.sub, marginBottom:12 }}>ingresos del período</p>
+      {Object.entries(porSv).length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin registros ✦</p>}
+      {Object.entries(porSv).sort((a, b) => b[1] - a[1]).map(([nom, tot]) => (
+        <div key={nom} style={{ ...s.card, padding:"11px 13px" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p><p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmtPesos(tot)}</p></div>
+          <div style={{ height:3, background:G.border, borderRadius:2 }}><div style={{ height:"100%", width:`${(tot / maxSv) * 100}%`, background:G.green, borderRadius:2 }} /></div>
+        </div>
+      ))}
+      <div style={s.div} />
+      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>top clientas</p>
+      <p style={{ ...s.sub, marginBottom:12 }}>por gasto en el período</p>
+      {topC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin datos ✦</p>}
+      {topC.map((c, i) => (
+        <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11 }}>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i === 0 ? G.green : G.muted, minWidth:22, margin:0 }}>{i + 1}</p>
+          <Avatar nombre={c.nombre} size={34} />
+          <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p><p style={{ margin:0, ...s.sub, fontSize:10 }}>{c.vis} visita{c.vis !== 1 ? "s" : ""}</p></div>
+          <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(c.total)}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FinanzasCalendario({ data, todoHist }) {
+  const ahora = new Date();
+  const [offset, setOffset] = useState(0);
+  const [diaS,   setDiaS]   = useState(hoyISO());
+
+  const mesD    = new Date(ahora.getFullYear(), ahora.getMonth() + offset, 1);
+  const anio    = mesD.getFullYear();
+  const mes     = mesD.getMonth();
+  const primDia = new Date(anio, mes, 1).getDay();
+  const diasMes = new Date(anio, mes + 1, 0).getDate();
+  const fmtKey  = (d) => `${anio}-${String(mes + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const hoy     = hoyISO();
+
+  // Ingresos agrupados por fecha
+  const ingresosPorFecha = {};
+  todoHist.forEach(h => {
+    if (!h.fecha) return;
+    if (!ingresosPorFecha[h.fecha]) ingresosPorFecha[h.fecha] = [];
+    ingresosPorFecha[h.fecha].push(h);
+  });
+
+  const totalDia    = (fecha) => (ingresosPorFecha[fecha] || []).reduce((a, h) => a + (h.monto || 0), 0);
+  const maxDelMes   = Math.max(...Array(diasMes).fill(null).map((_, i) => totalDia(fmtKey(i + 1))), 1);
+  const totalMes    = Array(diasMes).fill(null).reduce((a, _, i) => a + totalDia(fmtKey(i + 1)), 0);
+
+  // Detalle del día seleccionado
+  const registrosDia = ingresosPorFecha[diaS] || [];
+  const totalDiaS    = registrosDia.reduce((a, h) => a + (h.monto || 0), 0);
+
+  // Buscar nombre de clienta por servicio + fecha
+  const getNombreClienta = (registro) => {
+    const c = data.clientas.find(cl => {
+      const h = Array.isArray(cl.historial) ? cl.historial : Object.values(cl.historial || {});
+      return h.some(x => x.fecha === registro.fecha && x.servicio === registro.servicio && x.monto === registro.monto);
+    });
+    return c?.nombre || "clienta";
+  };
+
+  return (
+    <div>
+      {/* Total del mes en vista */}
+      <div style={{ ...s.card, textAlign:"center", padding:"14px", marginBottom:14, background:"rgba(143,189,90,0.06)", borderColor:G.greenD }}>
+        <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"lowercase", letterSpacing:"0.08em" }}>{MESES[mes]} {anio}</p>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:28, color:G.green, margin:0 }}>{fmtPesos(totalMes)}</p>
+      </div>
+
+      {/* Calendario */}
+      <div style={{ ...s.card, padding:"14px 10px", marginBottom:18 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+          <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o - 1)}>‹</button>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
+          <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o + 1)}>›</button>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4 }}>
+          {DIAS_C.map(d => <div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:10, color:G.muted, padding:"2px 0" }}>{d}</div>)}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3 }}>
+          {Array(primDia).fill(null).map((_, i) => <div key={"e" + i} />)}
+          {Array(diasMes).fill(null).map((_, i) => {
+            const dia = i + 1, key = fmtKey(dia);
+            const tot = totalDia(key);
+            const tieneIngresos = tot > 0;
+            const esH = key === hoy, esSel = key === diaS;
+            const intensidad = tieneIngresos ? Math.max(0.15, (tot / maxDelMes) * 0.85) : 0;
+            return (
+              <div key={dia} onClick={() => setDiaS(key)} style={{ borderRadius:8, padding:"4px 2px", cursor:"pointer", background:esSel ? G.green : tieneIngresos ? `rgba(143,189,90,${intensidad})` : "transparent", border:esSel ? "none" : esH ? `0.5px solid ${G.green}` : "0.5px solid transparent", textAlign:"center" }}>
+                <span style={{ fontFamily:F.sans, fontSize:11, color:esSel ? "#0a0a0a" : esH ? G.greenL : G.sub, fontWeight:esSel || esH ? 700 : 400, display:"block" }}>{dia}</span>
+                {tieneIngresos && (
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:8, color:esSel ? "rgba(10,10,10,0.7)" : G.greenL, lineHeight:1.2 }}>
+                    {tot >= 1000 ? `${Math.round(tot/1000)}k` : tot}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p style={{ ...s.sub, fontSize:10, textAlign:"center", marginTop:10, color:G.muted }}>el verde más intenso = más ingresos ese día</p>
+      </div>
+
+      {/* Detalle del día */}
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+        <div style={{ width:5, height:5, borderRadius:"50%", background:G.green }} />
+        <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white }}>{fmtFecha(diaS)}</p>
+        {totalDiaS > 0 && <span style={{ ...s.tag, marginLeft:"auto" }}>{fmtPesos(totalDiaS)}</span>}
+      </div>
+
+      {registrosDia.length === 0 ? (
+        <p style={{ color:G.muted, fontSize:13 }}>sin ingresos registrados para este día ✦</p>
+      ) : (
+        registrosDia.map((h, i) => {
+          const nombreC = getNombreClienta(h);
+          return (
+            <div key={i} style={s.card}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+                <div>
+                  <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{nombreC}</p>
+                  <p style={{ margin:0, ...s.sub, fontSize:11 }}>{h.servicio}</p>
+                  {h.curva && <p style={{ margin:"3px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted }}>curva {h.curva}</p>}
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:16 }}>{fmtPesos(h.monto)}</p>
+                  {/* Mostrar desglose si fue pago mixto */}
+                  {h.pago === "mixto" ? (
+                    <div style={{ display:"flex", flexDirection:"column", gap:2, alignItems:"flex-end" }}>
+                      <span style={{ ...s.tag, fontSize:9, marginRight:0, background:"rgba(143,189,90,0.1)" }}>💵 {fmtPesos(h.montoEfectivo)}</span>
+                      <span style={{ ...s.tag, fontSize:9, marginRight:0 }}>🏦 {fmtPesos(h.montoTransf)}</span>
+                    </div>
+                  ) : (
+                    <span style={s.tag}>{h.pago === "transferencia" ? "🏦" : "💵"} {h.pago}</span>
+                  )}
+                </div>
+              </div>
+              {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>✦ {h.notas}</p>}
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
@@ -1262,33 +1510,122 @@ function ConfigHorarios({ data, toast }) {
   };
 
   const SlotsConfig = () => {
-    const slots = data.getConfig("slots", []);
-    const [nuevo, setNuevo] = useState("");
-    const agregar = async () => {
+    // Estructura: slots globales (aplican a todos los días por defecto)
+    // + overrides por día de semana { "1": ["09:00",...], "6": ["09:00","10:00"] }
+    const slotsGlobal   = data.getConfig("slots", []);
+    const slotsPorDia   = data.getConfig("slotsPorDia", {}); // overrides por dow
+    const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
+    const [nuevo, setNuevo]     = useState("");
+    const [diaEdit, setDiaEdit] = useState(null); // null = global, 0-6 = día
+    const [nuevoSlotDia, setNuevoSlotDia] = useState("");
+
+    const diasInfo = [
+      { idx:1,"label":"Lunes" },{ idx:2,"label":"Martes" },{ idx:3,"label":"Miércoles" },
+      { idx:4,"label":"Jueves" },{ idx:5,"label":"Viernes" },{ idx:6,"label":"Sábado" },{ idx:0,"label":"Domingo" },
+    ].filter(d => diasLaborales.includes(d.idx));
+
+    const getSlotsForDia = (dow) => slotsPorDia[dow] !== undefined ? slotsPorDia[dow] : slotsGlobal;
+    const tieneOverride  = (dow) => slotsPorDia[dow] !== undefined;
+
+    // Global
+    const agregarGlobal = async () => {
       const v = nuevo.trim(); if (!v) return;
-      // Validar formato HH:MM
-      if (!/^\d{1,2}:\d{2}$/.test(v)) { toast("formato: HH:MM (ej: 09:00)"); return; }
-      if (slots.includes(v)) { toast("ya existe"); return; }
-      const upd = [...slots, v].sort();
-      await data.saveConfig("slots", upd); setNuevo(""); toast(`✓ ${v} agregado`);
+      if (!/^\d{1,2}:\d{2}$/.test(v)) { toast("formato: HH:MM"); return; }
+      if (slotsGlobal.includes(v)) { toast("ya existe"); return; }
+      await data.saveConfig("slots", [...slotsGlobal, v].sort());
+      setNuevo(""); toast(`✓ ${v} agregado`);
     };
-    const quitar = async (v) => { await data.saveConfig("slots", slots.filter(x => x !== v)); toast(`${v} eliminado`); };
+    const quitarGlobal = async (v) => { await data.saveConfig("slots", slotsGlobal.filter(x => x !== v)); toast(`${v} eliminado`); };
+
+    // Por día
+    const agregarDia = async (dow) => {
+      const v = nuevoSlotDia.trim(); if (!v) return;
+      if (!/^\d{1,2}:\d{2}$/.test(v)) { toast("formato: HH:MM"); return; }
+      const curr = getSlotsForDia(dow);
+      if (curr.includes(v)) { toast("ya existe"); return; }
+      const upd = { ...slotsPorDia, [dow]: [...curr, v].sort() };
+      await data.saveConfig("slotsPorDia", upd); setNuevoSlotDia(""); toast(`✓ ${v} agregado`);
+    };
+    const quitarDia = async (dow, v) => {
+      const curr = getSlotsForDia(dow);
+      const upd = { ...slotsPorDia, [dow]: curr.filter(x => x !== v) };
+      await data.saveConfig("slotsPorDia", upd); toast(`${v} eliminado`);
+    };
+    const resetearDia = async (dow) => {
+      const upd = { ...slotsPorDia }; delete upd[dow];
+      await data.saveConfig("slotsPorDia", upd); toast("horario reseteado al global");
+    };
+
     return (
       <div>
-        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14, lineHeight:1.6 }}>Horarios disponibles para agendar. Aparecen en la agenda y en el panel de clientas.</p>
-        <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:14 }}>
-          {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>sin horarios configurados ✦</p>}
-          {slots.map(v => (
+        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14, lineHeight:1.6 }}>
+          Configurá los horarios base que aplican a todos los días, y luego personalizá cada día si necesitás horarios distintos (ej: sábados medio día).
+        </p>
+
+        {/* Slots globales */}
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.white, margin:"0 0 10px" }}>horario base (todos los días)</p>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:10 }}>
+          {slotsGlobal.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>sin horarios base ✦</p>}
+          {slotsGlobal.map(v => (
             <div key={v} style={{ display:"flex", alignItems:"center", gap:4, background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"5px 12px" }}>
               <span style={{ fontFamily:F.sans, fontSize:13, color:G.greenL }}>{v}</span>
-              <button onClick={() => quitar(v)} style={{ background:"none", border:"none", color:G.red, cursor:"pointer", fontSize:12, padding:"0 0 0 6px" }}>✕</button>
+              <button onClick={() => quitarGlobal(v)} style={{ background:"none", border:"none", color:G.red, cursor:"pointer", fontSize:12, padding:"0 0 0 6px" }}>✕</button>
             </div>
           ))}
         </div>
-        <div style={{ display:"flex", gap:8 }}>
-          <input style={{ ...s.input, flex:1 }} value={nuevo} onChange={e => setNuevo(e.target.value)} placeholder="ej: 09:00" onKeyDown={e => e.key === "Enter" && agregar()} />
-          <button style={s.btnGl} onClick={agregar}>+ agregar</button>
+        <div style={{ display:"flex", gap:8, marginBottom:20 }}>
+          <input style={{ ...s.input, flex:1 }} value={nuevo} onChange={e => setNuevo(e.target.value)} placeholder="ej: 09:00" onKeyDown={e => e.key === "Enter" && agregarGlobal()} />
+          <button style={s.btnGl} onClick={agregarGlobal}>+ agregar</button>
         </div>
+
+        {/* Overrides por día */}
+        {diasInfo.length > 0 && (
+          <>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.white, margin:"0 0 4px" }}>horarios personalizados por día</p>
+            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 14px", lineHeight:1.5 }}>Si un día tiene horario diferente al base, configuralo acá. Los demás días usan el horario base.</p>
+            {diasInfo.map(d => {
+              const slots = getSlotsForDia(d.idx);
+              const override = tieneOverride(d.idx);
+              const expanded = diaEdit === d.idx;
+              return (
+                <div key={d.idx} style={{ ...s.card, padding:"12px 14px", marginBottom:8 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }} onClick={() => setDiaEdit(expanded ? null : d.idx)}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <div style={{ width:6, height:6, borderRadius:"50%", background:override ? G.amber : G.green }} />
+                      <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.white }}>{d.label}</p>
+                      {override && <span style={{ ...s.tag, fontSize:9, background:"rgba(224,184,112,0.15)", borderColor:G.amber, color:G.amber }}>personalizado</span>}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{slots.length} slots</p>
+                      <span style={{ color:G.muted, fontSize:12 }}>{expanded ? "▲" : "▼"}</span>
+                    </div>
+                  </div>
+                  {expanded && (
+                    <div style={{ marginTop:12 }}>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>
+                        {slots.map(v => (
+                          <div key={v} style={{ display:"flex", alignItems:"center", gap:4, background:override ? "rgba(224,184,112,0.12)" : G.greenM, border:`0.5px solid ${override ? G.amber : G.green}`, borderRadius:20, padding:"4px 10px" }}>
+                            <span style={{ fontFamily:F.sans, fontSize:12, color:override ? G.amber : G.greenL }}>{v}</span>
+                            <button onClick={() => quitarDia(d.idx, v)} style={{ background:"none", border:"none", color:G.red, cursor:"pointer", fontSize:11, padding:"0 0 0 4px" }}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display:"flex", gap:8, marginBottom:override ? 8 : 0 }}>
+                        <input style={{ ...s.input, flex:1 }} value={nuevoSlotDia} onChange={e => setNuevoSlotDia(e.target.value)} placeholder="ej: 14:00" onKeyDown={e => e.key === "Enter" && agregarDia(d.idx)} />
+                        <button style={s.btnGl} onClick={() => agregarDia(d.idx)}>+ agregar</button>
+                      </div>
+                      {override && (
+                        <button style={{ ...s.btnGl, width:"100%", fontSize:11, color:G.muted, borderColor:G.border }} onClick={() => resetearDia(d.idx)}>
+                          ↺ usar horario base para este día
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
     );
   };
@@ -1536,7 +1873,7 @@ function CInicio({ clienta, data, setTab }) {
         {proxCita && (
           <div style={{ ...s.card, borderColor:G.greenD, background:"rgba(143,189,90,0.06)", marginBottom:12 }}>
             <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 7px", textTransform:"lowercase" }}>próxima cita</p>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
               <div>
                 <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:16 }}>{proxCita.servicio}</p>
                 <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(proxCita.fecha)} · {proxCita.hora}</p>
@@ -1546,6 +1883,11 @@ function CInicio({ clienta, data, setTab }) {
                 {diasHasta !== 0 && <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>}
               </div>
             </div>
+            <button
+              onClick={() => generarICS(proxCita, estudio)}
+              style={{ ...s.btnGl, width:"100%", fontSize:12, borderColor:G.greenD, color:G.greenL, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+              📅 agregar al calendario
+            </button>
           </div>
         )}
 
