@@ -78,27 +78,98 @@ const G = {
   bg:"#0a0a0a", card:"rgba(255,255,255,0.04)", glass:"rgba(255,255,255,0.06)",
   border:"rgba(255,255,255,0.08)", borderHov:"rgba(255,255,255,0.16)",
   green:"#8fbd5a", greenD:"#5c8f2e", greenL:"#b5d98a", greenM:"rgba(143,189,90,0.15)",
-  text:"#f0f0f0", muted:"rgba(240,240,240,0.45)", sub:"rgba(240,240,240,0.65)",
+  text:"#f0f0f0", muted:"rgba(240,240,240,0.42)", sub:"rgba(240,240,240,0.62)",
   white:"#fff", red:"#e07070", amber:"#e0b870",
 };
-const F = { serif:"'Playfair Display',Georgia,serif", sans:"'DM Sans','Segoe UI',sans-serif" };
+const F = { serif:"'Fraunces',Georgia,serif", sans:"'Outfit','Segoe UI',sans-serif" };
+
+// ── Fondo app con gradiente sutil ──────────────────────────────────────────────
+const AppBg = () => (
+  <div style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:0,
+    background:"radial-gradient(ellipse 80% 55% at 50% -5%, rgba(143,189,90,0.13) 0%, transparent 60%), radial-gradient(ellipse 40% 35% at 95% 85%, rgba(143,189,90,0.07) 0%, transparent 55%)",
+  }}/>
+);
+
+// ── Íconos Lucide SVG inline ───────────────────────────────────────────────────
+const Icon = ({ name, size=20, color="currentColor", strokeWidth=1.7 }) => {
+  const p = { fill:"none", stroke:color, strokeWidth, strokeLinecap:"round", strokeLinejoin:"round" };
+  const paths = {
+    home:        <><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" {...p}/><polyline points="9 22 9 12 15 12 15 22" {...p}/></>,
+    calendar:    <><rect width="18" height="18" x="3" y="4" rx="2" ry="2" {...p}/><line x1="16" y1="2" x2="16" y2="6" {...p}/><line x1="8" y1="2" x2="8" y2="6" {...p}/><line x1="3" y1="10" x2="21" y2="10" {...p}/></>,
+    calendarPlus:<><path d="M21 13V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8" {...p}/><line x1="16" y1="2" x2="16" y2="6" {...p}/><line x1="8" y1="2" x2="8" y2="6" {...p}/><line x1="3" y1="10" x2="19" y2="10" {...p}/><line x1="19" y1="16" x2="19" y2="22" {...p}/><line x1="22" y1="19" x2="16" y2="19" {...p}/></>,
+    users:       <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" {...p}/><circle cx="9" cy="7" r="4" {...p}/><path d="M23 21v-2a4 4 0 0 0-3-3.87" {...p}/><path d="M16 3.13a4 4 0 0 1 0 7.75" {...p}/></>,
+    user:        <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" {...p}/><circle cx="12" cy="7" r="4" {...p}/></>,
+    barChart:    <><line x1="18" y1="20" x2="18" y2="10" {...p}/><line x1="12" y1="20" x2="12" y2="4" {...p}/><line x1="6" y1="20" x2="6" y2="14" {...p}/></>,
+    settings:    <><circle cx="12" cy="12" r="3" {...p}/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M5.93 4.93a10 10 0 0 0 0 14.14" {...p}/></>,
+    trendingUp:  <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" {...p}/><polyline points="17 6 23 6 23 12" {...p}/></>,
+    history:     <><polyline points="1 4 1 10 7 10" {...p}/><path d="M3.51 15a9 9 0 1 0 .49-4.5" {...p}/></>,
+    phone:       <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" {...p}/>,
+    instagram:   <><rect width="20" height="20" x="2" y="2" rx="5" ry="5" {...p}/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" {...p}/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" {...p}/></>,
+    mapPin:      <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" {...p}/><circle cx="12" cy="10" r="3" {...p}/></>,
+    messageCircle:<><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" {...p}/></>,
+    clock:       <><circle cx="12" cy="12" r="10" {...p}/><polyline points="12 6 12 12 16 14" {...p}/></>,
+    check:       <polyline points="20 6 9 17 4 12" {...p}/>,
+    checkCircle: <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" {...p}/><polyline points="22 4 12 14.01 9 11.01" {...p}/></>,
+    x:           <><line x1="18" y1="6" x2="6" y2="18" {...p}/><line x1="6" y1="6" x2="18" y2="18" {...p}/></>,
+    plus:        <><line x1="12" y1="5" x2="12" y2="19" {...p}/><line x1="5" y1="12" x2="19" y2="12" {...p}/></>,
+    edit:        <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" {...p}/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" {...p}/></>,
+    trash:       <><polyline points="3 6 5 6 21 6" {...p}/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" {...p}/></>,
+    arrowLeft:   <><line x1="19" y1="12" x2="5" y2="12" {...p}/><polyline points="12 19 5 12 12 5" {...p}/>,
+    arrowRight:  <><line x1="5" y1="12" x2="19" y2="12" {...p}/><polyline points="12 5 19 12 12 19" {...p}/>,
+    chevronDown: <polyline points="6 9 12 15 18 9" {...p}/>,
+    chevronRight:<polyline points="9 18 15 12 9 6" {...p}/>,
+    key:         <><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" {...p}/></>,
+    lock:        <><rect width="18" height="11" x="3" y="11" rx="2" ry="2" {...p}/><path d="M7 11V7a5 5 0 0 1 10 0v4" {...p}/></>,
+    unlock:      <><rect width="18" height="11" x="3" y="11" rx="2" ry="2" {...p}/><path d="M7 11V7a5 5 0 0 1 9.9-1" {...p}/></>,
+    download:    <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" {...p}/><polyline points="7 10 12 15 17 10" {...p}/><line x1="12" y1="15" x2="12" y2="3" {...p}/></>,
+    send:        <><line x1="22" y1="2" x2="11" y2="13" {...p}/><polygon points="22 2 15 22 11 13 2 9 22 2" {...p}/></>,
+    bell:        <><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" {...p}/><path d="M13.73 21a2 2 0 0 1-3.46 0" {...p}/></>,
+    star:        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" {...p}/>,
+    award:       <><circle cx="12" cy="8" r="6" {...p}/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11" {...p}/></>,
+    scissors:    <><circle cx="6" cy="6" r="3" {...p}/><circle cx="6" cy="18" r="3" {...p}/><line x1="20" y1="4" x2="8.12" y2="15.88" {...p}/><line x1="14.47" y1="14.48" x2="20" y2="20" {...p}/><line x1="8.12" y1="8.12" x2="12" y2="12" {...p}/></>,
+    banknote:    <><rect width="20" height="12" x="2" y="6" rx="2" {...p}/><circle cx="12" cy="12" r="2" {...p}/><path d="M6 12h.01M18 12h.01" {...p}/></>,
+    creditCard:  <><rect width="20" height="14" x="2" y="5" rx="2" {...p}/><line x1="2" y1="10" x2="22" y2="10" {...p}/></>,
+    wallet:      <><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" {...p}/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" {...p}/><path d="M18 12a2 2 0 0 0 0 4h4v-4z" {...p}/></>,
+    logOut:      <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" {...p}/><polyline points="16 17 21 12 16 7" {...p}/><line x1="21" y1="12" x2="9" y2="12" {...p}/></>,
+    refresh:     <><polyline points="23 4 23 10 17 10" {...p}/><polyline points="1 20 1 14 7 14" {...p}/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" {...p}/></>,
+    image:       <><rect width="18" height="18" x="3" y="3" rx="2" ry="2" {...p}/><circle cx="9" cy="9" r="2" {...p}/><polyline points="21 15 16 10 5 21" {...p}/></>,
+    zap:         <><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" {...p}/></>,
+    heart:       <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" {...p}/>,
+    sparkles:    <><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" {...p}/><path d="M5 3v4" {...p}/><path d="M19 17v4" {...p}/><path d="M3 5h4" {...p}/><path d="M17 19h4" {...p}/></>,
+    alertTriangle:<><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" {...p}/><line x1="12" y1="9" x2="12" y2="13" {...p}/><line x1="12" y1="17" x2="12.01" y2="17" {...p}/></>,
+    shield:      <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" {...p}/></>,
+    camera:      <><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" {...p}/><circle cx="12" cy="13" r="4" {...p}/></>,
+    fileText:    <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" {...p}/><polyline points="14 2 14 8 20 8" {...p}/><line x1="16" y1="13" x2="8" y2="13" {...p}/><line x1="16" y1="17" x2="8" y2="17" {...p}/><polyline points="10 9 9 9 8 9" {...p}/></>,
+    clipboard:   <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" {...p}/><rect x="8" y="2" width="8" height="4" rx="1" ry="1" {...p}/></>,
+    package:     <><line x1="16.5" y1="9.4" x2="7.5" y2="4.21" {...p}/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" {...p}/><polyline points="3.27 6.96 12 12.01 20.73 6.96" {...p}/><line x1="12" y1="22.08" x2="12" y2="12" {...p}/></>,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink:0 }}>
+      {paths[name] || <circle cx="12" cy="12" r="10" fill="none" stroke={color} strokeWidth={strokeWidth}/>}
+    </svg>
+  );
+};
 
 const s = {
   app:    { minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, maxWidth:430, margin:"0 auto", position:"relative", overflowX:"hidden" },
-  screen: { minHeight:"100vh", paddingBottom:110 },
-  topBar: { padding:"52px 20px 14px", borderBottom:`0.5px solid ${G.border}`, background:"rgba(10,10,10,0.94)", backdropFilter:"blur(20px)", position:"sticky", top:0, zIndex:10 },
-  h1:     { fontFamily:F.serif, fontWeight:700, fontSize:24, letterSpacing:"-0.5px", color:G.white, margin:0 },
-  sub:    { fontFamily:F.sans, fontSize:11, color:G.muted, margin:"3px 0 0" },
-  card:   { background:G.card, border:`0.5px solid ${G.border}`, borderRadius:14, padding:"14px 16px", marginBottom:10, backdropFilter:"blur(10px)", transition:"all 0.2s" },
-  input:  { background:"rgba(255,255,255,0.06)", border:`0.5px solid ${G.border}`, borderRadius:10, padding:"11px 14px", color:G.text, fontFamily:F.sans, fontSize:14, width:"100%", outline:"none", boxSizing:"border-box" },
-  label:  { fontFamily:F.sans, fontSize:11, color:G.muted, display:"block", marginBottom:5 },
-  btnG:   { background:G.green, border:"none", borderRadius:12, padding:"13px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:13, fontWeight:700, cursor:"pointer", width:"100%", transition:"opacity 0.2s" },
-  btnGl:  { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:11, padding:"9px 16px", color:G.text, fontFamily:F.sans, fontSize:13, cursor:"pointer", backdropFilter:"blur(8px)", transition:"all 0.2s" },
-  btnRed: { background:"rgba(224,112,112,0.12)", border:`0.5px solid ${G.red}`, borderRadius:11, padding:"9px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" },
-  tag:    { background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"3px 10px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3 },
-  div:    { height:"0.5px", background:G.border, margin:"14px 0" },
-  nav: { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:"rgba(20,20,20,0.88)", backdropFilter:"blur(24px) saturate(180%)", border:`0.5px solid rgba(255,255,255,0.12)`, borderRadius:28, display:"flex", zIndex:20, padding:"8px 6px", boxShadow:"0 8px 32px rgba(0,0,0,0.5)" },
-  fab:  { position:"fixed", bottom:90, right:18, width:50, height:50, borderRadius:"50%", background:G.green, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, boxShadow:`0 4px 20px rgba(143,189,90,0.4)`, zIndex:30 },
+  screen: { minHeight:"100vh", paddingBottom:110, position:"relative", zIndex:1 },
+  topBar: { padding:"52px 20px 14px", borderBottom:`0.5px solid ${G.border}`, background:"rgba(10,10,10,0.92)", backdropFilter:"blur(24px) saturate(160%)", position:"sticky", top:0, zIndex:10 },
+  h1:     { fontFamily:F.serif, fontWeight:700, fontSize:26, letterSpacing:"-0.5px", color:G.white, margin:0, lineHeight:1.1 },
+  sub:    { fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0", fontWeight:400 },
+  eyebrow:{ fontFamily:F.sans, fontSize:10, letterSpacing:"0.18em", textTransform:"uppercase", color:"rgba(143,189,90,0.65)", margin:"0 0 3px", fontWeight:500 },
+  // Cards con jerarquía
+  card:   { background:G.card, border:`0.5px solid ${G.border}`, borderRadius:16, padding:"15px 17px", marginBottom:10, backdropFilter:"blur(12px)", transition:"all 0.2s" },
+  cardHero:{ background:"linear-gradient(135deg, rgba(143,189,90,0.12) 0%, rgba(143,189,90,0.03) 100%)", border:`1px solid rgba(143,189,90,0.22)`, borderRadius:20, padding:"18px 20px", marginBottom:12, backdropFilter:"blur(16px)" },
+  cardSub:{ background:"rgba(255,255,255,0.025)", border:`0.5px solid rgba(255,255,255,0.06)`, borderRadius:14, padding:"12px 14px", marginBottom:8 },
+  input:  { background:"rgba(255,255,255,0.06)", border:`0.5px solid ${G.border}`, borderRadius:11, padding:"13px 15px", color:G.text, fontFamily:F.sans, fontSize:15, width:"100%", outline:"none", boxSizing:"border-box", transition:"border-color 0.2s" },
+  label:  { fontFamily:F.sans, fontSize:12, color:G.muted, display:"block", marginBottom:6, fontWeight:500 },
+  btnG:   { background:G.green, border:"none", borderRadius:13, padding:"14px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:14, fontWeight:600, cursor:"pointer", width:"100%", transition:"opacity 0.15s, transform 0.1s", letterSpacing:"0.01em" },
+  btnGl:  { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:12, padding:"10px 16px", color:G.text, fontFamily:F.sans, fontSize:13, fontWeight:400, cursor:"pointer", backdropFilter:"blur(8px)", transition:"all 0.2s" },
+  btnRed: { background:"rgba(224,112,112,0.1)", border:`0.5px solid rgba(224,112,112,0.35)`, borderRadius:12, padding:"10px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" },
+  tag:    { background:G.greenM, border:`0.5px solid rgba(143,189,90,0.35)`, borderRadius:20, padding:"3px 11px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3, fontWeight:500 },
+  div:    { height:"0.5px", background:G.border, margin:"16px 0" },
+  nav: { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:"rgba(14,14,14,0.92)", backdropFilter:"blur(28px) saturate(180%)", border:`0.5px solid rgba(255,255,255,0.1)`, borderRadius:28, display:"flex", zIndex:20, padding:"8px 6px", boxShadow:"0 8px 32px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04) inset" },
+  fab:  { position:"fixed", bottom:90, right:18, width:52, height:52, borderRadius:"50%", background:G.green, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 4px 20px rgba(143,189,90,0.45), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" },
 };
 
 const navItmSty = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.2s", borderRadius:22, background:active ? "rgba(143,189,90,0.12)" : "transparent" });
@@ -156,54 +227,99 @@ function useData() {
   return { servicios, clientas, citas, excepciones, config, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago };
 }
 
+const navItmSty = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.2s", borderRadius:22, background:active ? "rgba(143,189,90,0.11)" : "transparent" });
+
 // ── Componentes UI comunes ─────────────────────────────────────────────────────
-function Loader({ msg = "cargando..." }) {
-  return <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:14 }}><span style={{ fontSize:36 }}>🌿</span><p style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{msg}</p></div>;
+function Loader({ msg = "Cargando..." }) {
+  return (
+    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, position:"relative" }}>
+      <AppBg />
+      <div style={{ width:48, height:48, borderRadius:"50%", background:G.greenM, border:`1px solid rgba(143,189,90,0.4)`, display:"flex", alignItems:"center", justifyContent:"center", zIndex:1 }}>
+        <Icon name="scissors" size={22} color={G.greenL} />
+      </div>
+      <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, zIndex:1 }}>{msg}</p>
+    </div>
+  );
 }
+
 function Avatar({ nombre = "?", size = 40 }) {
   const ini = (nombre || "?").split(" ").slice(0, 2).map(n => n[0] || "").join("").toUpperCase();
-  return <div style={{ width:size, height:size, borderRadius:"50%", background:G.greenM, border:`1px solid ${G.green}`, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:F.serif, fontWeight:700, fontSize:size * 0.3, color:G.greenL, flexShrink:0 }}>{ini}</div>;
+  return <div style={{ width:size, height:size, borderRadius:"50%", background:G.greenM, border:`1px solid rgba(143,189,90,0.4)`, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:F.serif, fontWeight:700, fontSize:size * 0.3, color:G.greenL, flexShrink:0 }}>{ini}</div>;
 }
+
 function Toast({ msg, onDone }) {
-  useEffect(() => { const t = setTimeout(onDone, 2200); return () => clearTimeout(t); }, []);
-  return <div style={{ position:"fixed", bottom:110, left:"50%", transform:"translateX(-50%)", background:G.green, color:"#0a0a0a", borderRadius:12, padding:"10px 20px", fontFamily:F.sans, fontWeight:700, fontSize:13, zIndex:99, boxShadow:"0 4px 20px rgba(0,0,0,0.4)", whiteSpace:"nowrap" }}>{msg}</div>;
-}
-function Modal({ titulo, msg, onOk, onCancel, okLabel = "confirmar", danger = false }) {
+  useEffect(() => { const t = setTimeout(onDone, 2400); return () => clearTimeout(t); }, []);
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-      <div style={{ background:"#111", border:`0.5px solid ${G.border}`, borderRadius:18, padding:24, width:"100%", maxWidth:360 }}>
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.white, margin:"0 0 8px" }}>{titulo}</p>
-        <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 20px", lineHeight:1.6 }}>{msg}</p>
+    <div style={{ position:"fixed", bottom:110, left:"50%", transform:"translateX(-50%)", background:G.green, color:"#0a0a0a", borderRadius:13, padding:"11px 20px", fontFamily:F.sans, fontWeight:600, fontSize:13, zIndex:99, boxShadow:"0 4px 24px rgba(0,0,0,0.5)", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:8 }}>
+      <Icon name="check" size={15} color="#0a0a0a" strokeWidth={2.5} />
+      {msg}
+    </div>
+  );
+}
+
+function Modal({ titulo, msg, onOk, onCancel, okLabel = "Confirmar", danger = false }) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", backdropFilter:"blur(10px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div style={{ background:"#131313", border:`0.5px solid ${G.border}`, borderRadius:20, padding:24, width:"100%", maxWidth:360, boxShadow:"0 24px 48px rgba(0,0,0,0.6)" }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:G.white, margin:"0 0 10px" }}>{titulo}</p>
+        <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 22px", lineHeight:1.65 }}>{msg}</p>
         <div style={{ display:"flex", gap:10 }}>
-          {onCancel && <button style={{ ...s.btnGl, flex:1 }} onClick={onCancel}>cancelar</button>}
+          {onCancel && <button style={{ ...s.btnGl, flex:1 }} onClick={onCancel}>Cancelar</button>}
           <button style={{ ...s.btnG, flex:1, background:danger ? G.red : G.green }} onClick={onOk}>{okLabel}</button>
         </div>
       </div>
     </div>
   );
 }
+
 function Sheet({ titulo, onClose, children }) {
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", backdropFilter:"blur(8px)", zIndex:100, display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background:"#111", border:`0.5px solid ${G.border}`, borderRadius:"18px 18px 0 0", width:"100%", maxWidth:430, maxHeight:"92vh", overflowY:"auto", padding:"20px 20px 40px" }}>
-        <div style={{ width:34, height:4, background:G.border, borderRadius:2, margin:"0 auto 16px" }} />
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
-          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.white, margin:0 }}>{titulo}</p>
-          <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:13 }} onClick={onClose}>✕</button>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", backdropFilter:"blur(10px)", zIndex:100, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background:"#121212", border:`0.5px solid rgba(255,255,255,0.1)`, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:430, maxHeight:"92vh", overflowY:"auto", padding:"18px 20px 44px", boxShadow:"0 -8px 32px rgba(0,0,0,0.5)" }}>
+        <div style={{ width:36, height:4, background:"rgba(255,255,255,0.14)", borderRadius:2, margin:"0 auto 18px" }} />
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:21, color:G.white, margin:0 }}>{titulo}</p>
+          <button style={{ ...s.btnGl, padding:"7px 11px", display:"flex", alignItems:"center" }} onClick={onClose}>
+            <Icon name="x" size={16} color={G.sub} />
+          </button>
         </div>
         {children}
       </div>
     </div>
   );
 }
+
 function Field({ label, children, hint }) {
-  return <div style={{ marginBottom:12 }}><label style={s.label}>{label}</label>{children}{hint && <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"4px 0 0", lineHeight:1.5 }}>{hint}</p>}</div>;
+  return (
+    <div style={{ marginBottom:13 }}>
+      <label style={s.label}>{label}</label>
+      {children}
+      {hint && <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"5px 0 0", lineHeight:1.5 }}>{hint}</p>}
+    </div>
+  );
 }
+
 function Chips({ options = [], value, onChange }) {
-  return <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>{options.map(o => <button key={o} onClick={() => onChange(o)} style={{ ...s.btnGl, padding:"6px 12px", fontSize:12, background:value === o ? G.greenM : G.glass, borderColor:value === o ? G.green : G.border, color:value === o ? G.greenL : G.sub }}>{o}</button>)}</div>;
+  return (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+      {options.map(o => (
+        <button key={o} onClick={() => onChange(o)}
+          style={{ ...s.btnGl, padding:"7px 13px", fontSize:13, background:value === o ? G.greenM : G.glass, borderColor:value === o ? G.green : G.border, color:value === o ? G.greenL : G.sub }}>
+          {o}
+        </button>
+      ))}
+    </div>
+  );
 }
-function Back({ onClick, label = "volver" }) {
-  return <button onClick={onClick} style={{ ...s.btnGl, marginBottom:14, fontSize:12 }}>← {label}</button>;
+
+function Back({ onClick, label = "Volver" }) {
+  return (
+    <button onClick={onClick} style={{ ...s.btnGl, marginBottom:14, fontSize:13, display:"flex", alignItems:"center", gap:7 }}>
+      <Icon name="arrowLeft" size={15} color={G.sub} />
+      {label}
+    </button>
+  );
 }
 
 // ── Login ──────────────────────────────────────────────────────────────────────
@@ -225,16 +341,16 @@ function Login({ onLogin }) {
   };
 
   const entrar = async () => {
-    if (!email || !pass) { setErr("completá los campos"); return; }
+    if (!email || !pass) { setErr("Completá los campos"); return; }
     setLoading(true); setErr("");
     const r = await fbAuth.signIn(email, pass);
-    if (r.error) { setErr("email o contraseña incorrectos"); setLoading(false); return; }
+    if (r.error) { setErr("Email o contraseña incorrectos"); setLoading(false); return; }
     if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
       guardar("admin"); onLogin("admin");
     } else {
       const todas = await db.get("clientas");
       const c = todas.find(x => x.email?.toLowerCase() === email.toLowerCase());
-      if (!c) { setErr("cuenta no encontrada"); setLoading(false); return; }
+      if (!c) { setErr("Cuenta no encontrada"); setLoading(false); return; }
       const hist = c.historial ? Object.values(c.historial) : [];
       const d = { ...c, historial:hist };
       guardar("clienta", d); onLogin("clienta", d);
@@ -243,47 +359,77 @@ function Login({ onLogin }) {
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28 }}>
-      <div style={{ textAlign:"center", marginBottom:44 }}>
-        <div style={{ fontSize:44, marginBottom:10 }}>🌿</div>
-        <h1 style={{ ...s.h1, fontSize:32, letterSpacing:2, textAlign:"center" }}>Lash Studio</h1>
+    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, position:"relative" }}>
+      <AppBg />
+      <div style={{ textAlign:"center", marginBottom:44, zIndex:1 }}>
+        {/* Espacio reservado para logo — por definir */}
+        <div style={{ width:64, height:64, borderRadius:"50%", background:G.greenM, border:`1px solid rgba(143,189,90,0.4)`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px" }}>
+          <Icon name="scissors" size={28} color={G.greenL} />
+        </div>
+        <h1 style={{ ...s.h1, fontSize:32, letterSpacing:1, textAlign:"center" }}>Lash Studio</h1>
         <p style={{ ...s.sub, marginTop:6, textAlign:"center" }}>by chulas</p>
-        <div style={{ width:36, height:1, background:G.green, margin:"14px auto" }} />
-        <p style={{ ...s.sub, color:G.muted, textAlign:"center" }}>san andrés · buenos aires</p>
+        <div style={{ width:36, height:1, background:G.green, margin:"14px auto", opacity:0.5 }} />
+        <p style={{ ...s.sub, color:G.muted, textAlign:"center" }}>San Andrés · Buenos Aires</p>
       </div>
       {!modo ? (
-        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:10 }}>
-          <p style={{ ...s.sub, textAlign:"center", marginBottom:6 }}>acceder como</p>
-          <div style={{ ...s.card, textAlign:"center", cursor:"pointer", border:`0.5px solid ${G.green}` }} onClick={() => { setModo("admin"); setEmail(ADMIN_EMAIL); }}>
-            <div style={{ fontSize:26, marginBottom:6 }}>👑</div>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 2px" }}>Lashista</p>
-            <p style={s.sub}>panel de male</p>
+        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:10, zIndex:1 }}>
+          <p style={{ ...s.sub, textAlign:"center", marginBottom:6 }}>Acceder como</p>
+          <div style={{ ...s.cardHero, cursor:"pointer", display:"flex", alignItems:"center", gap:16 }}
+            onClick={() => { setModo("admin"); setEmail(ADMIN_EMAIL); }}>
+            <div style={{ width:44, height:44, borderRadius:12, background:"rgba(143,189,90,0.15)", border:`0.5px solid rgba(143,189,90,0.3)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Icon name="sparkles" size={20} color={G.greenL} />
+            </div>
+            <div>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 2px" }}>Lashista</p>
+              <p style={s.sub}>Panel de administración</p>
+            </div>
           </div>
-          <div style={{ ...s.card, textAlign:"center", cursor:"pointer" }} onClick={() => setModo("clienta")}>
-            <div style={{ fontSize:26, marginBottom:6 }}>🌸</div>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 2px" }}>Clienta</p>
-            <p style={s.sub}>mi espacio personal</p>
+          <div style={{ ...s.card, cursor:"pointer", display:"flex", alignItems:"center", gap:16 }}
+            onClick={() => setModo("clienta")}>
+            <div style={{ width:44, height:44, borderRadius:12, background:"rgba(255,255,255,0.06)", border:`0.5px solid rgba(255,255,255,0.1)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Icon name="user" size={20} color={G.sub} />
+            </div>
+            <div>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 2px" }}>Clienta</p>
+              <p style={s.sub}>Mi espacio personal</p>
+            </div>
           </div>
         </div>
       ) : (
-        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:11 }}>
-          <button onClick={() => { setModo(null); setErr(""); setEmail(""); setPass(""); }} style={{ ...s.btnGl, alignSelf:"flex-start", marginBottom:6 }}>← volver</button>
-          <span style={{ ...s.tag, alignSelf:"center" }}>{modo === "admin" ? "panel lashista" : "acceso clienta"}</span>
-          <Field label="email"><input style={s.input} value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" type="email" autoComplete="username" /></Field>
-          <Field label="contraseña"><input style={s.input} value={pass} onChange={e => setPass(e.target.value)} placeholder="••••••" type="password" autoComplete="current-password" onKeyDown={e => e.key === "Enter" && entrar()} /></Field>
+        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:11, zIndex:1 }}>
+          <button onClick={() => { setModo(null); setErr(""); setEmail(""); setPass(""); }}
+            style={{ ...s.btnGl, alignSelf:"flex-start", marginBottom:6, display:"flex", alignItems:"center", gap:7 }}>
+            <Icon name="arrowLeft" size={14} color={G.sub} />
+            Volver
+          </button>
+          <span style={{ ...s.tag, alignSelf:"center" }}>{modo === "admin" ? "Panel lashista" : "Acceso clienta"}</span>
+          <Field label="Email">
+            <input style={s.input} value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" type="email" autoComplete="username" />
+          </Field>
+          <Field label="Contraseña">
+            <input style={s.input} value={pass} onChange={e => setPass(e.target.value)} placeholder="••••••" type="password" autoComplete="current-password" onKeyDown={e => e.key === "Enter" && entrar()} />
+          </Field>
           <div style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={() => setRecordar(r => !r)}>
-            <div style={{ width:18, height:18, borderRadius:5, border:`1.5px solid ${recordar ? G.green : G.border}`, background:recordar ? G.greenM : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              {recordar && <span style={{ color:G.green, fontSize:12 }}>✓</span>}
+            <div style={{ width:19, height:19, borderRadius:6, border:`1.5px solid ${recordar ? G.green : G.border}`, background:recordar ? G.greenM : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, transition:"all 0.2s" }}>
+              {recordar && <Icon name="check" size={11} color={G.green} strokeWidth={3} />}
             </div>
-            <p style={{ ...s.sub, margin:0, fontSize:12, color:G.sub }}>mantener sesión iniciada</p>
+            <p style={{ ...s.sub, margin:0, fontSize:12, color:G.sub }}>Mantener sesión iniciada</p>
           </div>
-          {err && <p style={{ color:G.red, fontSize:12, textAlign:"center", fontFamily:F.sans }}>{err}</p>}
-          <button style={{ ...s.btnG, opacity:loading ? 0.6 : 1 }} onClick={entrar} disabled={loading}>{loading ? "ingresando..." : "ingresar →"}</button>
+          {err && <p style={{ color:G.red, fontSize:13, textAlign:"center", fontFamily:F.sans }}>{err}</p>}
+          <button style={{ ...s.btnG, opacity:loading ? 0.6 : 1 }} onClick={entrar} disabled={loading}>
+            {loading ? "Ingresando..." : "Ingresar →"}
+          </button>
         </div>
       )}
-      <div style={{ marginTop:36, display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-        <p style={{ ...s.sub, color:G.muted, fontSize:11 }}>consultas → <span style={{ color:G.green, cursor:"pointer" }} onClick={() => openWA()}>whatsapp</span></p>
-        <p style={{ ...s.sub, color:G.muted, fontSize:11 }}>¿primera vez? → <span style={{ color:G.green, cursor:"pointer" }} onClick={() => openWA("Hola! Quiero registrarme en Lash Studio 🌿")}>registrate acá</span></p>
+      <div style={{ marginTop:36, display:"flex", flexDirection:"column", alignItems:"center", gap:9, zIndex:1 }}>
+        <p style={{ ...s.sub, color:G.muted, fontSize:12 }}>
+          Consultas →{" "}
+          <span style={{ color:G.green, cursor:"pointer" }} onClick={() => openWA()}>WhatsApp</span>
+        </p>
+        <p style={{ ...s.sub, color:G.muted, fontSize:12 }}>
+          ¿Primera vez? →{" "}
+          <span style={{ color:G.green, cursor:"pointer" }} onClick={() => openWA("Hola! Quiero registrarme en Lash Studio")}>Registrate acá</span>
+        </p>
       </div>
     </div>
   );
@@ -315,11 +461,11 @@ function AdminApp({ data, onLogout }) {
   const cur      = stack[stack.length - 1];
 
   const navItems = [
-    { id:"inicio",   icon:"⬡", label:"inicio"   },
-    { id:"agenda",   icon:"◷", label:"agenda"   },
-    { id:"clientas", icon:"✿", label:"clientas" },
-    { id:"finanzas", icon:"◈", label:"finanzas" },
-    { id:"config",   icon:"⚙", label:"config"   },
+    { id:"inicio",   iconName:"home",     label:"Inicio"    },
+    { id:"agenda",   iconName:"calendar", label:"Agenda"    },
+    { id:"clientas", iconName:"users",    label:"Clientas"  },
+    { id:"finanzas", iconName:"barChart", label:"Finanzas"  },
+    { id:"config",   iconName:"settings", label:"Config"    },
   ];
 
   const renderScreen = () => {
@@ -347,14 +493,19 @@ function AdminApp({ data, onLogout }) {
 
   return (
     <div style={s.app}>
+      <AppBg />
       <div style={s.screen}>{renderScreen()}</div>
-      {!cur && <button style={s.fab} onClick={() => setTab("agenda")} title="Agenda">📅</button>}
+      {!cur && (
+        <button style={s.fab} onClick={() => setTab("agenda")} title="Ir a agenda">
+          <Icon name="calendarPlus" size={22} color="#0a0a0a" strokeWidth={1.8} />
+        </button>
+      )}
       {!cur && (
         <nav style={s.nav}>
           {navItems.map(n => (
             <div key={n.id} style={navItmSty(tab === n.id)} onClick={() => setTab(n.id)}>
-              <span style={{ fontSize:18 }}>{n.icon}</span>
-              <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.08em" }}>{n.label}</span>
+              <Icon name={n.iconName} size={19} color={tab === n.id ? G.green : G.muted} strokeWidth={1.6} />
+              <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.06em", fontWeight:tab === n.id ? 500 : 400 }}>{n.label}</span>
             </div>
           ))}
         </nav>
@@ -393,7 +544,7 @@ function AdminInicio({ data, push, setTab }) {
 
   return (
     <div>
-      <div style={s.topBar}><h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1><p style={s.sub}>bienvenida 🌿</p></div>
+      <div style={s.topBar}><h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1><p style={s.sub}>Bienvenida</p></div>
       <div style={{ padding:"18px 18px 0" }}>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:9, marginBottom:18 }}>
           {[
@@ -412,7 +563,7 @@ function AdminInicio({ data, push, setTab }) {
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>hoy</p>
         <p style={{ ...s.sub, marginBottom:12 }}>{new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
         {citasHoy.length === 0
-          ? <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>sin citas para hoy ✦</p>
+          ? <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>Sin citas para hoy</p>
           : citasHoy.map(c => (
             <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
               <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center", minWidth:48 }}>
@@ -431,7 +582,7 @@ function AdminInicio({ data, push, setTab }) {
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>próximas</p>
         <p style={{ ...s.sub, marginBottom:12 }}>turnos confirmados</p>
         {proximas.length === 0
-          ? <p style={{ color:G.muted, fontSize:13 }}>sin citas agendadas ✦</p>
+          ? <p style={{ color:G.muted, fontSize:13 }}>Sin citas agendadas</p>
           : proximas.map(c => (
             <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
               <div style={{ textAlign:"center", minWidth:40 }}>
@@ -447,7 +598,7 @@ function AdminInicio({ data, push, setTab }) {
         {sinCita.length > 0 && (
           <>
             <div style={s.div} />
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.amber, margin:"0 0 3px" }}>⚡ pendientes de service</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.amber, margin:"0 0 3px" }}>pendientes de service</p>
             <p style={{ ...s.sub, marginBottom:12 }}>{sinCita.length} clienta{sinCita.length > 1 ? "s" : ""} sin cita hace +14 días</p>
             {sinCita.slice(0, 3).map(c => {
               const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
@@ -574,7 +725,7 @@ function AdminAgenda({ data, push }) {
                 {excepDia?.razon || (esDiaLaboral(diaS, diasLaborales) ? "" : `los ${DIAS_F[new Date(diaS+"T12:00:00").getDay()]}s no trabajás`)}
               </p>
             </div>
-            <span style={{ fontSize:18 }}>🚫</span>
+            <span style={{ fontSize:18 }}></span>
           </div>
         )}
 
@@ -729,7 +880,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
     };
 
     await data.registrarPago(cita.clientaId, cita._id, registro);
-    toast("✓ cita completada y pago registrado");
+    toast("Cita completada y pago registrado");
     setMP(false);
     setCita(p => ({ ...p, estado:"completada" }));
   };
@@ -776,11 +927,11 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
         {cita.estado !== "completada" && (
           <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
             <button style={s.btnG} onClick={() => setMP(true)}>✓ marcar como completada</button>
-            <button style={{ ...s.btnGl, width:"100%" }} onClick={() => openWAClienta(clienta, msgRecordatorio)}>💬 recordatorio a {clienta?.nombre?.split(" ")[0] || "clienta"}</button>
+            <button style={{ ...s.btnGl, width:"100%" }} onClick={() => openWAClienta(clienta, msgRecordatorio)}>Recordatorio a {clienta?.nombre?.split(" ")[0] || "clienta"}</button>
             <button style={{ ...s.btnRed, width:"100%" }} onClick={() => setMB(true)}>eliminar cita</button>
           </div>
         )}
-        {cita.estado === "completada" && <p style={{ color:G.green, fontFamily:F.sans, fontSize:13, textAlign:"center" }}>✓ cita completada y pago registrado</p>}
+        {cita.estado === "completada" && <p style={{ color:G.green, fontFamily:F.sans, fontSize:13, textAlign:"center" }}>Cita completada y pago registrado</p>}
       </div>
 
       {/* ── Modal Pago con opción mixta ── */}
@@ -788,7 +939,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
         <Sheet titulo="Registrar pago" onClose={() => setMP(false)}>
           <Field label="método de pago">
             <div style={{ display:"flex", gap:7 }}>
-              {[["efectivo","💵 Efectivo"],["transferencia","🏦 Transf."],["mixto","🔀 Mixto"]].map(([m, l]) => (
+              {[["efectivo","Efectivo"],["transferencia","Transferencia"],["mixto","Mixto"]].map(([m, l]) => (
                 <button key={m} onClick={() => setPago(p => ({ ...p, metodo:m }))}
                   style={{ ...s.btnGl, flex:1, fontSize:11, padding:"8px 4px", background:pago.metodo === m ? G.greenM : G.glass, borderColor:pago.metodo === m ? G.green : G.border, color:pago.metodo === m ? G.greenL : G.sub }}>
                   {l}
@@ -869,7 +1020,7 @@ function AdminClientas({ data, push, toast }) {
       <div style={s.topBar}><h1 style={s.h1}>Clientas</h1><p style={s.sub}>{data.clientas.length} registradas</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:9, marginBottom:12 }}>
-          <input style={{ ...s.input, flex:1, margin:0 }} placeholder="🔍 buscar..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input style={{ ...s.input, flex:1, margin:0 }} placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} />
           <button style={{ ...s.btnG, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={() => setSheet(true)}>+ nueva</button>
         </div>
         <div style={{ display:"flex", gap:7, marginBottom:14 }}>
@@ -877,7 +1028,7 @@ function AdminClientas({ data, push, toast }) {
             <button key={v} onClick={() => setOrden(v)} style={{ ...s.btnGl, fontSize:11, background:orden === v ? G.greenM : G.glass, borderColor:orden === v ? G.green : G.border, color:orden === v ? G.greenL : G.sub, padding:"6px 12px" }}>{l}</button>
           ))}
         </div>
-        {filtradas.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin clientas aún ✦</p>}
+        {filtradas.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin clientas aún</p>}
         {filtradas.map(c => {
           const ult = getUlt(c);
           const hist = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
@@ -890,7 +1041,7 @@ function AdminClientas({ data, push, toast }) {
                   <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.nombre}</p>
                   {c.estado === "pausada" && <span style={{ ...s.tag, fontSize:9, background:"rgba(224,112,112,0.12)", borderColor:G.red, color:G.red }}>pausada</span>}
                 </div>
-                <p style={{ margin:0, ...s.sub, fontSize:11 }}>{ult ? `última visita: ${fmtFecha(ult.fecha)}` : "sin visitas aún"}{dias !== null ? ` · hace ${dias}d` : ""}</p>
+                <p style={{ margin:0, ...s.sub, fontSize:11 }}>{ult ? `última visita: ${fmtFecha(ult.fecha)}` : "Sin visitas aún"}{dias !== null ? ` · hace ${dias}d` : ""}</p>
               </div>
               <div style={{ textAlign:"right", flexShrink:0 }}>
                 <p style={{ margin:"0 0 2px", ...s.sub, fontSize:10 }}>{hist.length} vis.</p>
@@ -925,10 +1076,10 @@ function AdminClientas({ data, push, toast }) {
         <Sheet titulo="✓ Clienta creada" onClose={() => setCreds(null)}>
           <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
             <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"0 0 8px" }}>accesos para {creds.nombre}:</p>
-            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 4px" }}>📧 <b style={{ color:G.white }}>{creds.email}</b></p>
-            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}>🔑 contraseña: <b style={{ color:G.white, letterSpacing:"0.1em" }}>{creds.pass}</b></p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 4px" }}><b style={{ color:G.white }}>{creds.email}</b></p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}>Contraseña: <b style={{ color:G.white, letterSpacing:"0.1em" }}>{creds.pass}</b></p>
           </div>
-          <button style={s.btnG} onClick={() => { openWA(`Hola ${creds.nombre?.split(" ")[0]}! 🌿 Te creé tu acceso en Lash Studio:\n\n📧 Email: ${creds.email}\n🔑 Contraseña: ${creds.pass}\n\n👉 Entrá desde: ${DEPLOY_URL}\n\nPodés ver tus citas, historial y más 💚`); setCreds(null); }}>💬 enviar por WhatsApp →</button>
+          <button style={s.btnG} onClick={() => { openWA(`Hola ${creds.nombre?.split(" ")[0]}! 🌿 Te creé tu acceso en Lash Studio:\n\nEmail: ${creds.email}\nContraseña: ${creds.pass}\n\nEntrá desde: ${DEPLOY_URL}\n\nPodés ver tus citas, historial y más 💚`); setCreds(null); }}>Enviar por WhatsApp →</button>
           <button style={{ ...s.btnGl, marginTop:9, width:"100%" }} onClick={() => setCreds(null)}>cerrar</button>
         </Sheet>
       )}
@@ -984,8 +1135,8 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
         {tab === "info" && (
           <div>
             <div style={{ display:"flex", gap:9, marginBottom:14 }}>
-              <button style={{ ...s.btnG, flex:1 }} onClick={() => openWA(`Hola ${c.nombre?.split(" ")[0]}! 🌿`)}>💬 WhatsApp</button>
-              <button style={{ ...s.btnGl, flex:1 }} onClick={() => setEditing(e => !e)}>{editing ? "cancelar" : "✎ editar"}</button>
+              <button style={{ ...s.btnG, flex:1 }} onClick={() => openWA(`Hola ${c.nombre?.split(" ")[0]}! 🌿`)}>WhatsApp</button>
+              <button style={{ ...s.btnGl, flex:1 }} onClick={() => setEditing(e => !e)}>{editing ? "cancelar" : "Editar"}</button>
             </div>
             <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12 }}>
               {editing ? (
@@ -1008,7 +1159,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                 ))
               )}
             </div>
-            <button style={{ ...s.btnGl, width:"100%", marginTop:8 }} onClick={() => setPwModal(true)}>🔑 resetear contraseña</button>
+            <button style={{ ...s.btnGl, width:"100%", marginTop:8 }} onClick={() => setPwModal(true)}>Resetear contraseña</button>
           </div>
         )}
 
@@ -1029,7 +1180,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
 
         {tab === "historial" && (
           <div>
-            {hist.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin historial aún ✦</p>}
+            {hist.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin historial aún</p>}
             {[...hist].reverse().map((h, i) => (
               <div key={i} style={s.card}>
                 <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
@@ -1156,7 +1307,7 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }
       <div style={s.div} />
       <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>por servicio</p>
       <p style={{ ...s.sub, marginBottom:12 }}>ingresos del período</p>
-      {Object.entries(porSv).length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin registros ✦</p>}
+      {Object.entries(porSv).length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin registros</p>}
       {Object.entries(porSv).sort((a, b) => b[1] - a[1]).map(([nom, tot]) => (
         <div key={nom} style={{ ...s.card, padding:"11px 13px" }}>
           <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p><p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmtPesos(tot)}</p></div>
@@ -1166,7 +1317,7 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }
       <div style={s.div} />
       <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>top clientas</p>
       <p style={{ ...s.sub, marginBottom:12 }}>por gasto en el período</p>
-      {topC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin datos ✦</p>}
+      {topC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin datos</p>}
       {topC.map((c, i) => (
         <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11 }}>
           <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i === 0 ? G.green : G.muted, minWidth:22, margin:0 }}>{i + 1}</p>
@@ -1283,15 +1434,15 @@ function FinanzasCalendario({ data, todoHist }) {
                   {/* Mostrar desglose si fue pago mixto */}
                   {h.pago === "mixto" ? (
                     <div style={{ display:"flex", flexDirection:"column", gap:2, alignItems:"flex-end" }}>
-                      <span style={{ ...s.tag, fontSize:9, marginRight:0, background:"rgba(143,189,90,0.1)" }}>💵 {fmtPesos(h.montoEfectivo)}</span>
-                      <span style={{ ...s.tag, fontSize:9, marginRight:0 }}>🏦 {fmtPesos(h.montoTransf)}</span>
+                      <span style={{ ...s.tag, fontSize:9, marginRight:0, background:"rgba(143,189,90,0.1)" }}>{fmtPesos(h.montoEfectivo)}</span>
+                      <span style={{ ...s.tag, fontSize:9, marginRight:0 }}>{fmtPesos(h.montoTransf)}</span>
                     </div>
                   ) : (
                     <span style={s.tag}>{h.pago === "transferencia" ? "🏦" : "💵"} {h.pago}</span>
                   )}
                 </div>
               </div>
-              {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>✦ {h.notas}</p>}
+              {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{h.notas}</p>}
             </div>
           );
         })
@@ -1350,7 +1501,7 @@ function ConfigServicios({ data, toast }) {
   return (
     <div>
       <button style={{ ...s.btnG, marginBottom:14 }} onClick={abrirNuevo}>+ agregar servicio</button>
-      {data.servicios.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>no hay servicios cargados aún ✦</p>}
+      {data.servicios.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin servicios aún</p>}
       {data.servicios.map(sv => (
         <div key={sv._id} style={s.card}>
           {sv.fotos?.length > 0 && (
@@ -1368,11 +1519,11 @@ function ConfigServicios({ data, toast }) {
               </div>
             </div>
             <div style={{ display:"flex", gap:6, marginLeft:10 }}>
-              <button style={{ ...s.btnGl, padding:"6px 10px", fontSize:12 }} onClick={() => abrirEditar(sv)}>✎</button>
+              <button style={{ ...s.btnGl, padding:"6px 10px", fontSize:12 }} onClick={() => abrirEditar(sv)}>Editar</button>
               <button style={{ ...s.btnRed, padding:"6px 10px", fontSize:12 }} onClick={() => setConfirm(sv)}>✕</button>
             </div>
           </div>
-          <p style={{ margin:"8px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>✦ La duración es estimada y puede variar según cada clienta</p>
+          <p style={{ margin:"8px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>La duración es estimada y puede variar según cada clienta</p>
         </div>
       ))}
       {sheet && (
@@ -1424,7 +1575,7 @@ function ConfigTecnico({ data, toast }) {
       <div style={{ ...s.card, marginBottom:12 }}>
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 10px" }}>{label}</p>
         <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:12 }}>
-          {vals.length === 0 && <p style={{ color:G.muted, fontSize:12, margin:0 }}>sin opciones aún</p>}
+          {vals.length === 0 && <p style={{ color:G.muted, fontSize:12, margin:0 }}>Sin opciones aún</p>}
           {vals.map(v => (
             <div key={v} style={{ display:"flex", alignItems:"center", gap:4, background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:20, padding:"3px 10px" }}>
               <span style={{ fontFamily:F.sans, fontSize:12, color:G.greenL }}>{v}</span>
@@ -1500,9 +1651,9 @@ function ConfigHorarios({ data, toast }) {
         </div>
         <div style={{ ...s.card, background:"rgba(143,189,90,0.04)", borderColor:G.greenD }}>
           <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0, lineHeight:1.7 }}>
-            ✦ Trabajás <b style={{ color:G.greenL }}>{dias.length}</b> día{dias.length !== 1 ? "s" : ""} por semana<br/>
-            ✦ En el calendario, los días no laborables aparecen sin slots disponibles<br/>
-            ✦ Para bloquear días específicos (feriados, vacaciones) usá la pestaña "días bloqueados"
+            Trabajás <b style={{ color:G.greenL }}>{dias.length}</b> día{dias.length !== 1 ? "s" : ""} por semana<br/>
+            En el calendario, los días no laborables aparecen sin slots disponibles<br/>
+            Para bloquear días específicos (feriados, vacaciones) usá la pestaña "días bloqueados"
           </p>
         </div>
       </div>
@@ -1616,7 +1767,7 @@ function ConfigHorarios({ data, toast }) {
                       </div>
                       {override && (
                         <button style={{ ...s.btnGl, width:"100%", fontSize:11, color:G.muted, borderColor:G.border }} onClick={() => resetearDia(d.idx)}>
-                          ↺ usar horario base para este día
+                          Usar horario base para este día
                         </button>
                       )}
                     </div>
@@ -1685,7 +1836,7 @@ function ConfigHorarios({ data, toast }) {
             })}
           </>
         )}
-        {futuras.length === 0 && !loading && <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>sin días bloqueados próximos ✦</p>}
+        {futuras.length === 0 && !loading && <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>Sin días bloqueados próximos</p>}
         {pasadas.length > 0 && (
           <details style={{ marginTop:8 }}>
             <summary style={{ fontFamily:F.sans, fontSize:12, color:G.muted, cursor:"pointer", padding:"8px 0" }}>ver excepciones pasadas ({pasadas.length})</summary>
@@ -1753,7 +1904,7 @@ function ConfigEstudio({ data, toast, onLogout }) {
       <div style={s.div} />
       <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 4px" }}>políticas del estudio</p>
       <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 14px", lineHeight:1.6 }}>Aparecen en el perfil de las clientas cuando usan la app.</p>
-      {polsLocal.length === 0 && <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>sin políticas cargadas ✦</p>}
+      {polsLocal.length === 0 && <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>Sin políticas cargadas</p>}
       {polsLocal.map((p, i) => (
         <div key={i} style={{ ...s.card, padding:"10px 12px", marginBottom:8 }}>
           {editIdx === i ? (
@@ -1764,8 +1915,8 @@ function ConfigEstudio({ data, toast, onLogout }) {
             </div>
           ) : (
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <p style={{ flex:1, margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>✦ {p}</p>
-              <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => { setEditIdx(i); setEditTxt(p); }}>✎</button>
+              <p style={{ flex:1, margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{p}</p>
+              <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => { setEditIdx(i); setEditTxt(p); }}>Editar</button>
               <button style={{ ...s.btnRed, padding:"5px 9px", fontSize:11 }} onClick={() => delPol(i)}>✕</button>
             </div>
           )}
@@ -1786,7 +1937,12 @@ function ConfigEstudio({ data, toast, onLogout }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function ClientaApp({ clienta, data, onLogout }) {
   const [tab, setTab] = useState("inicio");
-  const tabs = [{ id:"inicio",icon:"⬡",label:"inicio" },{ id:"agendar",icon:"◷",label:"agendar" },{ id:"historial",icon:"✦",label:"historial" },{ id:"perfil",icon:"✿",label:"perfil" }];
+  const tabs = [
+    { id:"inicio",    iconName:"home",        label:"Inicio"    },
+    { id:"agendar",   iconName:"calendarPlus", label:"Agendar"   },
+    { id:"historial", iconName:"history",      label:"Historial" },
+    { id:"perfil",    iconName:"user",         label:"Perfil"    },
+  ];
   const render = () => {
     switch (tab) {
       case "inicio":    return <CInicio    clienta={clienta} data={data} setTab={setTab} />;
@@ -1798,16 +1954,19 @@ function ClientaApp({ clienta, data, onLogout }) {
   };
   return (
     <div style={s.app}>
+      <AppBg />
       <div style={s.screen}>{render()}</div>
       <nav style={s.nav}>
         {tabs.map(t => (
           <div key={t.id} style={navItmSty(tab === t.id)} onClick={() => setTab(t.id)}>
-            <span style={{ fontSize:18 }}>{t.icon}</span>
-            <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.08em" }}>{t.label}</span>
+            <Icon name={t.iconName} size={19} color={tab === t.id ? G.green : G.muted} strokeWidth={1.6} />
+            <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.06em", fontWeight:tab === t.id ? 500 : 400 }}>{t.label}</span>
           </div>
         ))}
       </nav>
-      <button style={s.fab} onClick={() => openWA("Hola! Tengo una consulta 💚")} title="Consultar a Male">💬</button>
+      <button style={s.fab} onClick={() => openWA("Hola! Tengo una consulta")} title="Consultar a Male">
+        <Icon name="messageCircle" size={22} color="#0a0a0a" strokeWidth={1.8} />
+      </button>
     </div>
   );
 }
@@ -1839,7 +1998,7 @@ function CInicio({ clienta, data, setTab }) {
     <div>
       <div style={s.topBar}>
         <h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1>
-        <p style={s.sub}>hola, {clienta.nombre?.split(" ")[0].toLowerCase()} 🌿</p>
+        <p style={s.sub}>Hola, {clienta.nombre?.split(" ")[0]}</p>
       </div>
       <div style={{ padding:"18px" }}>
 
@@ -1886,7 +2045,7 @@ function CInicio({ clienta, data, setTab }) {
             <button
               onClick={() => generarICS(proxCita, estudio)}
               style={{ ...s.btnGl, width:"100%", fontSize:12, borderColor:G.greenD, color:G.greenL, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-              📅 agregar al calendario
+              Agregar al calendario
             </button>
           </div>
         )}
@@ -1929,7 +2088,7 @@ function CInicio({ clienta, data, setTab }) {
           </div>
           {/* Agendar */}
           <div onClick={() => setTab("agendar")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"14px 6px", background:G.greenM, borderColor:G.green }}>
-            <p style={{ fontFamily:F.sans, fontSize:20, margin:"0 0 2px" }}>◷</p>
+            <p style={{ fontFamily:F.sans, fontSize:20, margin:"0 0 2px" }}></p>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.white, margin:"0 0 1px" }}>+</p>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:0 }}>agendar</p>
           </div>
@@ -1946,14 +2105,14 @@ function CInicio({ clienta, data, setTab }) {
           </div>
           {/* Instagram */}
           <div onClick={() => window.open(instagramUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", background:"rgba(225,48,108,0.08)", borderColor:"rgba(225,48,108,0.2)", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:26 }}>📷</span>
+            <span style={{ fontSize:26 }}></span>
             <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Instagram</p>
             <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{estudio.instagram || "@bychulas.studio"}</p>
           </div>
           {/* Ubicación */}
           {ubicacionUrl && (
             <div onClick={() => window.open(ubicacionUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", background:"rgba(66,133,244,0.08)", borderColor:"rgba(66,133,244,0.2)", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-              <span style={{ fontSize:26 }}>📍</span>
+              <span style={{ fontSize:26 }}></span>
               <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Cómo llegar</p>
               <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:"100%" }}>{estudio.direccion}</p>
             </div>
@@ -2017,7 +2176,7 @@ function CAgendar({ clienta, data }) {
     const sv  = form.servicio?.nombre || "A confirmar con Male";
     const msg = modo === "noSe"
       ? `Hola! 🌿 Quiero agendar un turno:\n📅 ${form.fecha} a las ${form.hora}\n💭 No sé bien qué hacerme${form.notas ? `\n${form.notas}` : ""}\n💚 ${clienta.nombre}`
-      : `Hola! 🌿 Quiero agendar:\n✦ ${sv}\n📅 ${form.fecha} a las ${form.hora}${form.notas ? `\nNotas: ${form.notas}` : ""}\n💚 ${clienta.nombre}`;
+      : `Hola! 🌿 Quiero agendar:\n${sv}\n📅 ${form.fecha} a las ${form.hora}${form.notas ? `\nNotas: ${form.notas}` : ""}\n💚 ${clienta.nombre}`;
     openWA(msg);
     setSaving(false);
     setEnviado(true);
@@ -2071,7 +2230,7 @@ function CAgendar({ clienta, data }) {
                       </div>
                       <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:15, cursor:"pointer" }}>{fmtPesos(sv.precio)}</p>
                     </div>
-                    <p style={{ margin:"8px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>✦ La duración es estimada y puede variar</p>
+                    <p style={{ margin:"8px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, fontStyle:"italic" }}>La duración es estimada y puede variar</p>
                   </div>
                 ))
             )}
@@ -2085,7 +2244,7 @@ function CAgendar({ clienta, data }) {
                 </div>
                 <div style={{ ...s.card, marginTop:8 }}>
                   <p style={{ ...s.sub, margin:"0 0 9px" }}>¿querés consultar antes?</p>
-                  <button style={{ ...s.btnGl, width:"100%", borderColor:G.green, color:G.greenL }} onClick={() => openWA("Hola! No sé bien qué servicio hacerme, ¿me podés orientar? 🌿")}>💬 consultar por WhatsApp</button>
+                  <button style={{ ...s.btnGl, width:"100%", borderColor:G.green, color:G.greenL }} onClick={() => openWA("Hola! No sé bien qué servicio hacerme, ¿me podés orientar? 🌿")}>Consultar por WhatsApp</button>
                 </div>
               </div>
             )}
@@ -2095,7 +2254,7 @@ function CAgendar({ clienta, data }) {
         {paso === 2 && (
           <div>
             <button style={{ ...s.btnGl, marginBottom:14, fontSize:12 }} onClick={() => setPaso(1)}>← cambiar servicio</button>
-            {form.servicio && <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:16, padding:"9px 13px" }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL }}>✦ {form.servicio.nombre}</p></div>}
+            {form.servicio && <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:16, padding:"9px 13px" }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL }}>{form.servicio.nombre}</p></div>}
             <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} min={hoyISO()} /></Field>
             {form.fecha && fechaNoDisponible(form.fecha) && <p style={{ color:G.red, fontSize:12, marginBottom:12 }}>⚠ Este día no está disponible. Elegí otra fecha.</p>}
             {form.fecha && !fechaNoDisponible(form.fecha) && (
@@ -2146,7 +2305,7 @@ function CHistorial({ clienta }) {
   const hist = clienta.historial || [];
   const cnt  = {}; hist.forEach(h => { cnt[h.curva] = (cnt[h.curva] || 0) + 1; });
   const curvaFav = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0] || clienta.curva || "—";
-  const badge = hist.length >= 10 ? "✦ clienta VIP" : hist.length >= 5 ? "✦ clienta frecuente" : hist.length >= 2 ? "✦ clienta activa" : null;
+  const badge = hist.length >= 10 ? "Clienta VIP" : hist.length >= 5 ? "Clienta frecuente" : hist.length >= 2 ? "Clienta activa" : null;
   return (
     <div>
       <div style={s.topBar}><h1 style={s.h1}>Historial</h1><p style={s.sub}>{hist.length} visitas al estudio</p></div>
@@ -2170,7 +2329,7 @@ function CHistorial({ clienta }) {
               <div><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p><p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtFecha(h.fecha)}</p></div>
               {h.curva && <span style={s.tag}>curva {h.curva}</span>}
             </div>
-            {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>✦ {h.notas}</p>}
+            {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{h.notas}</p>}
           </div>
         ))}
       </div>
@@ -2202,15 +2361,15 @@ function CPerfil({ clienta, data, onLogout }) {
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:22 }}>
           <div style={{ position:"relative", marginBottom:10 }}>
             {foto ? <img src={foto} alt="perfil" style={{ width:78, height:78, borderRadius:"50%", objectFit:"cover", border:`2px solid ${G.green}` }} /> : <Avatar nombre={clienta.nombre} size={78} />}
-            <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:editando ? G.green : "rgba(10,10,10,0.8)", border:`1.5px solid ${editando ? G.bg : G.border}`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}>📷</label>
+            <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:editando ? G.green : "rgba(10,10,10,0.8)", border:`1.5px solid ${editando ? G.bg : G.border}`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}></label>
             <input id="foto-input" type="file" accept="image/*" style={{ display:"none" }} onChange={onFoto} />
           </div>
           <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:18 }}>{clienta.nombre}</p>
           <span style={s.tag}>clienta activa</span>
         </div>
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => setEdit(e => !e)}>{editando ? "cancelar" : "✎ editar"}</button>
-          <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => openWA()}>💬 contactar</button>
+          <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => setEdit(e => !e)}>{editando ? "cancelar" : "Editar"}</button>
+          <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => openWA()}>Contactar</button>
         </div>
         <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12 }}>
           {editando ? (
@@ -2241,7 +2400,7 @@ function CPerfil({ clienta, data, onLogout }) {
         {politicas.length > 0 && (
           <div style={{ ...s.card, marginTop:12, background:"rgba(143,189,90,0.03)", borderColor:G.border }}>
             <p style={{ margin:"0 0 9px", fontFamily:F.serif, fontWeight:700, fontSize:14 }}>Políticas del Estudio</p>
-            {politicas.map((p, i) => <p key={i} style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:12, color:G.sub }}>✦ {p}</p>)}
+            {politicas.map((p, i) => <p key={i} style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{p}</p>)}
           </div>
         )}
         {editando && <button style={{ ...s.btnG, marginTop:12, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"guardando...":"guardar cambios →"}</button>}
