@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, createContext, useContext } from "react";
 
 const FB        = "https://lash-studio-c9cd7-default-rtdb.firebaseio.com";
 const API_KEY   = "AIzaSyDq8japdXOWaAAOjBLhESJB1h2qITdnhvk";
@@ -74,20 +74,44 @@ const MESES  = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto
 const DIAS_C = ["D","L","M","X","J","V","S"];
 const DIAS_F = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 
-const G = {
+const G_dark = {
   bg:"#0a0a0a", card:"rgba(255,255,255,0.045)", glass:"rgba(255,255,255,0.07)",
   border:"rgba(255,255,255,0.09)", borderHov:"rgba(255,255,255,0.18)",
-  green:"#8fbd5a", greenD:"#5c8f2e", greenL:"#b5d98a", greenM:"rgba(143,189,90,0.18)",
+  green:"#8fbd5a", greenD:"#5c8f2e", greenL:"#b5d98a", greenM:"rgba(143,189,90,0.18)", greenRGB:"143,189,90",
   text:"#f0f0f0", muted:"rgba(240,240,240,0.45)", sub:"rgba(240,240,240,0.65)",
   white:"#fff", red:"#e07070", amber:"#e0b870",
+  navBg:"rgba(12,12,12,0.95)", topBarBg:"rgba(10,10,10,0.88)",
+  shadow:"rgba(0,0,0,0.28)", shadowMd:"rgba(0,0,0,0.18)", shadowSm:"rgba(0,0,0,0.1)",
+  appBgGradient:"radial-gradient(ellipse 90% 60% at 50% -8%, rgba(143,189,90,0.18) 0%, transparent 62%), radial-gradient(ellipse 45% 40% at 96% 88%, rgba(143,189,90,0.10) 0%, transparent 56%), radial-gradient(ellipse 55% 45% at 4% 100%, rgba(143,189,90,0.07) 0%, transparent 58%)",
 };
+const G_light = {
+  bg:"#f5f1eb", card:"rgba(255,255,255,0.85)", glass:"rgba(0,0,0,0.04)",
+  border:"rgba(0,0,0,0.1)", borderHov:"rgba(0,0,0,0.2)",
+  green:"#5a9020", greenD:"#3d6e14", greenL:"#3a7010", greenM:"rgba(90,144,32,0.15)", greenRGB:"90,144,32",
+  text:"#2a2a2a", muted:"rgba(30,30,30,0.5)", sub:"rgba(30,30,30,0.7)",
+  white:"#1a1a1a", red:"#c04040", amber:"#9a6418",
+  navBg:"rgba(244,240,234,0.96)", topBarBg:"rgba(244,240,234,0.92)",
+  shadow:"rgba(0,0,0,0.1)", shadowMd:"rgba(0,0,0,0.07)", shadowSm:"rgba(0,0,0,0.04)",
+  appBgGradient:"radial-gradient(ellipse 90% 60% at 50% -8%, rgba(90,144,32,0.11) 0%, transparent 55%), radial-gradient(ellipse 55% 45% at 4% 100%, rgba(90,144,32,0.07) 0%, transparent 52%)",
+};
+const G = Object.assign({}, G_dark);
 const F = { serif:"'Fraunces',Georgia,serif", sans:"'Outfit','Segoe UI',sans-serif" };
+
+// Theme context — components use useTheme() to get toggleTheme and dark flag
+const ThemeCtx = createContext({ dark:true, toggleTheme:() => {} });
+const useTheme = () => useContext(ThemeCtx);
+
+// WA message templates — stored in /config/mensajes, editable by admin
+const DEFAULT_MENSAJES = {
+  service14d:  "Hola {nombre}! 🌿 ¿Cómo están tus pestañas? Ya es momento del service. ¡Te espero! 💚",
+  recordatorio:"Hola {nombre}! 🌿 Te recuerdo tu cita mañana a las {hora}. ¡Te espero! 💚",
+  bienvenida:  "Hola {nombre}! 🌿 Te creé tu acceso en {estudio}.\n\nEmail: {email}\nContraseña: {pass}\n\nEntrá desde: {url}\n\n¡Podés ver tus citas, historial y más! 💚",
+};
+const fillMsg = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] !== undefined ? vars[k] : `{${k}}`);
 
 // ── Fondo app con gradiente sutil ──────────────────────────────────────────────
 const AppBg = () => (
-  <div style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:0,
-    background:"radial-gradient(ellipse 90% 60% at 50% -8%, rgba(143,189,90,0.18) 0%, transparent 62%), radial-gradient(ellipse 45% 40% at 96% 88%, rgba(143,189,90,0.10) 0%, transparent 56%), radial-gradient(ellipse 55% 45% at 4% 100%, rgba(143,189,90,0.07) 0%, transparent 58%)",
-  }}/>
+  <div style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:0, background:G.appBgGradient }}/>
 );
 
 // ── Íconos Lucide SVG — función switch, JSX válido ────────────────────────────
@@ -140,6 +164,8 @@ function Icon({ name, size = 20, color = "currentColor", strokeWidth = 1.7 }) {
       case "shield":       return <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" {...p}/>;
       case "camera":       return <><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" {...p}/><circle cx="12" cy="13" r="4" {...p}/></>;
       case "trendingUp":   return <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" {...p}/><polyline points="17 6 23 6 23 12" {...p}/></>;
+      case "sun":          return <><circle cx="12" cy="12" r="4" {...p}/><line x1="12" y1="2" x2="12" y2="4" {...p}/><line x1="12" y1="20" x2="12" y2="22" {...p}/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" {...p}/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" {...p}/><line x1="2" y1="12" x2="4" y2="12" {...p}/><line x1="20" y1="12" x2="22" y2="12" {...p}/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" {...p}/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" {...p}/></>;
+      case "moon":         return <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" {...p}/>;
       default:             return <circle cx="12" cy="12" r="10" {...p}/>;
     }
   };
@@ -152,42 +178,53 @@ function Icon({ name, size = 20, color = "currentColor", strokeWidth = 1.7 }) {
 }
 
 const s = {
-  app:    { minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, maxWidth:430, margin:"0 auto", position:"relative", overflowX:"hidden" },
+  get app()    { return { minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, maxWidth:430, margin:"0 auto", position:"relative", overflowX:"hidden" }; },
   screen: { minHeight:"100vh", paddingBottom:110, position:"relative", zIndex:1 },
-  topBar: { padding:"52px 20px 14px", background:"rgba(10,10,10,0.88)", backdropFilter:"blur(28px) saturate(180%)", position:"sticky", top:0, zIndex:10, boxShadow:"0 0.5px 0 rgba(255,255,255,0.08), 0 4px 20px rgba(0,0,0,0.4)" },
-  h1:     { fontFamily:F.serif, fontWeight:700, fontSize:26, letterSpacing:"-0.5px", color:G.white, margin:0, lineHeight:1.1 },
-  sub:    { fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0", fontWeight:400 },
-  eyebrow:{ fontFamily:F.sans, fontSize:10, letterSpacing:"0.18em", textTransform:"uppercase", color:"rgba(143,189,90,0.65)", margin:"0 0 3px", fontWeight:500 },
+  get topBar() { return { padding:"52px 20px 14px", background:G.topBarBg, backdropFilter:"blur(28px) saturate(180%)", position:"sticky", top:0, zIndex:10, boxShadow:`0 0.5px 0 ${G.border}, 0 4px 20px ${G.shadow}` }; },
+  get h1()     { return { fontFamily:F.serif, fontWeight:700, fontSize:26, letterSpacing:"-0.5px", color:G.text, margin:0, lineHeight:1.1 }; },
+  get sub()    { return { fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0", fontWeight:400 }; },
+  get eyebrow(){ return { fontFamily:F.sans, fontSize:10, letterSpacing:"0.18em", textTransform:"uppercase", color:`rgba(${G.greenRGB},0.65)`, margin:"0 0 3px", fontWeight:500 }; },
   // Cards con jerarquía
-  card:   { background:G.card, border:`0.5px solid ${G.border}`, borderRadius:16, padding:"15px 17px", marginBottom:10, backdropFilter:"blur(12px)", transition:"all 0.2s", boxShadow:"0 2px 16px rgba(0,0,0,0.22)" },
-  cardHero:{ background:"linear-gradient(135deg, rgba(143,189,90,0.15) 0%, rgba(143,189,90,0.04) 100%)", border:`1px solid rgba(143,189,90,0.28)`, borderRadius:20, padding:"18px 20px", marginBottom:12, backdropFilter:"blur(16px)", boxShadow:"0 8px 32px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(143,189,90,0.12) inset" },
-  cardSub:{ background:"rgba(255,255,255,0.03)", border:`0.5px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"12px 14px", marginBottom:8, boxShadow:"0 1px 8px rgba(0,0,0,0.15)" },
-  input:  { background:"rgba(255,255,255,0.06)", border:`0.5px solid ${G.border}`, borderRadius:11, padding:"13px 15px", color:G.text, fontFamily:F.sans, fontSize:15, width:"100%", outline:"none", boxSizing:"border-box", transition:"border-color 0.2s" },
-  label:  { fontFamily:F.sans, fontSize:12, color:G.muted, display:"block", marginBottom:6, fontWeight:500 },
+  get card()   { return { background:G.card, border:`0.5px solid ${G.border}`, borderRadius:16, padding:"15px 17px", marginBottom:10, backdropFilter:"blur(12px)", transition:"all 0.2s", boxShadow:`0 2px 16px ${G.shadowMd}` }; },
+  get cardHero(){ return { background:`linear-gradient(135deg, rgba(${G.greenRGB},0.15) 0%, rgba(${G.greenRGB},0.04) 100%)`, border:`1px solid rgba(${G.greenRGB},0.28)`, borderRadius:20, padding:"18px 20px", marginBottom:12, backdropFilter:"blur(16px)", boxShadow:`0 8px 32px ${G.shadow}, 0 0 0 0.5px rgba(${G.greenRGB},0.12) inset` }; },
+  get cardSub(){ return { background:G.glass, border:`0.5px solid ${G.border}`, borderRadius:14, padding:"12px 14px", marginBottom:8, boxShadow:`0 1px 8px ${G.shadowSm}` }; },
+  get input()  { return { background:G.glass, border:`0.5px solid ${G.border}`, borderRadius:11, padding:"13px 15px", color:G.text, fontFamily:F.sans, fontSize:15, width:"100%", outline:"none", boxSizing:"border-box", transition:"border-color 0.2s" }; },
+  get label()  { return { fontFamily:F.sans, fontSize:12, color:G.muted, display:"block", marginBottom:6, fontWeight:500 }; },
   btnG:   { background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", borderRadius:13, padding:"14px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:14, fontWeight:700, cursor:"pointer", width:"100%", transition:"opacity 0.15s, transform 0.1s", letterSpacing:"0.02em", boxShadow:"0 4px 18px rgba(143,189,90,0.38), 0 1px 3px rgba(0,0,0,0.3)" },
-  btnGl:  { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:12, padding:"10px 16px", color:G.text, fontFamily:F.sans, fontSize:13, fontWeight:500, cursor:"pointer", backdropFilter:"blur(10px)", transition:"all 0.2s", boxShadow:"0 2px 8px rgba(0,0,0,0.2)" },
-  btnRed: { background:"rgba(224,112,112,0.1)", border:`0.5px solid rgba(224,112,112,0.35)`, borderRadius:12, padding:"10px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" },
-  tag:    { background:G.greenM, border:`0.5px solid rgba(143,189,90,0.35)`, borderRadius:20, padding:"3px 11px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3, fontWeight:500 },
-  div:    { height:"0.5px", background:G.border, margin:"16px 0" },
-  nav: { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:"rgba(12,12,12,0.95)", backdropFilter:"blur(32px) saturate(200%)", border:`0.5px solid rgba(255,255,255,0.11)`, borderRadius:28, display:"flex", zIndex:20, padding:"8px 6px", boxShadow:"0 8px 40px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.06) inset" },
+  get btnGl()  { return { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:12, padding:"10px 16px", color:G.text, fontFamily:F.sans, fontSize:13, fontWeight:500, cursor:"pointer", backdropFilter:"blur(10px)", transition:"all 0.2s", boxShadow:`0 2px 8px ${G.shadowSm}` }; },
+  get btnRed() { return { background:"rgba(224,112,112,0.1)", border:`0.5px solid rgba(224,112,112,0.35)`, borderRadius:12, padding:"10px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" }; },
+  get tag()    { return { background:G.greenM, border:`0.5px solid rgba(${G.greenRGB},0.35)`, borderRadius:20, padding:"3px 11px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3, fontWeight:500 }; },
+  get div()    { return { height:"0.5px", background:G.border, margin:"16px 0" }; },
+  get nav() { return { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:G.navBg, backdropFilter:"blur(32px) saturate(200%)", border:`0.5px solid ${G.border}`, borderRadius:28, display:"flex", zIndex:20, padding:"8px 6px", boxShadow:`0 8px 40px ${G.shadow}, 0 1px 0 rgba(255,255,255,0.06) inset` }; },
   fab:  { position:"fixed", bottom:90, right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(143,189,90,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" },
 };
 
-const navItmSty = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? "rgba(143,189,90,0.13)" : "transparent", boxShadow:active ? "inset 0 2px 0 rgba(143,189,90,0.55)" : "none" });
+const navItmSty = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", boxShadow:active ? `inset 0 2px 0 rgba(${G.greenRGB},0.55)` : "none" });
 
 const GlobalStyles = () => (
   <style>{`
     @keyframes logoPulse {
-      0%,100% { box-shadow:0 0 0 0 rgba(143,189,90,0.4),0 0 24px rgba(143,189,90,0.12); }
-      50%      { box-shadow:0 0 0 14px rgba(143,189,90,0),0 0 36px rgba(143,189,90,0.2); }
+      0%,100% { box-shadow:0 0 0 0 rgba(${G.greenRGB},0.4),0 0 24px rgba(${G.greenRGB},0.12); }
+      50%      { box-shadow:0 0 0 14px rgba(${G.greenRGB},0),0 0 36px rgba(${G.greenRGB},0.2); }
+    }
+    @keyframes shimmer {
+      0%   { background-position:-200% center; }
+      100% { background-position:200% center; }
     }
     @keyframes fadeInUp {
       from { opacity:0; transform:translateY(10px); }
       to   { opacity:1; transform:translateY(0); }
     }
     * { -webkit-tap-highlight-color:transparent; }
-    input:focus { border-color:rgba(143,189,90,0.55) !important; outline:none !important; box-shadow:0 0 0 3px rgba(143,189,90,0.1) !important; }
+    body { background:${G.bg}; transition:background 0.3s; }
+    input { background:${G.glass}; color:${G.text}; }
+    input:focus { border-color:${G.green}88 !important; outline:none !important; box-shadow:0 0 0 3px ${G.greenM} !important; }
+    textarea { background:${G.glass}; color:${G.text}; border:0.5px solid ${G.border}; border-radius:11px; padding:13px 15px; font-family:${F.sans}; font-size:14px; width:100%; box-sizing:border-box; outline:none; resize:vertical; transition:border-color 0.2s; }
+    textarea:focus { border-color:${G.green}88 !important; box-shadow:0 0 0 3px ${G.greenM} !important; }
+    select { background:${G.glass}; color:${G.text}; }
+    select option { background:${G.bg}; color:${G.text}; }
     button:active { transform:scale(0.97) !important; }
+    ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:${G.border}; border-radius:4px; }
   `}</style>
 );
 
@@ -276,8 +313,8 @@ function Toast({ msg, onDone }) {
 function Modal({ titulo, msg, onOk, onCancel, okLabel = "Confirmar", danger = false }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", backdropFilter:"blur(10px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-      <div style={{ background:"#131313", border:`0.5px solid ${G.border}`, borderRadius:20, padding:24, width:"100%", maxWidth:360, boxShadow:"0 24px 48px rgba(0,0,0,0.6)" }}>
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:G.white, margin:"0 0 10px" }}>{titulo}</p>
+      <div style={{ background:G.bg, border:`0.5px solid ${G.border}`, borderRadius:20, padding:24, width:"100%", maxWidth:360, boxShadow:"0 24px 48px rgba(0,0,0,0.6)" }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:G.text, margin:"0 0 10px" }}>{titulo}</p>
         <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 22px", lineHeight:1.65 }}>{msg}</p>
         <div style={{ display:"flex", gap:10 }}>
           {onCancel && <button style={{ ...s.btnGl, flex:1 }} onClick={onCancel}>Cancelar</button>}
@@ -292,10 +329,10 @@ function Sheet({ titulo, onClose, children }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", backdropFilter:"blur(10px)", zIndex:100, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background:"#121212", border:`0.5px solid rgba(255,255,255,0.1)`, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:430, maxHeight:"92vh", overflowY:"auto", padding:"18px 20px 44px", boxShadow:"0 -8px 32px rgba(0,0,0,0.5)" }}>
-        <div style={{ width:36, height:4, background:"rgba(255,255,255,0.14)", borderRadius:2, margin:"0 auto 18px" }} />
+      <div style={{ background:G.bg, border:`0.5px solid ${G.border}`, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:430, maxHeight:"92vh", overflowY:"auto", padding:"18px 20px 44px", boxShadow:"0 -8px 32px rgba(0,0,0,0.5)" }}>
+        <div style={{ width:36, height:4, background:G.border, borderRadius:2, margin:"0 auto 18px" }} />
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:21, color:G.white, margin:0 }}>{titulo}</p>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:21, color:G.text, margin:0 }}>{titulo}</p>
           <button style={{ ...s.btnGl, padding:"7px 11px", display:"flex", alignItems:"center" }} onClick={onClose}>
             <Icon name="x" size={16} color={G.sub} />
           </button>
@@ -346,6 +383,7 @@ function Login({ onLogin }) {
   const [err, setErr]           = useState("");
   const [loading, setLoading]   = useState(false);
   const [recordar, setRecordar] = useState(true);
+  const { dark, toggleTheme }   = useTheme();
 
   useEffect(() => {
     const g = localStorage.getItem("ls_session");
@@ -378,8 +416,11 @@ function Login({ onLogin }) {
     <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, position:"relative" }}>
       <GlobalStyles />
       <AppBg />
+      <button onClick={toggleTheme} style={{ position:"absolute", top:20, right:20, background:"transparent", border:`0.5px solid ${G.border}`, borderRadius:10, padding:"7px 10px", cursor:"pointer", display:"flex", alignItems:"center", color:G.muted, zIndex:10 }}>
+        <Icon name={dark ? "sun" : "moon"} size={16} color={G.muted} />
+      </button>
       <div style={{ textAlign:"center", marginBottom:44, zIndex:1, animation:"fadeInUp 0.6s ease both" }}>
-        <div style={{ width:72, height:72, borderRadius:"50%", background:`radial-gradient(circle, rgba(143,189,90,0.22) 0%, rgba(143,189,90,0.08) 100%)`, border:`1.5px solid rgba(143,189,90,0.45)`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite", boxShadow:"0 0 24px rgba(143,189,90,0.18)" }}>
+        <div style={{ width:72, height:72, borderRadius:"50%", background:`radial-gradient(circle, rgba(${G.greenRGB},0.22) 0%, rgba(${G.greenRGB},0.08) 100%)`, border:`1.5px solid rgba(${G.greenRGB},0.45)`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite", boxShadow:`0 0 24px rgba(${G.greenRGB},0.18)` }}>
           <Icon name="scissors" size={30} color={G.greenL} />
         </div>
         <h1 style={{ ...s.h1, fontSize:34, letterSpacing:"-0.5px", textAlign:"center", marginBottom:4 }}>Lash Studio</h1>
@@ -390,25 +431,27 @@ function Login({ onLogin }) {
       {!modo ? (
         <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:11, zIndex:1, animation:"fadeInUp 0.6s 0.15s ease both", opacity:0 }}>
           <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, textAlign:"center", marginBottom:4, letterSpacing:"0.12em", textTransform:"uppercase" }}>Acceder como</p>
+          {/* Clienta primero — cardHero para el "charm" de bienvenida */}
           <div style={{ ...s.cardHero, cursor:"pointer", display:"flex", alignItems:"center", gap:16, padding:"20px" }}
-            onClick={() => { setModo("admin"); setEmail(ADMIN_EMAIL); }}>
-            <div style={{ width:48, height:48, borderRadius:14, background:"rgba(143,189,90,0.18)", border:`1px solid rgba(143,189,90,0.35)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:"0 4px 12px rgba(143,189,90,0.2)" }}>
-              <Icon name="sparkles" size={22} color={G.greenL} />
+            onClick={() => setModo("clienta")}>
+            <div style={{ width:48, height:48, borderRadius:14, background:`rgba(${G.greenRGB},0.18)`, border:`1px solid rgba(${G.greenRGB},0.35)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:`0 4px 12px rgba(${G.greenRGB},0.2)` }}>
+              <Icon name="heart" size={22} color={G.greenL} />
             </div>
             <div>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>Lashista</p>
-              <p style={{ ...s.sub, fontSize:12 }}>Panel de administración</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.text, margin:"0 0 3px" }}>Mi espacio</p>
+              <p style={{ ...s.sub, fontSize:12 }}>Ver mis citas y perfil</p>
             </div>
             <Icon name="chevronRight" size={16} color={G.greenD} style={{ marginLeft:"auto" }} />
           </div>
+          {/* Lashista — card estándar */}
           <div style={{ ...s.card, cursor:"pointer", display:"flex", alignItems:"center", gap:16, padding:"18px" }}
-            onClick={() => setModo("clienta")}>
-            <div style={{ width:48, height:48, borderRadius:14, background:"rgba(255,255,255,0.07)", border:`0.5px solid rgba(255,255,255,0.12)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <Icon name="user" size={22} color={G.sub} />
+            onClick={() => { setModo("admin"); setEmail(ADMIN_EMAIL); }}>
+            <div style={{ width:48, height:48, borderRadius:14, background:G.glass, border:`0.5px solid ${G.border}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Icon name="sparkles" size={22} color={G.sub} />
             </div>
             <div>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>Clienta</p>
-              <p style={{ ...s.sub, fontSize:12 }}>Mi espacio personal</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.text, margin:"0 0 3px" }}>Lashista</p>
+              <p style={{ ...s.sub, fontSize:12 }}>Panel de administración</p>
             </div>
             <Icon name="chevronRight" size={16} color={G.muted} style={{ marginLeft:"auto" }} />
           </div>
@@ -420,7 +463,7 @@ function Login({ onLogin }) {
             <Icon name="arrowLeft" size={14} color={G.sub} />
             Volver
           </button>
-          <span style={{ ...s.tag, alignSelf:"center" }}>{modo === "admin" ? "Panel lashista" : "Acceso clienta"}</span>
+          <span style={{ ...s.tag, alignSelf:"center" }}>{modo === "admin" ? "Panel lashista" : "Mi espacio"}</span>
           <Field label="Email">
             <input style={s.input} value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" type="email" autoComplete="username" />
           </Field>
@@ -456,13 +499,25 @@ function Login({ onLogin }) {
 // ── App Root ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [session, setSession] = useState(null);
+  const [dark, setDark] = useState(() => localStorage.getItem("ls_theme") !== "light");
   const data = useData();
+
+  Object.assign(G, dark ? G_dark : G_light);
+
   const login  = (tipo, d = null) => setSession({ tipo, data:d });
   const logout = () => { localStorage.removeItem("ls_session"); setSession(null); };
-  if (!session) return <Login onLogin={login} />;
-  if (session.tipo === "admin")   return <AdminApp   data={data} onLogout={logout} />;
-  if (session.tipo === "clienta") return <ClientaApp clienta={session.data} data={data} onLogout={logout} />;
-  return null;
+  const toggleTheme = () => {
+    const nd = !dark;
+    Object.assign(G, nd ? G_dark : G_light);
+    localStorage.setItem("ls_theme", nd ? "dark" : "light");
+    setDark(nd);
+  };
+
+  const content = !session ? <Login onLogin={login} /> :
+    session.tipo === "admin"   ? <AdminApp   data={data} onLogout={logout} /> :
+    session.tipo === "clienta" ? <ClientaApp clienta={session.data} data={data} onLogout={logout} /> : null;
+
+  return <ThemeCtx.Provider value={{ dark, toggleTheme }}>{content}</ThemeCtx.Provider>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -539,6 +594,7 @@ function AdminApp({ data, onLogout }) {
 function AdminInicio({ data, push, setTab }) {
   const hoy = hoyISO();
   const mes = mesISO();
+  const { dark, toggleTheme } = useTheme();
   const citasHoy    = data.citas.filter(c => c.fecha === hoy && c.estado !== "completada");
   const proximas    = data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)).slice(0, 4);
   const todoHist    = data.clientas.flatMap(c => Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []));
@@ -565,9 +621,16 @@ function AdminInicio({ data, push, setTab }) {
   return (
     <div>
       <div style={s.topBar}>
-        <p style={s.eyebrow}>panel lashista</p>
-        <h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1>
-        <p style={s.sub}>{new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+          <div>
+            <p style={s.eyebrow}>panel lashista</p>
+            <h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1>
+            <p style={s.sub}>{new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
+          </div>
+          <button onClick={toggleTheme} style={{ background:"transparent", border:`0.5px solid ${G.border}`, borderRadius:10, padding:"7px 10px", cursor:"pointer", display:"flex", alignItems:"center", color:G.muted, marginTop:4 }}>
+            <Icon name={dark ? "sun" : "moon"} size={16} color={G.muted} />
+          </button>
+        </div>
       </div>
       <div style={{ padding:"18px 18px 0" }}>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
@@ -639,7 +702,7 @@ function AdminInicio({ data, push, setTab }) {
                     <p style={{ margin:0, ...s.sub, fontSize:10 }}>{dias ? `hace ${dias}d` : ""}{ult?.servicio ? ` · ${ult.servicio}` : ""}</p>
                   </div>
                   <button style={{ ...s.btnGl, fontSize:11, padding:"5px 10px", borderColor:"rgba(37,211,102,0.3)", color:G.greenL }}
-                    onClick={() => openWA(`Hola ${c.nombre?.split(" ")[0]}! 🌿 ¿Cómo están tus pestañas? Ya es momento del service. ¡Te espero! 💚`)}>💬</button>
+                    onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); openWAClienta(c, fillMsg(tpl.service14d || DEFAULT_MENSAJES.service14d, { nombre:c.nombre?.split(" ")[0] })); }}>💬</button>
                 </div>
               );
             })}
@@ -764,11 +827,8 @@ function AdminAgenda({ data, push }) {
                 <p style={{ margin:0, fontFamily:F.serif, fontSize:13 }}>{citasManana.length} cita{citasManana.length > 1 ? "s" : ""} para {keyManana.slice(8, 10)}/{keyManana.slice(5, 7)}</p>
               </div>
               <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }}
-                onClick={() => citasManana.forEach(c => {
-                const cl = data.clientas.find(x => x._id === c.clientaId);
-                openWAClienta(cl, `Hola ${c.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita mañana a las ${c.hora}. ¡Te espero! 💚`);
-              })}>
-                avisar →
+                onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); citasManana.forEach(c => { const cl = data.clientas.find(x => x._id === c.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:c.clientaNombre?.split(" ")[0], hora:c.hora })); }); }}>
+                Avisar →
               </button>
             </div>
           </div>
@@ -804,10 +864,7 @@ function AdminAgenda({ data, push }) {
                     </div>
                     <div style={{ display:"flex", gap:6 }}>
                       <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}
-                        onClick={() => {
-                          const cl = data.clientas.find(c => c._id === cita.clientaId);
-                          openWAClienta(cl, `Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita mañana a las ${cita.hora}. ¡Te espero! 💚`);
-                        }}>💬</button>
+                        onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }}>💬</button>
                       <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => push("cita-detalle", { cita })}>→</button>
                     </div>
                   </>
@@ -1106,7 +1163,7 @@ function AdminClientas({ data, push, toast }) {
             <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 4px" }}><b style={{ color:G.white }}>{creds.email}</b></p>
             <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}>Contraseña: <b style={{ color:G.white, letterSpacing:"0.1em" }}>{creds.pass}</b></p>
           </div>
-          <button style={s.btnG} onClick={() => { openWA(`Hola ${creds.nombre?.split(" ")[0]}! 🌿 Te creé tu acceso en Lash Studio:\n\nEmail: ${creds.email}\nContraseña: ${creds.pass}\n\nEntrá desde: ${DEPLOY_URL}\n\nPodés ver tus citas, historial y más 💚`); setCreds(null); }}>Enviar por WhatsApp →</button>
+          <button style={s.btnG} onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const estudio = data.getConfig("estudio", {}); openWAClienta({ telefono:creds.telefono }, fillMsg(tpl.bienvenida || DEFAULT_MENSAJES.bienvenida, { nombre:creds.nombre?.split(" ")[0], estudio:estudio.nombre || "Lash Studio", email:creds.email, pass:creds.pass, url:DEPLOY_URL })); setCreds(null); }}>Enviar por WhatsApp →</button>
           <button style={{ ...s.btnGl, marginTop:9, width:"100%" }} onClick={() => setCreds(null)}>cerrar</button>
         </Sheet>
       )}
@@ -1483,18 +1540,75 @@ function AdminConfig({ data, toast, onLogout }) {
   const [tab, setTab] = useState("servicios");
   return (
     <div>
-      <div style={s.topBar}><h1 style={s.h1}>Configuración</h1><p style={s.sub}>parámetros del estudio</p></div>
+      <div style={s.topBar}><h1 style={s.h1}>Configuración</h1><p style={s.sub}>Parámetros del estudio</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:7, marginBottom:18, flexWrap:"wrap" }}>
-          {["servicios","técnico","horarios","estudio"].map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : G.glass, borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.sub, padding:"7px 14px" }}>{t}</button>
+          {["servicios","mensajes","técnico","horarios","estudio"].map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : G.glass, borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.sub, padding:"7px 14px", textTransform:"capitalize" }}>{t}</button>
           ))}
         </div>
         {tab === "servicios" && <ConfigServicios data={data} toast={toast} />}
+        {tab === "mensajes"  && <ConfigMensajes  data={data} toast={toast} />}
         {tab === "técnico"   && <ConfigTecnico   data={data} toast={toast} />}
         {tab === "horarios"  && <ConfigHorarios  data={data} toast={toast} />}
         {tab === "estudio"   && <ConfigEstudio   data={data} toast={toast} onLogout={onLogout} />}
       </div>
+    </div>
+  );
+}
+
+// ── Config Mensajes WA ─────────────────────────────────────────────────────────
+function ConfigMensajes({ data, toast }) {
+  const saved = data.getConfig("mensajes", DEFAULT_MENSAJES);
+  const [form, setForm] = useState({ ...DEFAULT_MENSAJES, ...saved });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
+
+  const guardar = async () => {
+    setSaving(true);
+    await data.saveConfig("mensajes", form);
+    setSaving(false);
+    toast("✓ Mensajes guardados");
+  };
+
+  const VARS = {
+    service14d:  ["{nombre}"],
+    recordatorio:["{nombre}", "{hora}"],
+    bienvenida:  ["{nombre}", "{estudio}", "{email}", "{pass}", "{url}"],
+  };
+
+  const LABELS = {
+    service14d:  "Recordatorio de service (14 días sin cita)",
+    recordatorio:"Recordatorio de turno (día anterior)",
+    bienvenida:  "Bienvenida al registrar clienta nueva",
+  };
+
+  return (
+    <div>
+      <div style={{ ...s.cardHero, marginBottom:18 }}>
+        <p style={s.eyebrow}>plantillas de whatsapp</p>
+        <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.6 }}>
+          Personalizá los mensajes que se envían automáticamente. Usá las variables entre llaves para insertar datos dinámicos.
+        </p>
+      </div>
+      {Object.keys(DEFAULT_MENSAJES).map(key => (
+        <div key={key} style={{ ...s.card, marginBottom:14 }}>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text, margin:"0 0 4px" }}>{LABELS[key]}</p>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:10 }}>
+            {VARS[key].map(v => <span key={v} style={{ ...s.tag, fontSize:10 }}>{v}</span>)}
+          </div>
+          <textarea rows={4} style={{ width:"100%", boxSizing:"border-box", resize:"vertical" }} value={form[key]} onChange={e => set(key, e.target.value)} />
+          <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"6px 0 0" }}>
+            Vista previa: {fillMsg(form[key], { nombre:"María", hora:"15:00", estudio:"Lash Studio", email:"m@mail.com", pass:"ABC123", url:DEPLOY_URL })}
+          </p>
+        </div>
+      ))}
+      <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>
+        {saving ? "Guardando..." : "Guardar mensajes →"}
+      </button>
+      <button style={{ ...s.btnGl, marginTop:10 }} onClick={() => { setForm({ ...DEFAULT_MENSAJES }); }}>
+        Restaurar por defecto
+      </button>
     </div>
   );
 }
@@ -1954,7 +2068,10 @@ function ConfigEstudio({ data, toast, onLogout }) {
         <button style={s.btnGl} onClick={addPol}>+ agregar</button>
       </div>
       <div style={s.div} />
-      <button style={{ ...s.btnRed, width:"100%" }} onClick={onLogout}>cerrar sesión</button>
+      <button style={{ ...s.btnRed, width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={onLogout}>
+        <Icon name="logOut" size={15} color={G.red} />
+        Cerrar sesión
+      </button>
     </div>
   );
 }
@@ -1981,6 +2098,7 @@ function ClientaApp({ clienta, data, onLogout }) {
   };
   return (
     <div style={s.app}>
+      <GlobalStyles />
       <AppBg />
       <div style={s.screen}>{render()}</div>
       <nav style={s.nav}>
@@ -2373,6 +2491,7 @@ function CPerfil({ clienta, data, onLogout }) {
   const [saving, setSaving]   = useState(false);
   const [formP, setFormP]     = useState({ nombre:clienta.nombre||"", telefono:clienta.telefono||"", emergencia:clienta.emergencia||"" });
   const setFP = (k, v) => setFormP(f => ({ ...f, [k]:v }));
+  const { dark, toggleTheme } = useTheme();
 
   const politicas = data.getConfig("politicas", []);
   const estudio   = data.getConfig("estudio",   {});
@@ -2386,20 +2505,23 @@ function CPerfil({ clienta, data, onLogout }) {
   };
   return (
     <div>
-      <div style={s.topBar}><h1 style={s.h1}>Mi Perfil</h1><p style={s.sub}>tus datos</p></div>
+      <div style={s.topBar}><h1 style={s.h1}>Mi Perfil</h1><p style={s.sub}>Tus datos</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:22 }}>
           <div style={{ position:"relative", marginBottom:10 }}>
             {foto ? <img src={foto} alt="perfil" style={{ width:78, height:78, borderRadius:"50%", objectFit:"cover", border:`2px solid ${G.green}` }} /> : <Avatar nombre={clienta.nombre} size={78} />}
-            <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:editando ? G.green : "rgba(10,10,10,0.8)", border:`1.5px solid ${editando ? G.bg : G.border}`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}></label>
+            <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:editando ? G.green : G.glass, border:`1.5px solid ${editando ? G.bg : G.border}`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}></label>
             <input id="foto-input" type="file" accept="image/*" style={{ display:"none" }} onChange={onFoto} />
           </div>
-          <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:18 }}>{clienta.nombre}</p>
-          <span style={s.tag}>clienta activa</span>
+          <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.text }}>{clienta.nombre}</p>
+          <span style={s.tag}>Clienta activa</span>
         </div>
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => setEdit(e => !e)}>{editando ? "cancelar" : "Editar"}</button>
+          <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => setEdit(e => !e)}>{editando ? "Cancelar" : "Editar"}</button>
           <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => openWA()}>Contactar</button>
+          <button style={{ ...s.btnGl, padding:"10px 12px", fontSize:12, display:"flex", alignItems:"center", gap:5 }} onClick={toggleTheme}>
+            <Icon name={dark ? "sun" : "moon"} size={15} color={G.muted} />
+          </button>
         </div>
         <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12 }}>
           {editando ? (
@@ -2433,8 +2555,11 @@ function CPerfil({ clienta, data, onLogout }) {
             {politicas.map((p, i) => <p key={i} style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{p}</p>)}
           </div>
         )}
-        {editando && <button style={{ ...s.btnG, marginTop:12, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"guardando...":"guardar cambios →"}</button>}
-        <button style={{ ...s.btnRed, marginTop:18, width:"100%" }} onClick={onLogout}>cerrar sesión</button>
+        {editando && <button style={{ ...s.btnG, marginTop:12, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"Guardando...":"Guardar cambios →"}</button>}
+        <button style={{ ...s.btnRed, marginTop:18, width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={onLogout}>
+          <Icon name="logOut" size={15} color={G.red} />
+          Cerrar sesión
+        </button>
       </div>
     </div>
   );
