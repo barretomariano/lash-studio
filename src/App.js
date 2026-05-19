@@ -75,10 +75,10 @@ const DIAS_C = ["D","L","M","X","J","V","S"];
 const DIAS_F = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 
 const G = {
-  bg:"#0a0a0a", card:"rgba(255,255,255,0.04)", glass:"rgba(255,255,255,0.06)",
-  border:"rgba(255,255,255,0.08)", borderHov:"rgba(255,255,255,0.16)",
-  green:"#8fbd5a", greenD:"#5c8f2e", greenL:"#b5d98a", greenM:"rgba(143,189,90,0.15)",
-  text:"#f0f0f0", muted:"rgba(240,240,240,0.42)", sub:"rgba(240,240,240,0.62)",
+  bg:"#0a0a0a", card:"rgba(255,255,255,0.045)", glass:"rgba(255,255,255,0.07)",
+  border:"rgba(255,255,255,0.09)", borderHov:"rgba(255,255,255,0.18)",
+  green:"#8fbd5a", greenD:"#5c8f2e", greenL:"#b5d98a", greenM:"rgba(143,189,90,0.18)",
+  text:"#f0f0f0", muted:"rgba(240,240,240,0.45)", sub:"rgba(240,240,240,0.65)",
   white:"#fff", red:"#e07070", amber:"#e0b870",
 };
 const F = { serif:"'Fraunces',Georgia,serif", sans:"'Outfit','Segoe UI',sans-serif" };
@@ -86,7 +86,7 @@ const F = { serif:"'Fraunces',Georgia,serif", sans:"'Outfit','Segoe UI',sans-ser
 // ── Fondo app con gradiente sutil ──────────────────────────────────────────────
 const AppBg = () => (
   <div style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:0,
-    background:"radial-gradient(ellipse 80% 55% at 50% -5%, rgba(143,189,90,0.13) 0%, transparent 60%), radial-gradient(ellipse 40% 35% at 95% 85%, rgba(143,189,90,0.07) 0%, transparent 55%)",
+    background:"radial-gradient(ellipse 90% 60% at 50% -8%, rgba(143,189,90,0.18) 0%, transparent 62%), radial-gradient(ellipse 45% 40% at 96% 88%, rgba(143,189,90,0.10) 0%, transparent 56%), radial-gradient(ellipse 55% 45% at 4% 100%, rgba(143,189,90,0.07) 0%, transparent 58%)",
   }}/>
 );
 
@@ -154,26 +154,42 @@ function Icon({ name, size = 20, color = "currentColor", strokeWidth = 1.7 }) {
 const s = {
   app:    { minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, maxWidth:430, margin:"0 auto", position:"relative", overflowX:"hidden" },
   screen: { minHeight:"100vh", paddingBottom:110, position:"relative", zIndex:1 },
-  topBar: { padding:"52px 20px 14px", borderBottom:`0.5px solid ${G.border}`, background:"rgba(10,10,10,0.92)", backdropFilter:"blur(24px) saturate(160%)", position:"sticky", top:0, zIndex:10 },
+  topBar: { padding:"52px 20px 14px", background:"rgba(10,10,10,0.88)", backdropFilter:"blur(28px) saturate(180%)", position:"sticky", top:0, zIndex:10, boxShadow:"0 0.5px 0 rgba(255,255,255,0.08), 0 4px 20px rgba(0,0,0,0.4)" },
   h1:     { fontFamily:F.serif, fontWeight:700, fontSize:26, letterSpacing:"-0.5px", color:G.white, margin:0, lineHeight:1.1 },
   sub:    { fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0", fontWeight:400 },
   eyebrow:{ fontFamily:F.sans, fontSize:10, letterSpacing:"0.18em", textTransform:"uppercase", color:"rgba(143,189,90,0.65)", margin:"0 0 3px", fontWeight:500 },
   // Cards con jerarquía
-  card:   { background:G.card, border:`0.5px solid ${G.border}`, borderRadius:16, padding:"15px 17px", marginBottom:10, backdropFilter:"blur(12px)", transition:"all 0.2s" },
-  cardHero:{ background:"linear-gradient(135deg, rgba(143,189,90,0.12) 0%, rgba(143,189,90,0.03) 100%)", border:`1px solid rgba(143,189,90,0.22)`, borderRadius:20, padding:"18px 20px", marginBottom:12, backdropFilter:"blur(16px)" },
-  cardSub:{ background:"rgba(255,255,255,0.025)", border:`0.5px solid rgba(255,255,255,0.06)`, borderRadius:14, padding:"12px 14px", marginBottom:8 },
+  card:   { background:G.card, border:`0.5px solid ${G.border}`, borderRadius:16, padding:"15px 17px", marginBottom:10, backdropFilter:"blur(12px)", transition:"all 0.2s", boxShadow:"0 2px 16px rgba(0,0,0,0.22)" },
+  cardHero:{ background:"linear-gradient(135deg, rgba(143,189,90,0.15) 0%, rgba(143,189,90,0.04) 100%)", border:`1px solid rgba(143,189,90,0.28)`, borderRadius:20, padding:"18px 20px", marginBottom:12, backdropFilter:"blur(16px)", boxShadow:"0 8px 32px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(143,189,90,0.12) inset" },
+  cardSub:{ background:"rgba(255,255,255,0.03)", border:`0.5px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"12px 14px", marginBottom:8, boxShadow:"0 1px 8px rgba(0,0,0,0.15)" },
   input:  { background:"rgba(255,255,255,0.06)", border:`0.5px solid ${G.border}`, borderRadius:11, padding:"13px 15px", color:G.text, fontFamily:F.sans, fontSize:15, width:"100%", outline:"none", boxSizing:"border-box", transition:"border-color 0.2s" },
   label:  { fontFamily:F.sans, fontSize:12, color:G.muted, display:"block", marginBottom:6, fontWeight:500 },
-  btnG:   { background:G.green, border:"none", borderRadius:13, padding:"14px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:14, fontWeight:600, cursor:"pointer", width:"100%", transition:"opacity 0.15s, transform 0.1s", letterSpacing:"0.01em" },
-  btnGl:  { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:12, padding:"10px 16px", color:G.text, fontFamily:F.sans, fontSize:13, fontWeight:400, cursor:"pointer", backdropFilter:"blur(8px)", transition:"all 0.2s" },
+  btnG:   { background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", borderRadius:13, padding:"14px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:14, fontWeight:700, cursor:"pointer", width:"100%", transition:"opacity 0.15s, transform 0.1s", letterSpacing:"0.02em", boxShadow:"0 4px 18px rgba(143,189,90,0.38), 0 1px 3px rgba(0,0,0,0.3)" },
+  btnGl:  { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:12, padding:"10px 16px", color:G.text, fontFamily:F.sans, fontSize:13, fontWeight:500, cursor:"pointer", backdropFilter:"blur(10px)", transition:"all 0.2s", boxShadow:"0 2px 8px rgba(0,0,0,0.2)" },
   btnRed: { background:"rgba(224,112,112,0.1)", border:`0.5px solid rgba(224,112,112,0.35)`, borderRadius:12, padding:"10px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" },
   tag:    { background:G.greenM, border:`0.5px solid rgba(143,189,90,0.35)`, borderRadius:20, padding:"3px 11px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3, fontWeight:500 },
   div:    { height:"0.5px", background:G.border, margin:"16px 0" },
-  nav: { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:"rgba(14,14,14,0.92)", backdropFilter:"blur(28px) saturate(180%)", border:`0.5px solid rgba(255,255,255,0.1)`, borderRadius:28, display:"flex", zIndex:20, padding:"8px 6px", boxShadow:"0 8px 32px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04) inset" },
-  fab:  { position:"fixed", bottom:90, right:18, width:52, height:52, borderRadius:"50%", background:G.green, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 4px 20px rgba(143,189,90,0.45), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" },
+  nav: { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:"rgba(12,12,12,0.95)", backdropFilter:"blur(32px) saturate(200%)", border:`0.5px solid rgba(255,255,255,0.11)`, borderRadius:28, display:"flex", zIndex:20, padding:"8px 6px", boxShadow:"0 8px 40px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.06) inset" },
+  fab:  { position:"fixed", bottom:90, right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(143,189,90,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" },
 };
 
-const navItmSty = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.2s", borderRadius:22, background:active ? "rgba(143,189,90,0.12)" : "transparent" });
+const navItmSty = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? "rgba(143,189,90,0.13)" : "transparent", boxShadow:active ? "inset 0 2px 0 rgba(143,189,90,0.55)" : "none" });
+
+const GlobalStyles = () => (
+  <style>{`
+    @keyframes logoPulse {
+      0%,100% { box-shadow:0 0 0 0 rgba(143,189,90,0.4),0 0 24px rgba(143,189,90,0.12); }
+      50%      { box-shadow:0 0 0 14px rgba(143,189,90,0),0 0 36px rgba(143,189,90,0.2); }
+    }
+    @keyframes fadeInUp {
+      from { opacity:0; transform:translateY(10px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    * { -webkit-tap-highlight-color:transparent; }
+    input:focus { border-color:rgba(143,189,90,0.55) !important; outline:none !important; box-shadow:0 0 0 3px rgba(143,189,90,0.1) !important; }
+    button:active { transform:scale(0.97) !important; }
+  `}</style>
+);
 
 // ── useData ────────────────────────────────────────────────────────────────────
 function useData() {
@@ -228,17 +244,16 @@ function useData() {
   return { servicios, clientas, citas, excepciones, config, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago };
 }
 
-const navItmSty = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.2s", borderRadius:22, background:active ? "rgba(143,189,90,0.11)" : "transparent" });
-
 // ── Componentes UI comunes ─────────────────────────────────────────────────────
 function Loader({ msg = "Cargando..." }) {
   return (
-    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, position:"relative" }}>
+    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:18, position:"relative" }}>
+      <GlobalStyles />
       <AppBg />
-      <div style={{ width:48, height:48, borderRadius:"50%", background:G.greenM, border:`1px solid rgba(143,189,90,0.4)`, display:"flex", alignItems:"center", justifyContent:"center", zIndex:1 }}>
-        <Icon name="scissors" size={22} color={G.greenL} />
+      <div style={{ width:56, height:56, borderRadius:"50%", background:`radial-gradient(circle, rgba(143,189,90,0.22) 0%, rgba(143,189,90,0.06) 100%)`, border:`1.5px solid rgba(143,189,90,0.45)`, display:"flex", alignItems:"center", justifyContent:"center", zIndex:1, animation:"logoPulse 2.5s ease-in-out infinite", boxShadow:"0 0 24px rgba(143,189,90,0.16)" }}>
+        <Icon name="scissors" size={24} color={G.greenL} />
       </div>
-      <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, zIndex:1 }}>{msg}</p>
+      <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, zIndex:1, letterSpacing:"0.08em" }}>{msg}</p>
     </div>
   );
 }
@@ -361,39 +376,41 @@ function Login({ onLogin }) {
 
   return (
     <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, position:"relative" }}>
+      <GlobalStyles />
       <AppBg />
-      <div style={{ textAlign:"center", marginBottom:44, zIndex:1 }}>
-        {/* Espacio reservado para logo — por definir */}
-        <div style={{ width:64, height:64, borderRadius:"50%", background:G.greenM, border:`1px solid rgba(143,189,90,0.4)`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px" }}>
-          <Icon name="scissors" size={28} color={G.greenL} />
+      <div style={{ textAlign:"center", marginBottom:44, zIndex:1, animation:"fadeInUp 0.6s ease both" }}>
+        <div style={{ width:72, height:72, borderRadius:"50%", background:`radial-gradient(circle, rgba(143,189,90,0.22) 0%, rgba(143,189,90,0.08) 100%)`, border:`1.5px solid rgba(143,189,90,0.45)`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite", boxShadow:"0 0 24px rgba(143,189,90,0.18)" }}>
+          <Icon name="scissors" size={30} color={G.greenL} />
         </div>
-        <h1 style={{ ...s.h1, fontSize:32, letterSpacing:1, textAlign:"center" }}>Lash Studio</h1>
-        <p style={{ ...s.sub, marginTop:6, textAlign:"center" }}>by chulas</p>
-        <div style={{ width:36, height:1, background:G.green, margin:"14px auto", opacity:0.5 }} />
-        <p style={{ ...s.sub, color:G.muted, textAlign:"center" }}>San Andrés · Buenos Aires</p>
+        <h1 style={{ ...s.h1, fontSize:34, letterSpacing:"-0.5px", textAlign:"center", marginBottom:4 }}>Lash Studio</h1>
+        <p style={{ fontFamily:F.serif, fontSize:14, fontStyle:"italic", color:G.green, margin:"0 0 14px", letterSpacing:"0.04em" }}>by chulas</p>
+        <div style={{ width:64, height:1.5, background:`linear-gradient(90deg, transparent, ${G.green}, transparent)`, margin:"0 auto 12px" }} />
+        <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, letterSpacing:"0.14em", textTransform:"uppercase", textAlign:"center" }}>San Andrés · Buenos Aires</p>
       </div>
       {!modo ? (
-        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:10, zIndex:1 }}>
-          <p style={{ ...s.sub, textAlign:"center", marginBottom:6 }}>Acceder como</p>
-          <div style={{ ...s.cardHero, cursor:"pointer", display:"flex", alignItems:"center", gap:16 }}
+        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:11, zIndex:1, animation:"fadeInUp 0.6s 0.15s ease both", opacity:0 }}>
+          <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, textAlign:"center", marginBottom:4, letterSpacing:"0.12em", textTransform:"uppercase" }}>Acceder como</p>
+          <div style={{ ...s.cardHero, cursor:"pointer", display:"flex", alignItems:"center", gap:16, padding:"20px" }}
             onClick={() => { setModo("admin"); setEmail(ADMIN_EMAIL); }}>
-            <div style={{ width:44, height:44, borderRadius:12, background:"rgba(143,189,90,0.15)", border:`0.5px solid rgba(143,189,90,0.3)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <Icon name="sparkles" size={20} color={G.greenL} />
+            <div style={{ width:48, height:48, borderRadius:14, background:"rgba(143,189,90,0.18)", border:`1px solid rgba(143,189,90,0.35)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:"0 4px 12px rgba(143,189,90,0.2)" }}>
+              <Icon name="sparkles" size={22} color={G.greenL} />
             </div>
             <div>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 2px" }}>Lashista</p>
-              <p style={s.sub}>Panel de administración</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>Lashista</p>
+              <p style={{ ...s.sub, fontSize:12 }}>Panel de administración</p>
             </div>
+            <Icon name="chevronRight" size={16} color={G.greenD} style={{ marginLeft:"auto" }} />
           </div>
-          <div style={{ ...s.card, cursor:"pointer", display:"flex", alignItems:"center", gap:16 }}
+          <div style={{ ...s.card, cursor:"pointer", display:"flex", alignItems:"center", gap:16, padding:"18px" }}
             onClick={() => setModo("clienta")}>
-            <div style={{ width:44, height:44, borderRadius:12, background:"rgba(255,255,255,0.06)", border:`0.5px solid rgba(255,255,255,0.1)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <Icon name="user" size={20} color={G.sub} />
+            <div style={{ width:48, height:48, borderRadius:14, background:"rgba(255,255,255,0.07)", border:`0.5px solid rgba(255,255,255,0.12)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Icon name="user" size={22} color={G.sub} />
             </div>
             <div>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 2px" }}>Clienta</p>
-              <p style={s.sub}>Mi espacio personal</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>Clienta</p>
+              <p style={{ ...s.sub, fontSize:12 }}>Mi espacio personal</p>
             </div>
+            <Icon name="chevronRight" size={16} color={G.muted} style={{ marginLeft:"auto" }} />
           </div>
         </div>
       ) : (
@@ -494,19 +511,21 @@ function AdminApp({ data, onLogout }) {
 
   return (
     <div style={s.app}>
+      <GlobalStyles />
       <AppBg />
       <div style={s.screen}>{renderScreen()}</div>
       {!cur && (
         <button style={s.fab} onClick={() => setTab("agenda")} title="Ir a agenda">
-          <Icon name="calendarPlus" size={22} color="#0a0a0a" strokeWidth={1.8} />
+          <Icon name="calendarPlus" size={22} color="#0a0a0a" strokeWidth={1.9} />
         </button>
       )}
       {!cur && (
         <nav style={s.nav}>
           {navItems.map(n => (
-            <div key={n.id} style={navItmSty(tab === n.id)} onClick={() => setTab(n.id)}>
-              <Icon name={n.iconName} size={19} color={tab === n.id ? G.green : G.muted} strokeWidth={1.6} />
-              <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.06em", fontWeight:tab === n.id ? 500 : 400 }}>{n.label}</span>
+            <div key={n.id} style={{ ...navItmSty(tab === n.id), position:"relative" }} onClick={() => setTab(n.id)}>
+              {tab === n.id && <div style={{ position:"absolute", top:6, width:16, height:3, borderRadius:2, background:G.green, opacity:0.8 }} />}
+              <Icon name={n.iconName} size={20} color={tab === n.id ? G.green : G.muted} strokeWidth={tab === n.id ? 1.8 : 1.5} />
+              <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.06em", fontWeight:tab === n.id ? 600 : 400 }}>{n.label}</span>
             </div>
           ))}
         </nav>
@@ -545,24 +564,31 @@ function AdminInicio({ data, push, setTab }) {
 
   return (
     <div>
-      <div style={s.topBar}><h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1><p style={s.sub}>Bienvenida</p></div>
+      <div style={s.topBar}>
+        <p style={s.eyebrow}>panel lashista</p>
+        <h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1>
+        <p style={s.sub}>{new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
+      </div>
       <div style={{ padding:"18px 18px 0" }}>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:9, marginBottom:18 }}>
-          {[
-            { label:"hoy",       val:citasHoy.length,          sub:`${data.citas.filter(c => c.fecha === hoy).length} citas`,      action:() => setTab("agenda")   },
-            { label:"este mes",  val:fmtPesos(ingresosMes),    sub:`${todoHist.filter(h => h.fecha?.startsWith(mes)).length} serv`, action:() => setTab("finanzas"), hl:true },
-            { label:"clientas",  val:data.clientas.length,     sub:`activas`,                                                       action:() => setTab("clientas") },
-          ].map(w => (
-            <div key={w.label} onClick={w.action} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"12px 6px", background:w.hl ? "rgba(143,189,90,0.08)" : G.card, borderColor:w.hl ? G.greenD : G.border }}>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase", letterSpacing:"0.08em" }}>{w.label}</p>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:w.label === "este mes" ? 14 : 20, color:w.hl ? G.greenL : G.white, margin:"0 0 2px", lineHeight:1.2 }}>{w.val}</p>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>{w.sub}</p>
-            </div>
-          ))}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
+          <div onClick={() => setTab("finanzas")} style={{ ...s.cardHero, cursor:"pointer", margin:0, padding:"16px 14px", gridColumn:"1 / -1" }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:"rgba(181,217,138,0.7)", margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.14em" }}>ingresos del mes</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:28, color:G.greenL, margin:"0 0 2px", lineHeight:1.1 }}>{fmtPesos(ingresosMes)}</p>
+            <p style={{ fontFamily:F.sans, fontSize:10, color:"rgba(181,217,138,0.55)", margin:0 }}>{todoHist.filter(h => h.fecha?.startsWith(mes)).length} servicios este mes</p>
+          </div>
+          <div onClick={() => setTab("agenda")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"14px 12px", textAlign:"center" }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.1em" }}>hoy</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:26, color:G.white, margin:"0 0 2px", lineHeight:1.1 }}>{citasHoy.length}</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>{data.citas.filter(c => c.fecha === hoy).length} citas</p>
+          </div>
+          <div onClick={() => setTab("clientas")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"14px 12px", textAlign:"center" }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.1em" }}>clientas</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:26, color:G.white, margin:"0 0 2px", lineHeight:1.1 }}>{data.clientas.length}</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>activas</p>
+          </div>
         </div>
 
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>hoy</p>
-        <p style={{ ...s.sub, marginBottom:12 }}>{new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 10px" }}>citas de hoy</p>
         {citasHoy.length === 0
           ? <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>Sin citas para hoy</p>
           : citasHoy.map(c => (
@@ -1959,9 +1985,10 @@ function ClientaApp({ clienta, data, onLogout }) {
       <div style={s.screen}>{render()}</div>
       <nav style={s.nav}>
         {tabs.map(t => (
-          <div key={t.id} style={navItmSty(tab === t.id)} onClick={() => setTab(t.id)}>
-            <Icon name={t.iconName} size={19} color={tab === t.id ? G.green : G.muted} strokeWidth={1.6} />
-            <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.06em", fontWeight:tab === t.id ? 500 : 400 }}>{t.label}</span>
+          <div key={t.id} style={{ ...navItmSty(tab === t.id), position:"relative" }} onClick={() => setTab(t.id)}>
+            {tab === t.id && <div style={{ position:"absolute", top:6, width:16, height:3, borderRadius:2, background:G.green, opacity:0.8 }} />}
+            <Icon name={t.iconName} size={20} color={tab === t.id ? G.green : G.muted} strokeWidth={tab === t.id ? 1.8 : 1.5} />
+            <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.06em", fontWeight:tab === t.id ? 600 : 400 }}>{t.label}</span>
           </div>
         ))}
       </nav>
@@ -2031,21 +2058,22 @@ function CInicio({ clienta, data, setTab }) {
 
         {/* ── Próxima cita con countdown ── */}
         {proxCita && (
-          <div style={{ ...s.card, borderColor:G.greenD, background:"rgba(143,189,90,0.06)", marginBottom:12 }}>
-            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 7px", textTransform:"lowercase" }}>próxima cita</p>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+          <div style={{ ...s.cardHero, marginBottom:12 }}>
+            <p style={s.eyebrow}>próxima cita</p>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
               <div>
-                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:16 }}>{proxCita.servicio}</p>
+                <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white }}>{proxCita.servicio}</p>
                 <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(proxCita.fecha)} · {proxCita.hora}</p>
               </div>
-              <div style={{ textAlign:"center", background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:12, padding:"10px 14px", flexShrink:0 }}>
-                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:24, color:G.greenL }}>{diasHasta === 0 ? "¡hoy!" : diasHasta}</p>
-                {diasHasta !== 0 && <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>}
+              <div style={{ textAlign:"center", background:"rgba(143,189,90,0.22)", border:`1px solid rgba(143,189,90,0.4)`, borderRadius:14, padding:"12px 16px", flexShrink:0, boxShadow:"0 4px 12px rgba(143,189,90,0.15)" }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:28, color:G.greenL, lineHeight:1 }}>{diasHasta === 0 ? "¡hoy!" : diasHasta}</p>
+                {diasHasta !== 0 && <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:"rgba(181,217,138,0.6)", marginTop:3 }}>días</p>}
               </div>
             </div>
             <button
               onClick={() => generarICS(proxCita, estudio)}
-              style={{ ...s.btnGl, width:"100%", fontSize:12, borderColor:G.greenD, color:G.greenL, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+              style={{ ...s.btnGl, width:"100%", fontSize:12, borderColor:"rgba(143,189,90,0.35)", color:G.greenL, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+              <Icon name="download" size={13} color={G.greenL} />
               Agregar al calendario
             </button>
           </div>
@@ -2075,22 +2103,19 @@ function CInicio({ clienta, data, setTab }) {
 
         {/* ── Widgets principales ── */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:9, marginBottom:16 }}>
-          {/* Visitas */}
-          <div onClick={() => setTab("historial")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"14px 6px", gridColumn:"1" }}>
-            <p style={{ fontFamily:F.sans, fontSize:20, margin:"0 0 2px" }}>✦</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.white, margin:"0 0 1px" }}>{hist.length}</p>
+          <div onClick={() => setTab("historial")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
+            <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="star" size={16} color={G.muted} strokeWidth={1.5} /></div>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{hist.length}</p>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>visitas</p>
           </div>
-          {/* Curva favorita */}
-          <div onClick={() => setTab("perfil")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"14px 6px" }}>
-            <p style={{ fontFamily:F.sans, fontSize:20, margin:"0 0 2px" }}>〜</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.white, margin:"0 0 1px" }}>{curvaFav}</p>
+          <div onClick={() => setTab("perfil")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
+            <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="scissors" size={16} color={G.muted} strokeWidth={1.5} /></div>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{curvaFav}</p>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>mi curva</p>
           </div>
-          {/* Agendar */}
-          <div onClick={() => setTab("agendar")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"14px 6px", background:G.greenM, borderColor:G.green }}>
-            <p style={{ fontFamily:F.sans, fontSize:20, margin:"0 0 2px" }}></p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.white, margin:"0 0 1px" }}>+</p>
+          <div onClick={() => setTab("agendar")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px", background:"rgba(143,189,90,0.16)", borderColor:G.green }}>
+            <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="calendarPlus" size={16} color={G.greenL} strokeWidth={1.5} /></div>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.greenL, margin:"0 0 2px", lineHeight:1 }}>+</p>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:0 }}>agendar</p>
           </div>
         </div>
@@ -2098,29 +2123,33 @@ function CInicio({ clienta, data, setTab }) {
         {/* ── Widgets de contacto ── */}
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>el estudio</p>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
-          {/* WhatsApp */}
-          <div onClick={() => openWA("Hola! Tengo una consulta 💚")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", background:"rgba(37,211,102,0.08)", borderColor:"rgba(37,211,102,0.25)", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:26 }}>💬</span>
+          <div onClick={() => openWA("Hola! Tengo una consulta 💚")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(37,211,102,0.07)", borderColor:"rgba(37,211,102,0.22)", display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
+            <div style={{ width:38, height:38, borderRadius:11, background:"rgba(37,211,102,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <Icon name="messageCircle" size={19} color="rgba(37,211,102,0.9)" strokeWidth={1.6} />
+            </div>
             <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>WhatsApp</p>
             <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>consultas y turnos</p>
           </div>
-          {/* Instagram */}
-          <div onClick={() => window.open(instagramUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", background:"rgba(225,48,108,0.08)", borderColor:"rgba(225,48,108,0.2)", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:26 }}></span>
+          <div onClick={() => window.open(instagramUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(225,48,108,0.07)", borderColor:"rgba(225,48,108,0.18)", display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
+            <div style={{ width:38, height:38, borderRadius:11, background:"rgba(225,48,108,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <Icon name="instagram" size={19} color="rgba(225,48,108,0.9)" strokeWidth={1.6} />
+            </div>
             <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Instagram</p>
             <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{estudio.instagram || "@bychulas.studio"}</p>
           </div>
-          {/* Ubicación */}
           {ubicacionUrl && (
-            <div onClick={() => window.open(ubicacionUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", background:"rgba(66,133,244,0.08)", borderColor:"rgba(66,133,244,0.2)", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-              <span style={{ fontSize:26 }}></span>
+            <div onClick={() => window.open(ubicacionUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(66,133,244,0.07)", borderColor:"rgba(66,133,244,0.18)", display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
+              <div style={{ width:38, height:38, borderRadius:11, background:"rgba(66,133,244,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <Icon name="mapPin" size={19} color="rgba(100,160,255,0.9)" strokeWidth={1.6} />
+              </div>
               <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Cómo llegar</p>
               <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:"100%" }}>{estudio.direccion}</p>
             </div>
           )}
-          {/* Último servicio / historial */}
-          <div onClick={() => setTab("historial")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", background:"rgba(143,189,90,0.06)", borderColor:G.greenD, display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:26 }}>🌿</span>
+          <div onClick={() => setTab("historial")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(143,189,90,0.07)", borderColor:G.greenD, display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
+            <div style={{ width:38, height:38, borderRadius:11, background:"rgba(143,189,90,0.15)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <Icon name="history" size={19} color={G.greenL} strokeWidth={1.6} />
+            </div>
             <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Mi historial</p>
             <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{hist.length > 0 ? `${hist.length} visitas` : "ver mis visitas"}</p>
           </div>
