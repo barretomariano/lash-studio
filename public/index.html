@@ -7,30 +7,54 @@
     <meta name="description" content="Lash Studio by Chulas — San Andrés, Buenos Aires" />
 
     <!-- PWA iOS -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Lash Studio" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/icon-192.png" />
+    <link rel="apple-touch-startup-image" href="%PUBLIC_URL%/icon-512.png" />
 
     <!-- PWA general -->
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
 
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Google Fonts: Fraunces + Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
 
     <title>Lash Studio</title>
 
     <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-      body { background: #0a0a0a; color: #f0f0f0; overscroll-behavior: none; }
+      *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html { height: 100%; }
+      body { height: 100%; background: #0a0a0a; color: #f0f0f0; overscroll-behavior: none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+      #root { height: 100%; }
       input, select, textarea, button { font-family: inherit; }
       select option { background: #1a1a1a; color: #f0f0f0; }
+      /* Scrollbar discreta */
+      ::-webkit-scrollbar { width: 3px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+      /* Smooth scroll nativo */
+      * { scroll-behavior: smooth; }
+      /* Mejor touch en iOS */
+      input, textarea { -webkit-appearance: none; }
+      /* Prevenir zoom en inputs en iOS */
+      input[type="text"], input[type="email"], input[type="tel"], input[type="number"], input[type="date"], input[type="password"], textarea, select { font-size: 16px !important; }
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Registrar Service Worker para PWA
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('SW registrado:', reg.scope))
+            .catch(err => console.log('SW error:', err));
+        });
+      }
+    </script>
   </body>
 </html>
