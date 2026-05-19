@@ -6,6 +6,7 @@ const AUTH_URL  = "https://identitytoolkit.googleapis.com/v1/accounts";
 const ADMIN_EMAIL = "maleocampo3@gmail.com";
 const WA_NUM    = "541126509699";
 const DEPLOY_URL = "https://lash-studio-gilt.vercel.app";
+const VAPID_PUBLIC_KEY = "BBsJiZsDUVmNPVoNNvzhlKiJG25M27n7IEKJmf9gCO1CDiAM7D-8pFlxuRQP_CNN_p0utbKR1JOR90HoA78_Hxk";
 
 const db = {
   get: async (path) => {
@@ -108,6 +109,68 @@ const DEFAULT_MENSAJES = {
   bienvenida:  "Hola {nombre}! 🌿 Te creé tu acceso en {estudio}.\n\nEmail: {email}\nContraseña: {pass}\n\nEntrá desde: {url}\n\n¡Podés ver tus citas, historial y más! 💚",
 };
 const fillMsg = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] !== undefined ? vars[k] : `{${k}}`);
+
+// ── Push notifications ─────────────────────────────────────────────────────────
+function urlBase64ToUint8Array(b64) {
+  const pad = "=".repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+// Fire-and-forget push send (called from React components)
+const sendPush = (targets, title, body, url = "/") => {
+  fetch("/api/notify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ targets, title, body, url }),
+  }).catch(() => {});
+};
+
+// Save current push subscription to the server for a given role/uid
+async function registerPushSubscription(role, uid = null) {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    await fetch("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role, uid, subscription: sub }),
+    });
+    return true;
+  } catch { return false; }
+}
+
+// Hook — manages push permission state for a given user
+function usePushStatus(role, uid = null) {
+  const supported = typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator;
+  const [status, setStatus] = useState(() => {
+    if (!supported) return "unsupported";
+    return Notification.permission; // "default" | "granted" | "denied"
+  });
+
+  // On mount: if already granted, try to re-register (keeps subs fresh)
+  useEffect(() => {
+    if (!supported || Notification.permission !== "granted") return;
+    registerPushSubscription(role, uid).then(ok => { if (ok) setStatus("subscribed"); });
+  }, []);
+
+  const subscribe = async () => {
+    if (!supported) return;
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") { setStatus("denied"); return; }
+    const ok = await registerPushSubscription(role, uid);
+    setStatus(ok ? "subscribed" : "granted");
+  };
+
+  return { status, subscribe, supported };
+}
 
 // ── Fondo app con gradiente sutil ──────────────────────────────────────────────
 const AppBg = () => (
@@ -375,6 +438,33 @@ function Back({ onClick, label = "Volver" }) {
   );
 }
 
+function PushBanner({ role, uid = null }) {
+  const { status, subscribe, supported } = usePushStatus(role, uid);
+  if (!supported || status === "subscribed" || status === "granted") return null;
+  const denied = status === "denied";
+  return (
+    <div style={{ ...s.card, display:"flex", alignItems:"center", gap:12, marginBottom:14,
+      background:`rgba(${G.greenRGB},0.05)`, borderColor:`rgba(${G.greenRGB},0.22)` }}>
+      <Icon name="bell" size={20} color={denied ? G.muted : G.green} strokeWidth={1.5} />
+      <div style={{ flex:1 }}>
+        <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.text }}>
+          {denied ? "Notificaciones bloqueadas" : "Activar notificaciones"}
+        </p>
+        <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.sub, lineHeight:1.5 }}>
+          {denied
+            ? "Habilitá los permisos desde la configuración del navegador"
+            : "Recibí alertas aunque tengas la app cerrada"}
+        </p>
+      </div>
+      {!denied && (
+        <button style={{ ...s.btnG, width:"auto", padding:"8px 14px", fontSize:12, flexShrink:0 }} onClick={subscribe}>
+          Activar
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Login ──────────────────────────────────────────────────────────────────────
 function Login({ onLogin }) {
   const [modo, setModo]         = useState(null);
@@ -633,6 +723,7 @@ function AdminInicio({ data, push, setTab }) {
         </div>
       </div>
       <div style={{ padding:"18px 18px 0" }}>
+        <PushBanner role="admin" />
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
           <div onClick={() => setTab("finanzas")} style={{ ...s.cardHero, cursor:"pointer", margin:0, padding:"16px 14px", gridColumn:"1 / -1" }}>
             <p style={{ fontFamily:F.sans, fontSize:9, color:"rgba(181,217,138,0.7)", margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.14em" }}>ingresos del mes</p>
@@ -895,7 +986,13 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
     if (!form.clientaId || !form.fecha || !form.hora || !form.servicio) { toast("completá todos los campos"); return; }
     setSaving(true);
     const clienta = data.clientas.find(c => c._id === form.clientaId);
-    await data.crearCita({ ...form, clientaNombre:clienta?.nombre || "", estado:"confirmada" });
+    await data.crearCita({ ...form, clientaNombre:clienta?.nombre || "", clientaUid:clienta?.uid || "", estado:"confirmada" });
+    // Notify the clienta that their appointment was confirmed
+    if (clienta?.uid) {
+      sendPush([`clienta:${clienta.uid}`],
+        "¡Tu cita está confirmada! 🌿",
+        `${form.servicio} · ${form.fecha} a las ${form.hora}`);
+    }
     toast("✓ cita agendada"); pop();
   };
 
@@ -2147,6 +2244,7 @@ function CInicio({ clienta, data, setTab }) {
         <p style={s.sub}>Hola, {clienta.nombre?.split(" ")[0]}</p>
       </div>
       <div style={{ padding:"18px" }}>
+        <PushBanner role="clienta" uid={clienta.uid} />
 
         {/* ── Banner service vencido ── */}
         {necesitaService && (
@@ -2313,12 +2411,17 @@ function CAgendar({ clienta, data }) {
       await data.crearCita({
         clientaId:     clienta._id,
         clientaNombre: clienta.nombre,
+        clientaUid:    clienta.uid || "",
         servicio:      form.servicio?.nombre || "A confirmar",
         fecha:         form.fecha,
         hora:          form.hora,
         notas:         form.notas,
         estado:        "solicitada",
       });
+      // Push to admin so Male sees it even without WA
+      sendPush(["admin"],
+        `Nueva solicitud de turno 🗓`,
+        `${clienta.nombre?.split(" ")[0]} quiere: ${form.servicio?.nombre || "A confirmar"} el ${form.fecha} a las ${form.hora}`);
     } catch (e) { console.warn("Firebase write:", e); }
     // Abrir WA para avisar a Male
     const sv  = form.servicio?.nombre || "A confirmar con Male";
@@ -2492,6 +2595,7 @@ function CPerfil({ clienta, data, onLogout }) {
   const [formP, setFormP]     = useState({ nombre:clienta.nombre||"", telefono:clienta.telefono||"", emergencia:clienta.emergencia||"" });
   const setFP = (k, v) => setFormP(f => ({ ...f, [k]:v }));
   const { dark, toggleTheme } = useTheme();
+  const { status: pushStatus, subscribe: pushSubscribe } = usePushStatus("clienta", clienta.uid);
 
   const politicas = data.getConfig("politicas", []);
   const estudio   = data.getConfig("estudio",   {});
@@ -2519,7 +2623,12 @@ function CPerfil({ clienta, data, onLogout }) {
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
           <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => setEdit(e => !e)}>{editando ? "Cancelar" : "Editar"}</button>
           <button style={{ ...s.btnGl, flex:1, fontSize:12 }} onClick={() => openWA()}>Contactar</button>
-          <button style={{ ...s.btnGl, padding:"10px 12px", fontSize:12, display:"flex", alignItems:"center", gap:5 }} onClick={toggleTheme}>
+          <button title={pushStatus === "subscribed" ? "Notificaciones activas" : "Activar notificaciones"}
+            style={{ ...s.btnGl, padding:"10px 12px", display:"flex", alignItems:"center", gap:5, borderColor: pushStatus === "subscribed" ? G.green : G.border }}
+            onClick={pushStatus === "subscribed" ? undefined : pushSubscribe}>
+            <Icon name="bell" size={15} color={pushStatus === "subscribed" ? G.green : G.muted} />
+          </button>
+          <button style={{ ...s.btnGl, padding:"10px 12px", display:"flex", alignItems:"center", gap:5 }} onClick={toggleTheme}>
             <Icon name={dark ? "sun" : "moon"} size={15} color={G.muted} />
           </button>
         </div>

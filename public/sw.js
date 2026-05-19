@@ -1,24 +1,13 @@
-const CACHE = "lash-studio-v1";
-const ASSETS = [
-  "/",
-  "/index.html",
-  "/static/js/main.chunk.js",
-  "/static/js/bundle.js",
-  "/static/css/main.chunk.css",
-  "/manifest.json",
-];
+const CACHE = "lash-studio-v2";
+const ASSETS = ["/", "/index.html", "/manifest.json"];
 
-// Instalar: cachear assets principales
+// ── Install ───────────────────────────────────────────────────────────────────
 self.addEventListener("install", (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((cache) => {
-      return cache.addAll(ASSETS).catch(() => {});
-    })
-  );
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS).catch(() => {})));
   self.skipWaiting();
 });
 
-// Activar: limpiar caches viejas
+// ── Activate ──────────────────────────────────────────────────────────────────
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys().then((keys) =>
@@ -28,29 +17,24 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// Fetch: network-first para API, cache-first para assets estáticos
+// ── Fetch ─────────────────────────────────────────────────────────────────────
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
-  // No interceptar Firebase ni APIs externas
+  // Pass through external / API requests
   if (
     url.hostname.includes("firebase") ||
     url.hostname.includes("googleapis") ||
-    url.hostname.includes("fonts.g") ||
     url.hostname.includes("wa.me") ||
     url.hostname.includes("maps.google") ||
-    url.hostname.includes("instagram.com")
+    url.hostname.includes("instagram.com") ||
+    url.pathname.startsWith("/api/")
   ) {
     return;
   }
 
-  // Assets estáticos: cache-first
-  if (
-    e.request.destination === "script" ||
-    e.request.destination === "style" ||
-    e.request.destination === "image" ||
-    e.request.destination === "font"
-  ) {
+  // Static assets: cache-first
+  if (["script","style","image","font"].includes(e.request.destination)) {
     e.respondWith(
       caches.match(e.request).then(
         (cached) => cached || fetch(e.request).then((res) => {
@@ -63,18 +47,42 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Navegación: network-first, fallback a index.html para SPA
+  // Navigation: network-first, SPA fallback
   if (e.request.mode === "navigate") {
-    e.respondWith(
-      fetch(e.request).catch(() =>
-        caches.match("/index.html")
-      )
-    );
+    e.respondWith(fetch(e.request).catch(() => caches.match("/index.html")));
     return;
   }
 
-  // Default: network con fallback a cache
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
+  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+});
+
+// ── Push notifications ────────────────────────────────────────────────────────
+self.addEventListener("push", (event) => {
+  let data = { title: "Lash Studio", body: "", url: "/" };
+  try { data = { ...data, ...event.data.json() }; } catch {}
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body:    data.body,
+      icon:    "/icon-192.png",
+      badge:   "/icon-192.png",
+      data:    { url: data.url },
+      vibrate: [100, 50, 100],
+    })
+  );
+});
+
+// ── Notification click — focus or open the app ────────────────────────────────
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || "/";
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if ("focus" in client) return client.focus();
+      }
+      return clients.openWindow(target);
+    })
   );
 });
