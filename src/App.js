@@ -7,6 +7,31 @@ const ADMIN_EMAIL = "maleocampo3@gmail.com";
 const WA_NUM    = "541126509699";
 const DEPLOY_URL = "https://lash-studio-gilt.vercel.app";
 const VAPID_PUBLIC_KEY = "BBsJiZsDUVmNPVoNNvzhlKiJG25M27n7IEKJmf9gCO1CDiAM7D-8pFlxuRQP_CNN_p0utbKR1JOR90HoA78_Hxk";
+const CLOUDINARY_CLOUD  = ""; // fill in: your Cloudinary cloud name
+const CLOUDINARY_PRESET = ""; // fill in: your unsigned upload preset name
+
+async function subirFoto(file) {
+  const dataUrl = await new Promise((resolve) => {
+    const canvas = document.createElement("canvas");
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 900;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) { if (w > h) { h = h*MAX/w; w=MAX; } else { w=w*MAX/h; h=MAX; } }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.src = URL.createObjectURL(file);
+  });
+  if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET) return dataUrl;
+  const fd = new FormData();
+  fd.append("file", dataUrl);
+  fd.append("upload_preset", CLOUDINARY_PRESET);
+  const r = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, { method:"POST", body:fd });
+  const j = await r.json();
+  return j.secure_url || dataUrl;
+}
 
 const db = {
   get: async (path) => {
@@ -84,19 +109,21 @@ const G_dark = {
   navBg:"rgba(12,12,12,0.95)", topBarBg:"rgba(10,10,10,0.88)",
   shadow:"rgba(0,0,0,0.28)", shadowMd:"rgba(0,0,0,0.18)", shadowSm:"rgba(0,0,0,0.1)",
   appBgGradient:"radial-gradient(ellipse 90% 60% at 50% -8%, rgba(143,189,90,0.18) 0%, transparent 62%), radial-gradient(ellipse 45% 40% at 96% 88%, rgba(143,189,90,0.10) 0%, transparent 56%), radial-gradient(ellipse 55% 45% at 4% 100%, rgba(143,189,90,0.07) 0%, transparent 58%)",
+  eyebrowOpacity: 0.65,
 };
 const G_light = {
   bg:"#f5f1eb", card:"rgba(255,255,255,0.85)", glass:"rgba(0,0,0,0.04)",
   border:"rgba(0,0,0,0.1)", borderHov:"rgba(0,0,0,0.2)",
   green:"#5a9020", greenD:"#3d6e14", greenL:"#3a7010", greenM:"rgba(90,144,32,0.15)", greenRGB:"90,144,32",
-  text:"#2a2a2a", muted:"rgba(30,30,30,0.5)", sub:"rgba(30,30,30,0.7)",
+  text:"#2a2a2a", muted:"rgba(20,20,20,0.6)", sub:"rgba(20,20,20,0.82)",
   white:"#1a1a1a", red:"#c04040", amber:"#9a6418",
   navBg:"rgba(244,240,234,0.96)", topBarBg:"rgba(244,240,234,0.92)",
   shadow:"rgba(0,0,0,0.1)", shadowMd:"rgba(0,0,0,0.07)", shadowSm:"rgba(0,0,0,0.04)",
   appBgGradient:"radial-gradient(ellipse 90% 60% at 50% -8%, rgba(90,144,32,0.11) 0%, transparent 55%), radial-gradient(ellipse 55% 45% at 4% 100%, rgba(90,144,32,0.07) 0%, transparent 52%)",
+  eyebrowOpacity: 0.88,
 };
 const G = Object.assign({}, G_dark);
-const F = { serif:"'Fraunces',Georgia,serif", sans:"'Outfit','Segoe UI',sans-serif" };
+const F = { display:"'Bebas Neue',Impact,sans-serif", serif:"'Fraunces',Georgia,serif", sans:"'Outfit','Segoe UI',sans-serif" };
 
 // Theme context — components use useTheme() to get toggleTheme and dark flag
 const ThemeCtx = createContext({ dark:true, toggleTheme:() => {} });
@@ -268,9 +295,9 @@ const s = {
   get app()    { return { minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, maxWidth:430, margin:"0 auto", position:"relative", overflowX:"hidden" }; },
   screen: { minHeight:"100vh", paddingBottom:110, position:"relative", zIndex:1 },
   get topBar() { return { padding:"52px 20px 14px", background:G.topBarBg, backdropFilter:"blur(28px) saturate(180%)", position:"sticky", top:0, zIndex:10, boxShadow:`0 0.5px 0 ${G.border}, 0 4px 20px ${G.shadow}` }; },
-  get h1()     { return { fontFamily:F.serif, fontWeight:700, fontSize:26, letterSpacing:"-0.5px", color:G.text, margin:0, lineHeight:1.1 }; },
+  get h1()     { return { fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:G.text, margin:0, lineHeight:1.1 }; },
   get sub()    { return { fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0", fontWeight:400 }; },
-  get eyebrow(){ return { fontFamily:F.sans, fontSize:10, letterSpacing:"0.18em", textTransform:"uppercase", color:`rgba(${G.greenRGB},0.65)`, margin:"0 0 3px", fontWeight:500 }; },
+  get eyebrow(){ return { fontFamily:F.sans, fontSize:10, letterSpacing:"0.18em", textTransform:"uppercase", color:`rgba(${G.greenRGB},${G.eyebrowOpacity||0.65})`, margin:"0 0 3px", fontWeight:500 }; },
   // Cards con jerarquía
   get card()   { return { background:G.card, border:`0.5px solid ${G.border}`, borderRadius:16, padding:"15px 17px", marginBottom:10, backdropFilter:"blur(12px)", transition:"all 0.2s", boxShadow:`0 2px 16px ${G.shadowMd}` }; },
   get cardHero(){ return { background:`linear-gradient(135deg, rgba(${G.greenRGB},0.15) 0%, rgba(${G.greenRGB},0.04) 100%)`, border:`1px solid rgba(${G.greenRGB},0.28)`, borderRadius:20, padding:"18px 20px", marginBottom:12, backdropFilter:"blur(16px)", boxShadow:`0 8px 32px ${G.shadow}, 0 0 0 0.5px rgba(${G.greenRGB},0.12) inset` }; },
@@ -282,8 +309,8 @@ const s = {
   get btnRed() { return { background:"rgba(224,112,112,0.1)", border:`0.5px solid rgba(224,112,112,0.35)`, borderRadius:12, padding:"10px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" }; },
   get tag()    { return { background:G.greenM, border:`0.5px solid rgba(${G.greenRGB},0.35)`, borderRadius:20, padding:"3px 11px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3, fontWeight:500 }; },
   get div()    { return { height:"0.5px", background:G.border, margin:"16px 0" }; },
-  get nav() { return { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:G.navBg, backdropFilter:"blur(32px) saturate(200%)", border:`0.5px solid ${G.border}`, borderRadius:28, display:"flex", zIndex:20, padding:"8px 6px", boxShadow:`0 8px 40px ${G.shadow}, 0 1px 0 rgba(255,255,255,0.06) inset` }; },
-  fab:  { position:"fixed", bottom:90, right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(143,189,90,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" },
+  get nav() { return { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:G.navBg, backdropFilter:"blur(32px) saturate(200%)", border:`0.5px solid ${G.border}`, borderRadius:28, display:"flex", zIndex:20, padding:`8px 6px calc(8px + env(safe-area-inset-bottom, 0px))`, boxShadow:`0 8px 40px ${G.shadow}, 0 1px 0 rgba(255,255,255,0.06) inset` }; },
+  get fab() { return { position:"fixed", bottom:"calc(90px + env(safe-area-inset-bottom, 0px))", right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(143,189,90,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" }; },
 };
 
 const navItmSty     = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", boxShadow:active ? `inset 0 2px 0 rgba(${G.greenRGB},0.55)` : "none" });
@@ -301,6 +328,14 @@ const GlobalStyles = () => (
     }
     @keyframes fadeInUp {
       from { opacity:0; transform:translateY(10px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes slideInRight {
+      from { transform:translateX(100%); }
+      to   { transform:translateX(0); }
+    }
+    @keyframes slideInUp {
+      from { opacity:0; transform:translateY(20px); }
       to   { opacity:1; transform:translateY(0); }
     }
     * { -webkit-tap-highlight-color:transparent; }
@@ -782,9 +817,9 @@ function AdminInicio({ data, push, setTab }) {
         <PushBanner role="admin" />
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
           <div onClick={() => setTab("finanzas")} style={{ ...s.cardHero, cursor:"pointer", margin:0, padding:"16px 14px", gridColumn:"1 / -1" }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:"rgba(181,217,138,0.7)", margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.14em" }}>ingresos del mes</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.sub, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.14em" }}>ingresos del mes</p>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:28, color:G.greenL, margin:"0 0 2px", lineHeight:1.1 }}>{fmtPesos(ingresosMes)}</p>
-            <p style={{ fontFamily:F.sans, fontSize:10, color:"rgba(181,217,138,0.55)", margin:0 }}>{todoHist.filter(h => h.fecha?.startsWith(mes)).length} servicios este mes</p>
+            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{todoHist.filter(h => h.fecha?.startsWith(mes)).length} servicios este mes</p>
           </div>
           <div onClick={() => setTab("agenda")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"14px 12px", textAlign:"center" }}>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.1em" }}>hoy</p>
