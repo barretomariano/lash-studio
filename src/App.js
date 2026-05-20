@@ -818,22 +818,35 @@ function AdminInicio({ data, push, setTab }) {
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
           <div onClick={() => setTab("finanzas")} style={{ ...s.cardHero, cursor:"pointer", margin:0, padding:"16px 14px", gridColumn:"1 / -1" }}>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.sub, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.14em" }}>ingresos del mes</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:28, color:G.greenL, margin:"0 0 2px", lineHeight:1.1 }}>{fmtPesos(ingresosMes)}</p>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:32, letterSpacing:"1px", color:G.greenL, margin:"0 0 2px", lineHeight:1.1 }}>{fmtPesos(ingresosMes)}</p>
             <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{todoHist.filter(h => h.fecha?.startsWith(mes)).length} servicios este mes</p>
           </div>
           <div onClick={() => setTab("agenda")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"14px 12px", textAlign:"center" }}>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.1em" }}>hoy</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:26, color:G.white, margin:"0 0 2px", lineHeight:1.1 }}>{citasHoy.length}</p>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:28, letterSpacing:"1px", color:G.white, margin:"0 0 2px", lineHeight:1.1 }}>{citasHoy.length}</p>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>{data.citas.filter(c => c.fecha === hoy).length} citas</p>
           </div>
           <div onClick={() => setTab("clientas")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"14px 12px", textAlign:"center" }}>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.1em" }}>clientas</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:26, color:G.white, margin:"0 0 2px", lineHeight:1.1 }}>{data.clientas.length}</p>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:28, letterSpacing:"1px", color:G.white, margin:"0 0 2px", lineHeight:1.1 }}>{data.clientas.length}</p>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>activas</p>
           </div>
         </div>
 
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 10px" }}>citas de hoy</p>
+        {/* Pipeline row */}
+        {(() => {
+          const solicitadas  = data.citas.filter(c => c.fecha === hoy && c.estado === "solicitada").length;
+          const confirmadas  = data.citas.filter(c => c.fecha === hoy && c.estado === "confirmada").length;
+          const completadas  = data.citas.filter(c => c.fecha === hoy && c.estado === "completada").length;
+          return (solicitadas + confirmadas + completadas) > 0 ? (
+            <div style={{ display:"flex", gap:6, marginBottom:16, flexWrap:"wrap" }}>
+              {solicitadas > 0 && <span style={{ ...s.tag, background:"rgba(224,184,112,0.15)", borderColor:"rgba(224,184,112,0.4)", color:G.amber, cursor:"pointer" }} onClick={() => setTab("agenda")}>{solicitadas} pendiente{solicitadas > 1 ? "s" : ""}</span>}
+              {confirmadas > 0 && <span style={{ ...s.tag, cursor:"pointer" }} onClick={() => setTab("agenda")}>{confirmadas} confirmada{confirmadas > 1 ? "s" : ""}</span>}
+              {completadas > 0 && <span style={{ ...s.tag, background:"rgba(240,240,240,0.06)", borderColor:G.border, color:G.muted, cursor:"pointer" }} onClick={() => setTab("agenda")}>{completadas} completada{completadas > 1 ? "s" : ""}</span>}
+            </div>
+          ) : null;
+        })()}
+        <p style={{ fontFamily:F.display, fontWeight:400, fontSize:19, letterSpacing:"0.5px", color:G.white, margin:"0 0 10px" }}>citas de hoy</p>
         {citasHoy.length === 0
           ? <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>Sin citas para hoy</p>
           : citasHoy.map(c => (
@@ -851,7 +864,7 @@ function AdminInicio({ data, push, setTab }) {
         }
 
         <div style={s.div} />
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>próximas</p>
+        <p style={{ fontFamily:F.display, fontWeight:400, fontSize:19, letterSpacing:"0.5px", color:G.white, margin:"0 0 3px" }}>próximas</p>
         <p style={{ ...s.sub, marginBottom:12 }}>turnos confirmados</p>
         {proximas.length === 0
           ? <p style={{ color:G.muted, fontSize:13 }}>Sin citas agendadas</p>
@@ -870,7 +883,7 @@ function AdminInicio({ data, push, setTab }) {
         {sinCita.length > 0 && (
           <>
             <div style={s.div} />
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.amber, margin:"0 0 3px" }}>pendientes de service</p>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:19, letterSpacing:"0.5px", color:G.amber, margin:"0 0 3px" }}>pendientes de service</p>
             <p style={{ ...s.sub, marginBottom:12 }}>{sinCita.length} clienta{sinCita.length > 1 ? "s" : ""} sin cita hace +14 días</p>
             {sinCita.slice(0, 3).map(c => {
               const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
@@ -894,7 +907,7 @@ function AdminInicio({ data, push, setTab }) {
         {topSv.length > 0 && (
           <>
             <div style={s.div} />
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>top servicios del mes</p>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:19, letterSpacing:"0.5px", color:G.white, margin:"0 0 3px" }}>top servicios del mes</p>
             <p style={{ ...s.sub, marginBottom:12 }}>los más solicitados</p>
             {topSv.map(([nom, cnt], i) => (
               <div key={nom} style={{ ...s.card, display:"flex", alignItems:"center", gap:12, padding:"11px 14px" }}>
