@@ -102,6 +102,26 @@ const F = { serif:"'Fraunces',Georgia,serif", sans:"'Outfit','Segoe UI',sans-ser
 const ThemeCtx = createContext({ dark:true, toggleTheme:() => {} });
 const useTheme = () => useContext(ThemeCtx);
 
+// ── Responsive breakpoint hook ────────────────────────────────────────────────
+function useIsWide() {
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.innerWidth > 680);
+  useEffect(() => {
+    const fn = () => setWide(window.innerWidth > 680);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return wide;
+}
+
+// ── Time utilities for week calendar ─────────────────────────────────────────
+const toMin     = (hhmm) => { const [h,m] = hhmm.split(":").map(Number); return h*60+m; };
+const isoOfDate = (d)    => d.toISOString().slice(0,10);
+const mondayOfWeek = (weekOffset) => {
+  const d = new Date(); d.setHours(12,0,0,0);
+  d.setDate(d.getDate() - ((d.getDay()+6)%7) + weekOffset*7);
+  return d;
+};
+
 // WA message templates — stored in /config/mensajes, editable by admin
 const DEFAULT_MENSAJES = {
   service14d:  "Hola {nombre}! 🌿 ¿Cómo están tus pestañas? Ya es momento del service. ¡Te espero! 💚",
@@ -266,7 +286,8 @@ const s = {
   fab:  { position:"fixed", bottom:90, right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(143,189,90,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" },
 };
 
-const navItmSty = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", boxShadow:active ? `inset 0 2px 0 rgba(${G.greenRGB},0.55)` : "none" });
+const navItmSty     = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", boxShadow:active ? `inset 0 2px 0 rgba(${G.greenRGB},0.55)` : "none" });
+const sideNavItmSty = (active) => ({ display:"flex", flexDirection:"row", alignItems:"center", gap:10, padding:"10px 14px", cursor:"pointer", borderRadius:12, color:active ? G.green : G.muted, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", transition:"color 0.18s, background 0.18s", fontFamily:F.sans, fontSize:13, fontWeight:active ? 600 : 400 });
 
 const GlobalStyles = () => (
   <style>{`
@@ -625,6 +646,7 @@ function AdminApp({ data, onLogout }) {
   const [tab, setTab]     = useState("inicio");
   const [stack, setStack] = useState([]);
   const [toast, setToast] = useState(null);
+  const wide = useIsWide();
 
   const push     = (screen, props = {}) => setStack(p => [...p, { screen, props }]);
   const pop      = ()                   => setStack(p => p.slice(0, -1));
@@ -661,6 +683,32 @@ function AdminApp({ data, onLogout }) {
   };
 
   if (data.loading) return <Loader />;
+
+  if (wide) {
+    return (
+      <div style={{ minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, display:"flex", flexDirection:"row", overflowX:"hidden" }}>
+        <GlobalStyles />
+        <AppBg />
+        {/* Sidebar nav */}
+        <nav style={{ width:190, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"24px 10px 20px", gap:3, position:"sticky", top:0, height:"100vh", zIndex:20 }}>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.green, padding:"0 4px 18px", margin:0, letterSpacing:"-0.3px" }}>Lash Studio</p>
+          {navItems.map(n => (
+            <div key={n.id} style={sideNavItmSty(tab === n.id && !cur)} onClick={() => { setStack([]); setTab(n.id); }}>
+              <Icon name={n.iconName} size={17} color={tab===n.id && !cur ? G.green : G.muted} strokeWidth={tab===n.id && !cur ? 1.8 : 1.5} />
+              <span>{n.label}</span>
+            </div>
+          ))}
+          <div style={{ flex:1 }} />
+          <button style={{ ...s.btnG, margin:"0 4px", width:"auto" }} onClick={() => push("nueva-cita")}>+ Nueva cita</button>
+        </nav>
+        {/* Content */}
+        <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:24 }}>
+          {renderScreen()}
+        </div>
+        {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+      </div>
+    );
+  }
 
   return (
     <div style={s.app}>
@@ -831,8 +879,10 @@ function AdminInicio({ data, push, setTab }) {
 function AdminAgenda({ data, push }) {
   const hoy    = hoyISO();
   const ahora  = new Date();
-  const [offset, setOffset] = useState(0);
-  const [diaS,   setDiaS]   = useState(hoy);
+  const [offset, setOffset]       = useState(0);
+  const [diaS,   setDiaS]         = useState(hoy);
+  const [vista,  setVista]         = useState("mes");
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const mesD   = new Date(ahora.getFullYear(), ahora.getMonth() + offset, 1);
   const anio   = mesD.getFullYear();
@@ -865,10 +915,23 @@ function AdminAgenda({ data, push }) {
       <div style={s.topBar}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div><h1 style={s.h1}>Agenda</h1><p style={s.sub}>calendario del estudio</p></div>
-          <button style={{ ...s.btnG, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={() => push("nueva-cita")}>+ nueva</button>
+          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+            {["mes","semana"].map(v => (
+              <button key={v} onClick={() => setVista(v)}
+                style={{ ...s.btnGl, padding:"6px 12px", fontSize:11, textTransform:"capitalize",
+                  background:vista===v ? G.greenM : G.glass,
+                  borderColor:vista===v ? G.green : G.border,
+                  color:vista===v ? G.greenL : G.sub }}>
+                {v}
+              </button>
+            ))}
+            <button style={{ ...s.btnG, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={() => push("nueva-cita")}>+ nueva</button>
+          </div>
         </div>
       </div>
-      <div style={{ padding:"18px 14px 0" }}>
+      {vista === "semana"
+        ? <AgendaSemana data={data} push={push} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
+        : <div style={{ padding:"18px 14px 0" }}>
         <div style={{ ...s.card, padding:"14px 10px", marginBottom:18 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
             <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o - 1)}>‹</button>
@@ -968,6 +1031,179 @@ function AdminAgenda({ data, push }) {
                     </div>
                   </>
                 )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      }
+    </div>
+  );
+}
+
+// ── Semana Calendar View ───────────────────────────────────────────────────────
+function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
+  const hoy = hoyISO();
+  const ROW_H = 56;
+
+  // Build 7-day array starting from Monday of current week + offset
+  const lunes = mondayOfWeek(weekOffset);
+  const weekDays = Array.from({ length:7 }, (_, i) => {
+    const d = new Date(lunes);
+    d.setDate(lunes.getDate() + i);
+    return d;
+  });
+  const weekKeys = weekDays.map(isoOfDate);
+
+  // Config
+  const slotsGlobal   = data.getConfig("slots", []);
+  const slotsPorDia   = data.getConfig("slotsPorDia", {});
+  const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
+
+  // Collect all slot times across the week to determine time axis range
+  const allSlotMins = new Set();
+  weekDays.forEach(d => {
+    const dow = d.getDay();
+    const slots = slotsPorDia[dow] !== undefined ? slotsPorDia[dow] : slotsGlobal;
+    slots.forEach(t => allSlotMins.add(toMin(t)));
+  });
+  const minsSorted = [...allSlotMins].sort((a, b) => a - b);
+  const minMin = minsSorted.length ? minsSorted[0]                     : 8*60;
+  const maxMin = minsSorted.length ? minsSorted[minsSorted.length-1]+60 : 18*60;
+  const totalHours = Math.ceil((maxMin - minMin) / 60);
+
+  // Hour labels for the time axis
+  const hourLabels = Array.from({ length:totalHours }, (_, i) => {
+    const m = minMin + i*60;
+    return `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
+  });
+
+  // Group citas by date
+  const citasPorFecha = {};
+  data.citas.forEach(c => {
+    if (!citasPorFecha[c.fecha]) citasPorFecha[c.fecha] = [];
+    citasPorFecha[c.fecha].push(c);
+  });
+
+  // Block appearance by estado
+  const blkBg  = (e) => e==="confirmada" ? `rgba(${G.greenRGB},0.18)` : e==="solicitada" ? "rgba(224,184,112,0.18)" : "rgba(240,240,240,0.06)";
+  const blkBdr = (e) => e==="confirmada" ? `rgba(${G.greenRGB},0.55)` : e==="solicitada" ? "rgba(224,184,112,0.55)"  : G.border;
+  const blkTxt = (e) => e==="confirmada" ? G.greenL                   : e==="solicitada" ? G.amber                   : G.muted;
+
+  // Week label: "19 may – 25 may"
+  const weekLabel = `${fmtFecha(weekKeys[0])} – ${fmtFecha(weekKeys[6])}`;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 130px)" }}>
+      {/* Week navigation */}
+      <div style={{ padding:"10px 14px 8px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+        <button style={{ ...s.btnGl, padding:"6px 14px", fontSize:15 }} onClick={() => setWeekOffset(w => w-1)}>‹</button>
+        <div style={{ textAlign:"center" }}>
+          <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.white }}>{weekLabel}</p>
+        </div>
+        <div style={{ display:"flex", gap:6 }}>
+          {weekOffset !== 0 && (
+            <button style={{ ...s.btnGl, padding:"6px 10px", fontSize:11 }} onClick={() => setWeekOffset(0)}>Hoy</button>
+          )}
+          <button style={{ ...s.btnGl, padding:"6px 14px", fontSize:15 }} onClick={() => setWeekOffset(w => w+1)}>›</button>
+        </div>
+      </div>
+
+      {/* Scrollable grid */}
+      <div style={{ flex:1, overflowY:"auto", overflowX:"hidden" }}>
+        {/* Day headers — sticky at top of scroll */}
+        <div style={{ display:"flex", marginLeft:42, position:"sticky", top:0, zIndex:5, background:G.topBarBg, backdropFilter:"blur(12px)", borderBottom:`0.5px solid ${G.border}` }}>
+          {weekDays.map((d, i) => {
+            const key = weekKeys[i];
+            const esHoy = key === hoy;
+            const laboral = esDiaLaboral(key, diasLaborales);
+            return (
+              <div key={key} style={{ flex:1, textAlign:"center", padding:"6px 2px",
+                background:esHoy ? `rgba(${G.greenRGB},0.12)` : "transparent",
+                opacity:laboral ? 1 : 0.45 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted, letterSpacing:"0.07em", textTransform:"uppercase" }}>
+                  {DIAS_C[d.getDay()]}
+                </p>
+                <p style={{ margin:"2px 0 0", fontFamily:F.serif, fontWeight:esHoy ? 700 : 400, fontSize:14,
+                  color:esHoy ? G.greenL : G.sub }}>
+                  {d.getDate()}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Time grid */}
+        <div style={{ display:"flex", position:"relative" }}>
+          {/* Hour axis */}
+          <div style={{ width:42, flexShrink:0, borderRight:`0.5px solid ${G.border}` }}>
+            {hourLabels.map(lbl => (
+              <div key={lbl} style={{ height:ROW_H, display:"flex", alignItems:"flex-start",
+                paddingTop:4, paddingRight:6, justifyContent:"flex-end",
+                borderTop:`0.5px solid rgba(255,255,255,0.05)` }}>
+                <span style={{ fontFamily:F.sans, fontSize:9, color:G.muted }}>{lbl}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Day columns */}
+          {weekDays.map((d, i) => {
+            const key = weekKeys[i];
+            const dow = d.getDay();
+            const laboral = esDiaLaboral(key, diasLaborales);
+            const daySlots = slotsPorDia[dow] !== undefined ? slotsPorDia[dow] : slotsGlobal;
+            const dayCitas = (citasPorFecha[key] || []).filter(c => c.estado !== "completada");
+
+            return (
+              <div key={key} style={{ flex:1, position:"relative", height:totalHours*ROW_H,
+                borderLeft:`0.5px solid ${G.border}`,
+                background:key===hoy ? `rgba(${G.greenRGB},0.03)` : "transparent",
+                opacity:laboral ? 1 : 0.5 }}>
+
+                {/* Hour-row click zones */}
+                {hourLabels.map((_, hi) => {
+                  const rowMin = minMin + hi*60;
+                  const nearestSlot = daySlots.find(sl => { const sm = toMin(sl); return sm >= rowMin && sm < rowMin+60; });
+                  return (
+                    <div key={hi}
+                      style={{ position:"absolute", top:hi*ROW_H, left:0, right:0, height:ROW_H,
+                        borderTop:`0.5px solid rgba(255,255,255,0.04)`,
+                        cursor:laboral && nearestSlot ? "pointer" : "default" }}
+                      onClick={() => { if (laboral && nearestSlot) push("nueva-cita", { fechaDefault:key, horaDefault:nearestSlot }); }}
+                    />
+                  );
+                })}
+
+                {/* Appointment blocks */}
+                {dayCitas.map(cita => {
+                  const startMin = toMin(cita.hora);
+                  if (startMin < minMin || startMin >= maxMin) return null;
+                  const sv = data.servicios.find(s => s.nombre === cita.servicio);
+                  const duracion = sv?.duracion || 60;
+                  const top = ((startMin - minMin) / 60) * ROW_H;
+                  const height = Math.max(42, (duracion / 60) * ROW_H);
+                  return (
+                    <div key={cita._id}
+                      onClick={e => { e.stopPropagation(); push("cita-detalle", { cita }); }}
+                      style={{ position:"absolute", top, left:2, right:2, height,
+                        background:blkBg(cita.estado), border:`1px solid ${blkBdr(cita.estado)}`,
+                        borderRadius:8, padding:"3px 5px", overflow:"hidden",
+                        cursor:"pointer", zIndex:2, boxSizing:"border-box" }}>
+                      <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:10,
+                        color:blkTxt(cita.estado), lineHeight:1.3,
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        {cita.hora} · {cita.clientaNombre?.split(" ")[0]}
+                      </p>
+                      {height >= 54 && (
+                        <p style={{ margin:0, fontFamily:F.sans, fontSize:9,
+                          color:blkTxt(cita.estado), opacity:0.75, lineHeight:1.3,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                          {cita.servicio}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -2294,6 +2530,7 @@ function ConfigNotificaciones({ data, toast }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function ClientaApp({ clienta, data, onLogout }) {
   const [tab, setTab] = useState("inicio");
+  const wide = useIsWide();
   const tabs = [
     { id:"inicio",    iconName:"home",        label:"Inicio"    },
     { id:"agendar",   iconName:"calendarPlus", label:"Agendar"   },
@@ -2309,6 +2546,33 @@ function ClientaApp({ clienta, data, onLogout }) {
       default:          return <CInicio    clienta={clienta} data={data} setTab={setTab} />;
     }
   };
+
+  if (wide) {
+    return (
+      <div style={{ minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, display:"flex", flexDirection:"row", overflowX:"hidden" }}>
+        <GlobalStyles />
+        <AppBg />
+        <nav style={{ width:190, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"24px 10px 20px", gap:3, position:"sticky", top:0, height:"100vh", zIndex:20 }}>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.green, padding:"0 4px 18px", margin:0, letterSpacing:"-0.3px" }}>{clienta.nombre?.split(" ")[0] || "Lash Studio"}</p>
+          {tabs.map(t => (
+            <div key={t.id} style={sideNavItmSty(tab === t.id)} onClick={() => setTab(t.id)}>
+              <Icon name={t.iconName} size={17} color={tab===t.id ? G.green : G.muted} strokeWidth={tab===t.id ? 1.8 : 1.5} />
+              <span>{t.label}</span>
+            </div>
+          ))}
+          <div style={{ flex:1 }} />
+          <button style={{ ...s.btnGl, margin:"0 4px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={() => openWA("Hola! Tengo una consulta")}>
+            <Icon name="messageCircle" size={15} color={G.sub} />
+            Consultar
+          </button>
+        </nav>
+        <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:24 }}>
+          {render()}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={s.app}>
       <GlobalStyles />
