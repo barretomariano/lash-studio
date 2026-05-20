@@ -7,8 +7,8 @@ const ADMIN_EMAIL = "maleocampo3@gmail.com";
 const WA_NUM    = "541126509699";
 const DEPLOY_URL = "https://lash-studio-gilt.vercel.app";
 const VAPID_PUBLIC_KEY = "BBsJiZsDUVmNPVoNNvzhlKiJG25M27n7IEKJmf9gCO1CDiAM7D-8pFlxuRQP_CNN_p0utbKR1JOR90HoA78_Hxk";
-const CLOUDINARY_CLOUD  = ""; // fill in: your Cloudinary cloud name
-const CLOUDINARY_PRESET = ""; // fill in: your unsigned upload preset name
+const CLOUDINARY_CLOUD  = "dd178jnmm";
+const CLOUDINARY_PRESET = "lash_studio";
 
 async function subirFoto(file) {
   const dataUrl = await new Promise((resolve) => {
@@ -680,13 +680,30 @@ export default function App() {
 function AdminApp({ data, onLogout }) {
   const [tab, setTab]     = useState("inicio");
   const [stack, setStack] = useState([]);
+  const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
   const wide = useIsWide();
 
-  const push     = (screen, props = {}) => setStack(p => [...p, { screen, props }]);
-  const pop      = ()                   => setStack(p => p.slice(0, -1));
-  const shwToast = (msg)                => setToast(msg);
+  const push = (screen, props = {}) => {
+    if (wide) setModal({ screen, props });
+    else setStack(p => [...p, { screen, props }]);
+  };
+  const pop = () => {
+    if (wide) setModal(null);
+    else setStack(p => p.slice(0, -1));
+  };
+  const shwToast = (msg) => setToast(msg);
   const cur      = stack[stack.length - 1];
+
+  const renderModalContent = (screen, props) => {
+    const p = { ...props, pop, push, data, toast:shwToast, onLogout };
+    switch (screen) {
+      case "cita-detalle":    return <CitaDetalle    {...p} />;
+      case "nueva-cita":      return <NuevaCita      {...p} />;
+      case "clienta-detalle": return <ClientaDetalle {...p} />;
+      default: return null;
+    }
+  };
 
   const navItems = [
     { id:"inicio",   iconName:"home",     label:"Inicio"    },
@@ -721,12 +738,12 @@ function AdminApp({ data, onLogout }) {
 
   if (wide) {
     return (
-      <div style={{ minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, display:"flex", flexDirection:"row", overflowX:"hidden" }}>
+      <div style={{ height:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, display:"flex", flexDirection:"row", overflow:"hidden" }}>
         <GlobalStyles />
         <AppBg />
         {/* Sidebar nav */}
-        <nav style={{ width:190, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"24px 10px 20px", gap:3, position:"sticky", top:0, height:"100vh", zIndex:20 }}>
-          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.green, padding:"0 4px 18px", margin:0, letterSpacing:"-0.3px" }}>Lash Studio</p>
+        <nav style={{ width:190, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"24px 10px 20px", gap:3, height:"100vh", overflowY:"auto", zIndex:20 }}>
+          <p style={{ fontFamily:F.display, fontWeight:400, fontSize:20, letterSpacing:"1px", color:G.green, padding:"0 4px 18px", margin:0 }}>Lash Studio</p>
           {navItems.map(n => (
             <div key={n.id} style={sideNavItmSty(tab === n.id && !cur)} onClick={() => { setStack([]); setTab(n.id); }}>
               <Icon name={n.iconName} size={17} color={tab===n.id && !cur ? G.green : G.muted} strokeWidth={tab===n.id && !cur ? 1.8 : 1.5} />
@@ -738,8 +755,19 @@ function AdminApp({ data, onLogout }) {
         </nav>
         {/* Content */}
         <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:24 }}>
-          {renderScreen()}
+          <div style={{ maxWidth:760, margin:"0 auto" }}>
+            {renderScreen()}
+          </div>
         </div>
+        {/* PC Drawer */}
+        {modal && (
+          <div style={{ position:"fixed", inset:0, zIndex:100 }}>
+            <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.38)", backdropFilter:"blur(2px)" }} onClick={() => setModal(null)} />
+            <div style={{ position:"absolute", top:0, right:0, width:460, height:"100%", background:G.bg, borderLeft:`0.5px solid ${G.border}`, overflowY:"auto", zIndex:1, boxShadow:"-8px 0 32px rgba(0,0,0,0.3)", animation:"slideInRight 0.22s ease" }}>
+              {renderModalContent(modal.screen, modal.props)}
+            </div>
+          </div>
+        )}
         {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
       </div>
     );
@@ -931,6 +959,7 @@ function AdminAgenda({ data, push }) {
   const [diaS,   setDiaS]         = useState(hoy);
   const [vista,  setVista]         = useState("mes");
   const [weekOffset, setWeekOffset] = useState(0);
+  const wide = useIsWide();
 
   const mesD   = new Date(ahora.getFullYear(), ahora.getMonth() + offset, 1);
   const anio   = mesD.getFullYear();
@@ -964,7 +993,7 @@ function AdminAgenda({ data, push }) {
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div><h1 style={s.h1}>Agenda</h1><p style={s.sub}>calendario del estudio</p></div>
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-            {["mes","semana"].map(v => (
+            {["mes","semana","día"].map(v => (
               <button key={v} onClick={() => setVista(v)}
                 style={{ ...s.btnGl, padding:"6px 12px", fontSize:11, textTransform:"capitalize",
                   background:vista===v ? G.greenM : G.glass,
@@ -979,6 +1008,106 @@ function AdminAgenda({ data, push }) {
       </div>
       {vista === "semana"
         ? <AgendaSemana data={data} push={push} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
+        : vista === "día"
+        ? <AgendaDia data={data} push={push} diaInicial={diaS} />
+        : wide
+        ? (
+          <div style={{ display:"flex", height:"calc(100vh - 80px)", overflow:"hidden" }}>
+            {/* Left column: month calendar */}
+            <div style={{ width:300, flexShrink:0, overflowY:"auto", padding:"14px 10px 0", borderRight:`0.5px solid ${G.border}` }}>
+        <div style={{ ...s.card, padding:"14px 10px", marginBottom:14 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+            <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o - 1)}>‹</button>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:16, letterSpacing:"0.5px", color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
+            <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o + 1)}>›</button>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4 }}>
+            {DIAS_C.map(d => <div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:10, color:G.muted, padding:"2px 0" }}>{d}</div>)}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
+            {Array(primDia).fill(null).map((_, i) => <div key={"e" + i} />)}
+            {Array(diasMes).fill(null).map((_, i) => {
+              const dia = i + 1, key = fmtKey(dia);
+              const tiene = !!(citasPorFecha[key]?.length);
+              const bloqExcep = fechasBloq.has(key);
+              const bloqDia   = !esDiaLaboral(key, diasLaborales);
+              const bloq = bloqExcep || bloqDia;
+              const esH = key === hoy, esSel = key === diaS;
+              return (
+                <div key={dia} onClick={() => setDiaS(key)} style={{ textAlign:"center", borderRadius:8, padding:"5px 2px", cursor:"pointer", background:esSel ? G.green : esH ? G.greenM : bloq ? "rgba(224,112,112,0.1)" : "transparent", border:esSel ? "none" : esH ? `0.5px solid ${G.green}` : bloq ? `0.5px solid rgba(224,112,112,0.3)` : "0.5px solid transparent" }}>
+                  <span style={{ fontFamily:F.sans, fontSize:12, color:esSel ? "#0a0a0a" : esH ? G.greenL : bloq ? G.red : G.sub, fontWeight:esSel || esH ? 700 : 400, display:"block" }}>{dia}</span>
+                  {tiene && <div style={{ display:"flex", justifyContent:"center", gap:2, marginTop:2 }}>{Array(Math.min(citasPorFecha[key].length, 3)).fill(null).map((_, pi) => <div key={pi} style={{ width:3, height:3, borderRadius:"50%", background:esSel ? "rgba(10,10,10,0.5)" : G.green }} />)}</div>}
+                  {bloq && !tiene && <div style={{ fontSize:7, color:G.red }}>✕</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+              {citasManana.length > 0 && (
+                <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:12 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div>
+                      <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.greenL }}>mañana</p>
+                      <p style={{ margin:0, fontFamily:F.serif, fontSize:13 }}>{citasManana.length} cita{citasManana.length > 1 ? "s" : ""}</p>
+                    </div>
+                    <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }}
+                      onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); citasManana.forEach(c => { const cl = data.clientas.find(x => x._id === c.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:c.clientaNombre?.split(" ")[0], hora:c.hora })); }); }}>
+                      Avisar →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Right column: day slots */}
+            <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 0" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+                <div style={{ width:5, height:5, borderRadius:"50%", background:G.green }} />
+                <p style={{ margin:0, fontFamily:F.display, fontWeight:400, fontSize:20, letterSpacing:"0.5px", color:G.white }}>{DIAS_F[new Date(diaS + "T12:00:00").getDay()]} {fmtFecha(diaS)}</p>
+                {citasDia.length > 0 && <span style={s.tag}>{citasDia.length} citas</span>}
+                <button style={{ ...s.btnG, width:"auto", padding:"7px 14px", fontSize:11, marginLeft:"auto" }} onClick={() => push("nueva-cita", { fechaDefault:diaS })}>+ agendar</button>
+              </div>
+              {diaEsBloq && (
+                <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:11, color:G.red }}>{fechasBloq.has(diaS) ? "día bloqueado manualmente" : "día no laborable"}</p>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{excepDia?.razon || ""}</p>
+                  </div>
+                  <span style={{ fontSize:18 }}></span>
+                </div>
+              )}
+              {!diaEsBloq && slots.length === 0 && (
+                <div style={{ ...s.card, textAlign:"center", padding:"20px" }}>
+                  <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, margin:0 }}>No configuraste horarios aún</p>
+                </div>
+              )}
+              {!diaEsBloq && slots.map(hora => {
+                const cita = citasDia.find(c => c.hora === hora && c.estado !== "completada");
+                return (
+                  <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.6, cursor:cita ? "pointer" : "default" }}
+                    onClick={() => cita && push("cita-detalle", { cita })}>
+                    <div style={{ background:cita ? G.greenM : "transparent", border:`0.5px solid ${cita ? G.green : G.border}`, borderRadius:8, padding:"5px 8px", minWidth:46, textAlign:"center" }}>
+                      <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:cita ? G.greenL : G.muted }}>{hora}</p>
+                    </div>
+                    {!cita ? (
+                      <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>disponible</p>
+                        <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={e => { e.stopPropagation(); push("nueva-cita", { fechaDefault:diaS, horaDefault:hora }); }}>+ agendar</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ flex:1 }}>
+                          <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontSize:14 }}>{cita.clientaNombre}</p>
+                          <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}</p>
+                        </div>
+                        <span style={s.tag}>{cita.estado}</span>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )
         : <div style={{ padding:"18px 14px 0" }}>
         <div style={{ ...s.card, padding:"14px 10px", marginBottom:18 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
@@ -1093,6 +1222,13 @@ function AdminAgenda({ data, push }) {
 function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
   const hoy = hoyISO();
   const ROW_H = 56;
+  const [nowMin, setNowMin] = useState(() => { const n = new Date(); return n.getHours()*60 + n.getMinutes(); });
+  const gridRef = useState(null);
+
+  useEffect(() => {
+    const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours()*60 + n.getMinutes()); }, 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   // Build 7-day array starting from Monday of current week + offset
   const lunes = mondayOfWeek(weekOffset);
@@ -1252,9 +1388,118 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
                     </div>
                   );
                 })}
+                {/* Real-time now line */}
+                {key === hoy && nowMin >= minMin && nowMin <= maxMin && (
+                  <>
+                    <div style={{ position:"absolute", left:-4, top:((nowMin-minMin)/60)*ROW_H - 5, width:10, height:10, borderRadius:"50%", background:"#e07070", zIndex:10 }} />
+                    <div style={{ position:"absolute", left:0, right:0, top:((nowMin-minMin)/60)*ROW_H, height:1.5, background:"rgba(224,112,112,0.85)", zIndex:9 }} />
+                  </>
+                )}
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Día View ───────────────────────────────────────────────────────────────────
+function AgendaDia({ data, push, diaInicial }) {
+  const hoy = hoyISO();
+  const [dia, setDia] = useState(diaInicial || hoy);
+  const ROW_H = 56;
+  const [nowMin, setNowMin] = useState(() => { const n = new Date(); return n.getHours()*60 + n.getMinutes(); });
+
+  useEffect(() => {
+    const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours()*60 + n.getMinutes()); }, 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
+  const slotsGlobal   = data.getConfig("slots", []);
+  const slotsPorDia   = data.getConfig("slotsPorDia", {});
+  const dow           = new Date(dia + "T12:00:00").getDay();
+  const daySlots      = slotsPorDia[dow] !== undefined ? slotsPorDia[dow] : slotsGlobal;
+
+  const allMins = daySlots.map(toMin);
+  const minMin  = allMins.length ? Math.min(...allMins) : 8*60;
+  const maxMin  = allMins.length ? Math.max(...allMins) + 60 : 18*60;
+  const totalH  = Math.ceil((maxMin - minMin) / 60);
+
+  const hourLabels = Array.from({ length:totalH }, (_, i) => {
+    const m = minMin + i*60;
+    return `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
+  });
+
+  const dayCitas = (data.citas.filter(c => c.fecha === dia && c.estado !== "completada"));
+
+  const blkBg  = (e) => e==="confirmada" ? `rgba(${G.greenRGB},0.18)` : e==="solicitada" ? "rgba(224,184,112,0.18)" : "rgba(240,240,240,0.06)";
+  const blkBdr = (e) => e==="confirmada" ? `rgba(${G.greenRGB},0.55)` : e==="solicitada" ? "rgba(224,184,112,0.55)"  : G.border;
+  const blkTxt = (e) => e==="confirmada" ? G.greenL                   : e==="solicitada" ? G.amber                   : G.muted;
+
+  const stepDia = (n) => {
+    const d = new Date(dia + "T12:00:00");
+    d.setDate(d.getDate() + n);
+    setDia(d.toISOString().slice(0,10));
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 130px)" }}>
+      <div style={{ padding:"10px 14px 8px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+        <button style={{ ...s.btnGl, padding:"6px 14px", fontSize:15 }} onClick={() => stepDia(-1)}>‹</button>
+        <div style={{ textAlign:"center" }}>
+          <p style={{ margin:0, fontFamily:F.display, fontWeight:400, fontSize:16, letterSpacing:"0.5px", color:G.white }}>{DIAS_F[dow]} {fmtFecha(dia)}</p>
+          {dayCitas.length > 0 && <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted }}>{dayCitas.length} cita{dayCitas.length > 1 ? "s" : ""}</p>}
+        </div>
+        <div style={{ display:"flex", gap:6 }}>
+          {dia !== hoy && <button style={{ ...s.btnGl, padding:"6px 10px", fontSize:11 }} onClick={() => setDia(hoy)}>Hoy</button>}
+          <button style={{ ...s.btnGl, padding:"6px 14px", fontSize:15 }} onClick={() => stepDia(1)}>›</button>
+        </div>
+      </div>
+      <div style={{ flex:1, overflowY:"auto", display:"flex" }}>
+        <div style={{ width:42, flexShrink:0, borderRight:`0.5px solid ${G.border}` }}>
+          {hourLabels.map(lbl => (
+            <div key={lbl} style={{ height:ROW_H, display:"flex", alignItems:"flex-start", paddingTop:4, paddingRight:6, justifyContent:"flex-end", borderTop:`0.5px solid rgba(255,255,255,0.05)` }}>
+              <span style={{ fontFamily:F.sans, fontSize:9, color:G.muted }}>{lbl}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ flex:1, position:"relative", height:totalH*ROW_H, background:dia===hoy ? `rgba(${G.greenRGB},0.02)` : "transparent" }}>
+          {hourLabels.map((_, hi) => {
+            const rowMin = minMin + hi*60;
+            const nearestSlot = daySlots.find(sl => { const sm = toMin(sl); return sm >= rowMin && sm < rowMin+60; });
+            return (
+              <div key={hi} style={{ position:"absolute", top:hi*ROW_H, left:0, right:0, height:ROW_H, borderTop:`0.5px solid rgba(255,255,255,0.04)`, cursor:nearestSlot ? "pointer" : "default" }}
+                onClick={() => nearestSlot && push("nueva-cita", { fechaDefault:dia, horaDefault:nearestSlot })} />
+            );
+          })}
+          {dayCitas.map(cita => {
+            const startMin = toMin(cita.hora);
+            if (startMin < minMin || startMin >= maxMin) return null;
+            const sv = data.servicios.find(s => s.nombre === cita.servicio);
+            const duracion = sv?.duracion || 60;
+            const top = ((startMin - minMin) / 60) * ROW_H;
+            const height = Math.max(50, (duracion / 60) * ROW_H);
+            return (
+              <div key={cita._id}
+                onClick={e => { e.stopPropagation(); push("cita-detalle", { cita }); }}
+                style={{ position:"absolute", top, left:4, right:4, height,
+                  background:blkBg(cita.estado), border:`1px solid ${blkBdr(cita.estado)}`,
+                  borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:12, color:blkTxt(cita.estado) }}>{cita.hora} · {cita.clientaNombre}</p>
+                <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:11, color:blkTxt(cita.estado), opacity:0.8 }}>{cita.servicio}</p>
+                {height >= 70 && cita.notas && <p style={{ margin:"3px 0 0", fontFamily:F.sans, fontSize:10, color:blkTxt(cita.estado), opacity:0.6 }}>{cita.notas}</p>}
+                <span style={{ ...s.tag, position:"absolute", top:6, right:6, fontSize:9, padding:"2px 7px" }}>{cita.estado}</span>
+              </div>
+            );
+          })}
+          {dia === hoy && nowMin >= minMin && nowMin <= maxMin && (
+            <>
+              <div style={{ position:"absolute", left:-4, top:((nowMin-minMin)/60)*ROW_H - 5, width:10, height:10, borderRadius:"50%", background:"#e07070", zIndex:10 }} />
+              <div style={{ position:"absolute", left:0, right:0, top:((nowMin-minMin)/60)*ROW_H, height:1.5, background:"rgba(224,112,112,0.85)", zIndex:9 }} />
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -1932,7 +2177,7 @@ function AdminConfig({ data, toast, onLogout }) {
       <div style={s.topBar}><h1 style={s.h1}>Configuración</h1><p style={s.sub}>Parámetros del estudio</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:7, marginBottom:18, flexWrap:"wrap" }}>
-          {["servicios","mensajes","técnico","horarios","estudio","notificaciones"].map(t => (
+          {["servicios","mensajes","técnico","horarios","estudio","notificaciones","apariencia"].map(t => (
             <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : G.glass, borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.sub, padding:"7px 14px", textTransform:"capitalize" }}>{t}</button>
           ))}
         </div>
@@ -1942,6 +2187,33 @@ function AdminConfig({ data, toast, onLogout }) {
         {tab === "horarios"       && <ConfigHorarios       data={data} toast={toast} />}
         {tab === "estudio"        && <ConfigEstudio        data={data} toast={toast} onLogout={onLogout} />}
         {tab === "notificaciones" && <ConfigNotificaciones data={data} toast={toast} />}
+        {tab === "apariencia"     && <ConfigApariencia     data={data} toast={toast} />}
+      </div>
+    </div>
+  );
+}
+
+// ── Config Apariencia ──────────────────────────────────────────────────────────
+function ConfigApariencia({ data, toast }) {
+  const { dark, toggleTheme } = useTheme();
+  return (
+    <div>
+      <div style={{ ...s.cardHero, marginBottom:18 }}>
+        <p style={s.eyebrow}>tema visual</p>
+        <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.6 }}>
+          Cambiá el tema de la app. Tu elección queda guardada en el dispositivo.
+        </p>
+      </div>
+      <div style={{ ...s.card, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"20px" }}>
+        <div>
+          <p style={{ margin:"0 0 3px", fontFamily:F.display, fontWeight:400, fontSize:18, letterSpacing:"0.5px", color:G.white }}>{dark ? "Modo oscuro" : "Modo claro"}</p>
+          <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{dark ? "Fondo oscuro, ideal para ambiente de estudio" : "Fondo claro, ideal para uso en exteriores"}</p>
+        </div>
+        <button onClick={toggleTheme} style={{ background:dark ? G.greenM : G.glass, border:`1.5px solid ${dark ? G.green : G.border}`, borderRadius:50, width:56, height:30, cursor:"pointer", position:"relative", transition:"all 0.25s", flexShrink:0 }}>
+          <div style={{ position:"absolute", top:3, left:dark ? 29 : 3, width:22, height:22, borderRadius:"50%", background:dark ? G.greenL : G.sub, transition:"left 0.25s", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <Icon name={dark ? "moon" : "sun"} size={11} color={dark ? "#0a0a0a" : G.bg} />
+          </div>
+        </button>
       </div>
     </div>
   );
@@ -2009,14 +2281,19 @@ function ConfigServicios({ data, toast }) {
   const [editSv, setEditSv]   = useState(null);
   const [form, setForm]       = useState({ nombre:"", precio:"", duracion:"", descripcion:"", fotos:[] });
   const [saving, setSaving]   = useState(false);
-  const [confirm, setConfirm] = useState(null);
-  const [fotoUrl, setFotoUrl] = useState("");
+  const [confirm, setConfirm]   = useState(null);
+  const [uploading, setUploading] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
-  const abrirNuevo  = () => { setEditSv(null); setForm({ nombre:"", precio:"", duracion:"", descripcion:"", fotos:[] }); setFotoUrl(""); setSheet(true); };
-  const abrirEditar = (sv) => { setEditSv(sv); setForm({ nombre:sv.nombre, precio:String(sv.precio||""), duracion:String(sv.duracion||""), descripcion:sv.descripcion||"", fotos:sv.fotos||[] }); setFotoUrl(""); setSheet(true); };
+  const abrirNuevo  = () => { setEditSv(null); setForm({ nombre:"", precio:"", duracion:"", descripcion:"", fotos:[] }); setSheet(true); };
+  const abrirEditar = (sv) => { setEditSv(sv); setForm({ nombre:sv.nombre, precio:String(sv.precio||""), duracion:String(sv.duracion||""), descripcion:sv.descripcion||"", fotos:sv.fotos||[] }); setSheet(true); };
 
-  const addFoto    = () => { if (!fotoUrl.trim()) return; set("fotos", [...(form.fotos||[]), fotoUrl.trim()]); setFotoUrl(""); };
+  const onFotoFile = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploading(true);
+    try { const url = await subirFoto(file); set("fotos", [...(form.fotos||[]), url]); } catch { toast("Error al subir foto"); }
+    setUploading(false); e.target.value = "";
+  };
   const removeFoto = (i) => set("fotos", form.fotos.filter((_, j) => j !== i));
 
   const guardar = async () => {
@@ -2067,20 +2344,20 @@ function ConfigServicios({ data, toast }) {
               <Field label="duración (min)"><input style={{ ...s.input }} type="number" value={form.duracion} onChange={e => set("duracion", e.target.value)} placeholder="60" /></Field>
             </div>
             <div style={s.div} />
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.white, margin:"0 0 4px" }}>Fotos del servicio</p>
-            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 10px" }}>Pegá URLs de fotos para que las clientas vean el resultado al agendar</p>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:16, letterSpacing:"0.5px", color:G.white, margin:"0 0 4px" }}>Fotos del servicio</p>
+            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 10px" }}>Subí fotos desde tu dispositivo. Se muestran a las clientas al agendar.</p>
             {(form.fotos || []).map((url, i) => (
               <div key={i} style={{ display:"flex", alignItems:"center", gap:9, marginBottom:7 }}>
-                <img src={url} alt="" style={{ width:50, height:50, borderRadius:8, objectFit:"cover" }} onError={e => { e.target.src = ""; }} />
-                <p style={{ flex:1, margin:0, fontFamily:F.sans, fontSize:11, color:G.sub, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{url}</p>
+                <img src={url} alt="" style={{ width:60, height:60, borderRadius:9, objectFit:"cover", flexShrink:0 }} onError={e => { e.target.style.display = "none"; }} />
+                <p style={{ flex:1, margin:0, fontFamily:F.sans, fontSize:10, color:G.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{url.startsWith("data:") ? "imagen local" : url}</p>
                 <button style={{ ...s.btnRed, padding:"4px 8px", fontSize:11 }} onClick={() => removeFoto(i)}>✕</button>
               </div>
             ))}
-            <div style={{ display:"flex", gap:8 }}>
-              <input style={{ ...s.input, flex:1 }} value={fotoUrl} onChange={e => setFotoUrl(e.target.value)} placeholder="https://...foto.jpg" onKeyDown={e => e.key === "Enter" && addFoto()} />
-              <button style={s.btnGl} onClick={addFoto}>+ agregar</button>
-            </div>
-            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted }}>Podés usar fotos de Google Drive, Instagram o cualquier imagen pública</p>
+            <label style={{ ...s.btnGl, display:"flex", alignItems:"center", justifyContent:"center", gap:8, cursor:"pointer", opacity:uploading ? 0.6 : 1, textAlign:"center" }}>
+              <Icon name="camera" size={14} color={G.sub} />
+              {uploading ? "Subiendo..." : "Agregar foto desde dispositivo"}
+              <input type="file" accept="image/*" style={{ display:"none" }} onChange={onFotoFile} disabled={uploading} />
+            </label>
             <div style={s.div} />
             <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : editSv ? "guardar cambios →" : "crear servicio →"}</button>
           </div>
@@ -2668,8 +2945,15 @@ function CInicio({ clienta, data, setTab }) {
   return (
     <div>
       <div style={s.topBar}>
-        <h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1>
-        <p style={s.sub}>Hola, {clienta.nombre?.split(" ")[0]}</p>
+        <p style={{ fontFamily:F.display, fontWeight:400, fontSize:36, letterSpacing:"1px", color:G.greenL, margin:"0 0 2px", lineHeight:1 }}>Hola, {clienta.nombre?.split(" ")[0]}</p>
+        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0" }}>{estudio.nombre || "Lash Studio"} · {new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
+        {hist.length > 0 && (
+          <div style={{ display:"flex", gap:10, marginTop:8, flexWrap:"wrap" }}>
+            <span style={{ ...s.tag, fontSize:10 }}>{hist.length} visita{hist.length !== 1 ? "s" : ""}</span>
+            {curvaFav !== "—" && <span style={{ ...s.tag, fontSize:10 }}>curva fav: {curvaFav}</span>}
+            {clienta.creadaEn && <span style={{ ...s.tag, fontSize:10 }}>desde {clienta.creadaEn?.slice(0,4)}</span>}
+          </div>
+        )}
       </div>
       <div style={{ padding:"18px" }}>
         <PushBanner role="clienta" uid={clienta.uid} />
@@ -2711,7 +2995,7 @@ function CInicio({ clienta, data, setTab }) {
               </div>
               <div style={{ textAlign:"center", background:"rgba(143,189,90,0.22)", border:`1px solid rgba(143,189,90,0.4)`, borderRadius:14, padding:"12px 16px", flexShrink:0, boxShadow:"0 4px 12px rgba(143,189,90,0.15)" }}>
                 <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:28, color:G.greenL, lineHeight:1 }}>{diasHasta === 0 ? "¡hoy!" : diasHasta}</p>
-                {diasHasta !== 0 && <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:"rgba(181,217,138,0.6)", marginTop:3 }}>días</p>}
+                {diasHasta !== 0 && <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted, marginTop:3 }}>días</p>}
               </div>
             </div>
             <button
