@@ -154,22 +154,26 @@ function usePushStatus(role, uid = null) {
     if (!supported) return "unsupported";
     return Notification.permission; // "default" | "granted" | "denied"
   });
+  const [loading, setLoading] = useState(false);
 
   // On mount: if already granted, try to re-register (keeps subs fresh)
   useEffect(() => {
     if (!supported || Notification.permission !== "granted") return;
-    registerPushSubscription(role, uid).then(ok => { if (ok) setStatus("subscribed"); });
+    setLoading(true);
+    registerPushSubscription(role, uid).then(ok => { setStatus(ok ? "subscribed" : "granted"); setLoading(false); });
   }, []);
 
   const subscribe = async () => {
     if (!supported) return;
+    setLoading(true);
     const perm = await Notification.requestPermission();
-    if (perm !== "granted") { setStatus("denied"); return; }
+    if (perm !== "granted") { setStatus("denied"); setLoading(false); return; }
     const ok = await registerPushSubscription(role, uid);
     setStatus(ok ? "subscribed" : "granted");
+    setLoading(false);
   };
 
-  return { status, subscribe, supported };
+  return { status, subscribe, supported, loading };
 }
 
 // ── Fondo app con gradiente sutil ──────────────────────────────────────────────
@@ -439,28 +443,32 @@ function Back({ onClick, label = "Volver" }) {
 }
 
 function PushBanner({ role, uid = null }) {
-  const { status, subscribe, supported } = usePushStatus(role, uid);
-  if (!supported || status === "subscribed" || status === "granted") return null;
+  const { status, subscribe, supported, loading } = usePushStatus(role, uid);
+  const [dismissed, setDismissed] = useState(false);
+  if (!supported || status === "subscribed" || status === "granted" || dismissed) return null;
   const denied = status === "denied";
   return (
-    <div style={{ ...s.card, display:"flex", alignItems:"center", gap:12, marginBottom:14,
+    <div style={{ ...s.card, display:"flex", alignItems:"flex-start", gap:12, marginBottom:14,
       background:`rgba(${G.greenRGB},0.05)`, borderColor:`rgba(${G.greenRGB},0.22)` }}>
-      <Icon name="bell" size={20} color={denied ? G.muted : G.green} strokeWidth={1.5} />
+      <Icon name="bell" size={20} color={denied ? G.muted : G.green} strokeWidth={1.5} style={{ flexShrink:0, marginTop:2 }} />
       <div style={{ flex:1 }}>
-        <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.text }}>
+        <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.text }}>
           {denied ? "Notificaciones bloqueadas" : "Activar notificaciones"}
         </p>
-        <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.sub, lineHeight:1.5 }}>
+        <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.sub, lineHeight:1.6 }}>
           {denied
-            ? "Habilitá los permisos desde la configuración del navegador"
+            ? <>Chrome/Android: candado en barra → Notificaciones → Permitir.<br/>Safari/iOS: Ajustes → Safari → Notificaciones → Permitir.</>
             : "Recibí alertas aunque tengas la app cerrada"}
         </p>
       </div>
-      {!denied && (
-        <button style={{ ...s.btnG, width:"auto", padding:"8px 14px", fontSize:12, flexShrink:0 }} onClick={subscribe}>
-          Activar
-        </button>
-      )}
+      <div style={{ display:"flex", gap:6, alignItems:"center", flexShrink:0 }}>
+        {!denied && (
+          <button style={{ ...s.btnG, width:"auto", padding:"8px 14px", fontSize:12, opacity:loading?0.6:1 }} onClick={subscribe} disabled={loading}>
+            {loading ? "Activando..." : "Activar"}
+          </button>
+        )}
+        <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.muted, padding:"4px 6px", fontSize:16, lineHeight:1 }} onClick={() => setDismissed(true)}>✕</button>
+      </div>
     </div>
   );
 }
@@ -1640,15 +1648,16 @@ function AdminConfig({ data, toast, onLogout }) {
       <div style={s.topBar}><h1 style={s.h1}>Configuración</h1><p style={s.sub}>Parámetros del estudio</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:7, marginBottom:18, flexWrap:"wrap" }}>
-          {["servicios","mensajes","técnico","horarios","estudio"].map(t => (
+          {["servicios","mensajes","técnico","horarios","estudio","notificaciones"].map(t => (
             <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : G.glass, borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.sub, padding:"7px 14px", textTransform:"capitalize" }}>{t}</button>
           ))}
         </div>
-        {tab === "servicios" && <ConfigServicios data={data} toast={toast} />}
-        {tab === "mensajes"  && <ConfigMensajes  data={data} toast={toast} />}
-        {tab === "técnico"   && <ConfigTecnico   data={data} toast={toast} />}
-        {tab === "horarios"  && <ConfigHorarios  data={data} toast={toast} />}
-        {tab === "estudio"   && <ConfigEstudio   data={data} toast={toast} onLogout={onLogout} />}
+        {tab === "servicios"      && <ConfigServicios      data={data} toast={toast} />}
+        {tab === "mensajes"       && <ConfigMensajes       data={data} toast={toast} />}
+        {tab === "técnico"        && <ConfigTecnico        data={data} toast={toast} />}
+        {tab === "horarios"       && <ConfigHorarios       data={data} toast={toast} />}
+        {tab === "estudio"        && <ConfigEstudio        data={data} toast={toast} onLogout={onLogout} />}
+        {tab === "notificaciones" && <ConfigNotificaciones data={data} toast={toast} />}
       </div>
     </div>
   );
@@ -2169,6 +2178,113 @@ function ConfigEstudio({ data, toast, onLogout }) {
         <Icon name="logOut" size={15} color={G.red} />
         Cerrar sesión
       </button>
+    </div>
+  );
+}
+
+// ── Config Notificaciones ──────────────────────────────────────────────────────
+function ConfigNotificaciones({ data, toast }) {
+  const { status, subscribe, supported, loading } = usePushStatus("admin");
+  const [sending, setSending] = useState(false);
+
+  const sendTest = async () => {
+    setSending(true);
+    try {
+      const r = await fetch("/api/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targets: ["admin"], title: "🔔 Notificación de prueba", body: "Las notificaciones push están funcionando correctamente.", url: "/" }),
+      });
+      const j = await r.json();
+      toast(j.sent > 0
+        ? `✓ Notificación enviada (${j.sent} dispositivo${j.sent > 1 ? "s" : ""})`
+        : "Sin suscripciones activas — activá las notificaciones primero");
+    } catch { toast("Error al enviar la notificación"); }
+    setSending(false);
+  };
+
+  const statusLabel = status === "subscribed" ? "Activas en este dispositivo"
+    : status === "denied"    ? "Bloqueadas por el navegador"
+    : !supported             ? "No compatible con este navegador"
+    :                          "Inactivas";
+  const statusColor = status === "subscribed" ? G.green : status === "denied" ? G.red : G.muted;
+
+  return (
+    <div>
+      <div style={{ ...s.cardHero, marginBottom:18 }}>
+        <p style={s.eyebrow}>push notifications</p>
+        <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.6 }}>
+          Recibí alertas de nuevas citas, confirmaciones y recordatorios aunque tengas la app cerrada.
+        </p>
+      </div>
+
+      {/* Status card */}
+      <div style={{ ...s.card, marginBottom:12, display:"flex", alignItems:"center", gap:12 }}>
+        <div style={{ width:9, height:9, borderRadius:"50%", background:statusColor, flexShrink:0 }} />
+        <div style={{ flex:1 }}>
+          <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontWeight:600, fontSize:13, color:G.text }}>{statusLabel}</p>
+          <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.sub }}>
+            {status === "subscribed" ? "Este dispositivo recibirá alertas de citas y recordatorios"
+              : status === "denied"  ? "Desbloqueá en la configuración del navegador — ver instrucciones abajo"
+              : !supported           ? "Usá Chrome, Edge o Safari 16.4+ para activar notificaciones push"
+              :                        "Tocá Activar para comenzar a recibir alertas en este dispositivo"}
+          </p>
+        </div>
+        {status !== "subscribed" && status !== "denied" && supported && (
+          <button style={{ ...s.btnG, width:"auto", padding:"8px 16px", fontSize:12, flexShrink:0, opacity:loading?0.6:1 }} onClick={subscribe} disabled={loading}>
+            {loading ? "Activando..." : "Activar"}
+          </button>
+        )}
+      </div>
+
+      {/* Test notification */}
+      <button
+        style={{ ...s.btnGl, marginBottom:18, width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, opacity:(sending || status !== "subscribed") ? 0.5 : 1 }}
+        onClick={sendTest} disabled={sending || status !== "subscribed"}>
+        <Icon name="bell" size={14} color={G.sub} />
+        {sending ? "Enviando..." : "Enviar notificación de prueba"}
+      </button>
+
+      {/* Cron schedule info */}
+      <div style={{ ...s.card, marginBottom:14 }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text, margin:"0 0 10px" }}>Recordatorios automáticos</p>
+        {[
+          ["Horario de envío", "9:00 am (Buenos Aires)"],
+          ["Frecuencia",       "Cada día"],
+          ["Qué recibís",      "Resumen de citas del día siguiente"],
+          ["Clientas",         "Reciben su recordatorio 24h antes"],
+        ].map(([l, v]) => (
+          <div key={l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+            <span style={{ fontFamily:F.sans, fontSize:12, color:G.sub }}>{l}</span>
+            <span style={s.tag}>{v}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-platform instructions */}
+      <div style={{ ...s.card, background:`rgba(${G.greenRGB},0.03)`, borderColor:`rgba(${G.greenRGB},0.14)` }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.text, margin:"0 0 12px" }}>Cómo activar por plataforma</p>
+        {[
+          { os:"Android (Chrome / Edge)", steps:"1. Instalá la app: menú ⋮ → Agregar a pantalla de inicio.\n2. Abrí la app instalada.\n3. Tocá Activar y aceptá el permiso." },
+          { os:"iOS 16.4+ (Safari)",      steps:"1. Abrí en Safari y tocá Compartir → Agregar a inicio.\n2. Abrí desde el ícono en el inicio.\n3. Tocá Activar notificaciones." },
+          { os:"PC / Mac (Chrome / Edge)",steps:"Tocá Activar y aceptá el diálogo del navegador. No hace falta instalar la app." },
+        ].map(({ os, steps }) => (
+          <div key={os} style={{ marginBottom:12 }}>
+            <p style={{ fontFamily:F.sans, fontWeight:600, fontSize:12, color:G.text, margin:"0 0 4px" }}>{os}</p>
+            <p style={{ fontFamily:F.sans, fontSize:11, color:G.sub, margin:0, lineHeight:1.7, whiteSpace:"pre-line" }}>{steps}</p>
+          </div>
+        ))}
+        {status === "denied" && (
+          <div style={{ marginTop:4, padding:"10px 12px", background:`rgba(224,184,112,0.08)`, borderRadius:8, border:`0.5px solid rgba(224,184,112,0.25)` }}>
+            <p style={{ fontFamily:F.sans, fontWeight:600, fontSize:12, color:G.amber, margin:"0 0 5px" }}>Actualmente bloqueadas — cómo desbloquear:</p>
+            <p style={{ fontFamily:F.sans, fontSize:11, color:G.sub, margin:0, lineHeight:1.7 }}>
+              Chrome: candado en barra de dirección → Notificaciones → Permitir.<br/>
+              Firefox: candado → Permisos → Notificaciones → Permitir.<br/>
+              Safari/iOS: Ajustes del dispositivo → Safari → Notificaciones → activar para este sitio.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
