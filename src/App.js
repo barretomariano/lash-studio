@@ -809,7 +809,42 @@ function AdminApp({ data, onLogout }) {
 }
 
 // ── Admin Inicio ───────────────────────────────────────────────────────────────
-function AdminInicio({ data, push, setTab }) {
+function SolicitudCard({ cita, data, toast, push }) {
+  const [loading, setLoading] = useState(false);
+  const confirmar = async () => {
+    setLoading(true);
+    await data.editarCita(cita._id, { estado:"confirmada" });
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "¡Tu cita está confirmada! 🌿", `${cita.servicio} · ${fmtFecha(cita.fecha)} a las ${cita.hora}`);
+    toast("✓ cita confirmada"); setLoading(false);
+  };
+  const rechazar = async () => {
+    setLoading(true);
+    await data.borrarCita(cita._id);
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "Tu solicitud no pudo confirmarse", "Ese horario no está disponible. Pedí otra fecha.");
+    toast("solicitud rechazada"); setLoading(false);
+  };
+  return (
+    <div style={{ ...s.card, borderColor:"rgba(224,184,112,0.35)", background:"rgba(224,184,112,0.05)", marginBottom:10 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+        <div style={{ flex:1, minWidth:0 }}>
+          <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14, color:G.white }}>{cita.clientaNombre}</p>
+          <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{cita.servicio}</p>
+          <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtFecha(cita.fecha)} · {cita.hora}{cita.notas ? ` · ${cita.notas}` : ""}</p>
+        </div>
+        <button style={{ ...s.btnGl, marginLeft:10, padding:"5px 9px", fontSize:11, flexShrink:0 }}
+          onClick={() => push("cita-detalle", { cita })}>ver →</button>
+      </div>
+      <div style={{ display:"flex", gap:8 }}>
+        <button style={{ ...s.btnG, flex:1, padding:"8px 10px", fontSize:12, opacity:loading?0.6:1 }}
+          onClick={confirmar} disabled={loading}>✓ confirmar</button>
+        <button style={{ ...s.btnRed, flex:1, padding:"8px 10px", fontSize:12, opacity:loading?0.6:1 }}
+          onClick={rechazar} disabled={loading}>✕ rechazar</button>
+      </div>
+    </div>
+  );
+}
+
+function AdminInicio({ data, push, setTab, toast }) {
   const hoy = hoyISO();
   const mes = mesISO();
   const { dark, toggleTheme } = useTheme();
@@ -870,6 +905,20 @@ function AdminInicio({ data, push, setTab }) {
           </div>
         </div>
 
+        {/* Solicitudes pendientes inbox */}
+        {(() => {
+          const solicitudes = data.citas.filter(c => c.estado === "solicitada").sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));
+          if (!solicitudes.length) return null;
+          return (
+            <>
+              <p style={{ fontFamily:F.display, fontWeight:400, fontSize:19, letterSpacing:"0.5px", color:G.amber, margin:"0 0 10px" }}>
+                {solicitudes.length} solicitud{solicitudes.length > 1 ? "es" : ""} pendiente{solicitudes.length > 1 ? "s" : ""}
+              </p>
+              {solicitudes.map(c => <SolicitudCard key={c._id} cita={c} data={data} toast={toast} push={push} />)}
+              <div style={s.div} />
+            </>
+          );
+        })()}
         {/* Pipeline row */}
         {(() => {
           const solicitadas  = data.citas.filter(c => c.fecha === hoy && c.estado === "solicitada").length;
@@ -877,9 +926,9 @@ function AdminInicio({ data, push, setTab }) {
           const completadas  = data.citas.filter(c => c.fecha === hoy && c.estado === "completada").length;
           return (solicitadas + confirmadas + completadas) > 0 ? (
             <div style={{ display:"flex", gap:6, marginBottom:16, flexWrap:"wrap" }}>
-              {solicitadas > 0 && <span style={{ ...s.tag, background:"rgba(224,184,112,0.15)", borderColor:"rgba(224,184,112,0.4)", color:G.amber, cursor:"pointer" }} onClick={() => setTab("agenda")}>{solicitadas} pendiente{solicitadas > 1 ? "s" : ""}</span>}
-              {confirmadas > 0 && <span style={{ ...s.tag, cursor:"pointer" }} onClick={() => setTab("agenda")}>{confirmadas} confirmada{confirmadas > 1 ? "s" : ""}</span>}
-              {completadas > 0 && <span style={{ ...s.tag, background:"rgba(240,240,240,0.06)", borderColor:G.border, color:G.muted, cursor:"pointer" }} onClick={() => setTab("agenda")}>{completadas} completada{completadas > 1 ? "s" : ""}</span>}
+              {solicitadas > 0 && <span style={{ ...s.tag, background:"rgba(224,184,112,0.15)", borderColor:"rgba(224,184,112,0.4)", color:G.amber }}>{solicitadas} pendiente{solicitadas > 1 ? "s" : ""}</span>}
+              {confirmadas > 0 && <span style={s.tag}>{confirmadas} confirmada{confirmadas > 1 ? "s" : ""}</span>}
+              {completadas > 0 && <span style={{ ...s.tag, background:"rgba(240,240,240,0.06)", borderColor:G.border, color:G.muted }}>{completadas} completada{completadas > 1 ? "s" : ""}</span>}
             </div>
           ) : null;
         })()}
@@ -1702,10 +1751,11 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
 
 // ── Detalle Cita ───────────────────────────────────────────────────────────────
 function CitaDetalle({ data, pop, toast, cita:citaInit }) {
-  const [cita, setCita]      = useState(citaInit);
-  const [modalPago, setMP]   = useState(false);
-  const [modalBorrar, setMB] = useState(false);
-  // Pago: soporta efectivo, transferencia o mixto
+  const [cita, setCita]        = useState(citaInit);
+  const [modalPago, setMP]     = useState(false);
+  const [modalBorrar, setMB]   = useState(false);
+  const [reagendando, setReag] = useState(false);
+  const [reagForm, setReagForm] = useState({ fecha:"", hora:"" });
   const [pago, setPago] = useState({ metodo:"efectivo", montoEfectivo:"", montoTransf:"", montoTotal:"" });
 
   const sv      = data.servicios.find(s => s.nombre === cita.servicio);
@@ -1739,6 +1789,38 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
   };
 
   const borrar = async () => { await data.borrarCita(cita._id); toast("cita eliminada"); pop(); };
+
+  const confirmarSolicitud = async () => {
+    await data.editarCita(cita._id, { estado:"confirmada" });
+    setCita(c => ({ ...c, estado:"confirmada" }));
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "¡Tu cita está confirmada! 🌿", `${cita.servicio} · ${fmtFecha(cita.fecha)} a las ${cita.hora}`);
+    toast("✓ cita confirmada");
+  };
+
+  const rechazarSolicitud = async () => {
+    await data.borrarCita(cita._id);
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "Tu solicitud no pudo confirmarse", "Ese horario no está disponible. Pedí otra fecha.");
+    toast("solicitud eliminada"); pop();
+  };
+
+  const slots = (() => {
+    const global = data.getConfig("slots", []);
+    const porDia = data.getConfig("slotsPorDia", {});
+    const dow    = reagForm.fecha ? new Date(reagForm.fecha + "T12:00:00").getDay() : null;
+    return dow !== null && porDia[dow] !== undefined ? porDia[dow] : global;
+  })();
+  const ocupadasReag = reagForm.fecha
+    ? [...data.citas.filter(c => c.fecha === reagForm.fecha && c._id !== cita._id).map(c => c.hora),
+       ...(data.bloques || []).filter(b => b.fecha === reagForm.fecha).map(b => b.horaInicio)]
+    : [];
+
+  const guardarReagenda = async () => {
+    if (!reagForm.fecha || !reagForm.hora) { toast("elegí fecha y hora"); return; }
+    await data.editarCita(cita._id, { fecha:reagForm.fecha, hora:reagForm.hora });
+    setCita(c => ({ ...c, fecha:reagForm.fecha, hora:reagForm.hora }));
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "Tu cita fue reagendada 📅", `${cita.servicio} · ${fmtFecha(reagForm.fecha)} a las ${reagForm.hora}`);
+    toast("✓ cita reagendada"); setReag(false);
+  };
 
   const msgRecordatorio = `Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita el ${fmtFecha(cita.fecha)} a las ${cita.hora} en ${estudio.nombre || "el estudio"}. ¡Te espero! 💚`;
 
@@ -1777,7 +1859,56 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
         {cita.notas && <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:12 }}><p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 4px" }}>notas</p><p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{cita.notas}</p></div>}
         <span style={{ ...s.tag, marginBottom:16, display:"inline-block" }}>{cita.estado}</span>
 
-        {cita.estado !== "completada" && (
+        {cita.estado === "solicitada" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
+            <div style={{ ...s.card, background:"rgba(224,184,112,0.07)", borderColor:"rgba(224,184,112,0.35)", padding:"10px 14px", marginBottom:4 }}>
+              <p style={{ fontFamily:F.sans, fontSize:12, color:G.amber, margin:0 }}>⏳ Solicitud pendiente de confirmación</p>
+            </div>
+            <button style={s.btnG} onClick={confirmarSolicitud}>✓ confirmar cita</button>
+            <button style={{ ...s.btnRed, width:"100%" }} onClick={rechazarSolicitud}>rechazar solicitud</button>
+          </div>
+        )}
+        {cita.estado === "confirmada" && (
+          <>
+            {reagendando ? (
+              <div style={{ ...s.card, marginBottom:14 }}>
+                <p style={{ ...s.eyebrow, marginBottom:10 }}>reagendar cita</p>
+                <Field label="nueva fecha"><input style={s.input} type="date" value={reagForm.fecha} onChange={e => setReagForm(f => ({...f, fecha:e.target.value, hora:""}))} /></Field>
+                {reagForm.fecha && (
+                  <Field label="nuevo horario">
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:6 }}>
+                      {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>Configurá horarios en Config → Horarios</p>}
+                      {slots.map(h => {
+                        const oc = ocupadasReag.includes(h);
+                        return (
+                          <button key={h} disabled={oc} onClick={() => setReagForm(f => ({...f, hora:h}))}
+                            style={{ ...s.btnGl, padding:"8px 12px", fontSize:12, opacity:oc?0.3:1,
+                              background:reagForm.hora===h ? G.greenM : G.glass,
+                              borderColor:reagForm.hora===h ? G.green : G.border,
+                              color:reagForm.hora===h ? G.greenL : G.sub }}>
+                            {h}{oc?" ✕":""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Field>
+                )}
+                <div style={{ display:"flex", gap:9, marginTop:12 }}>
+                  <button style={{ ...s.btnGl, flex:1 }} onClick={() => setReag(false)}>cancelar</button>
+                  <button style={{ ...s.btnG, flex:1 }} onClick={guardarReagenda}>guardar →</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
+                <button style={s.btnG} onClick={() => setMP(true)}>✓ marcar como completada</button>
+                <button style={{ ...s.btnGl, width:"100%" }} onClick={() => setReag(true)}>Reagendar</button>
+                <button style={{ ...s.btnGl, width:"100%" }} onClick={() => openWAClienta(clienta, msgRecordatorio)}>Recordatorio a {clienta?.nombre?.split(" ")[0] || "clienta"}</button>
+                <button style={{ ...s.btnRed, width:"100%" }} onClick={() => setMB(true)}>eliminar cita</button>
+              </div>
+            )}
+          </>
+        )}
+        {!["solicitada","confirmada","completada"].includes(cita.estado) && (
           <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
             <button style={s.btnG} onClick={() => setMP(true)}>✓ marcar como completada</button>
             <button style={{ ...s.btnGl, width:"100%" }} onClick={() => openWAClienta(clienta, msgRecordatorio)}>Recordatorio a {clienta?.nombre?.split(" ")[0] || "clienta"}</button>
@@ -1957,7 +2088,6 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
   const [tab, setTab]     = useState("info");
   const [form, setForm]   = useState({ nombre:cInit.nombre||"", telefono:cInit.telefono||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"", estado:cInit.estado||"activa", mapaTecnico:cInit.mapaTecnico||"" });
   const [editing, setEditing] = useState(false);
-  const [pwModal, setPwModal] = useState(false);
   const [uploadingMapa, setUploadingMapa] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
@@ -1975,11 +2105,6 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
   const curvaFav    = (() => { const cnt = {}; hist.forEach(h => { if (h.curva) cnt[h.curva] = (cnt[h.curva] || 0) + 1; }); return Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0] || c.curva || "—"; })();
 
   const guardar = async () => { await data.editarClientas(c._id, form); setC(p => ({ ...p, ...form })); setEditing(false); toast("✓ guardado"); };
-  const enviarReset = async () => {
-    if (!c.email) { toast("la clienta no tiene email"); return; }
-    await data.resetPasswordClientas(c.email);
-    toast("✓ email de recuperación enviado"); setPwModal(false);
-  };
 
   return (
     <div>
@@ -2024,7 +2149,6 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                 ))
               )}
             </div>
-            <button style={{ ...s.btnGl, width:"100%", marginTop:8 }} onClick={() => setPwModal(true)}>Resetear contraseña</button>
           </div>
         )}
 
@@ -2126,7 +2250,6 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
           </div>
         )}
       </div>
-      {pwModal && <Modal titulo="Resetear contraseña" msg={`Se enviará un email a ${c.email} para que ${c.nombre?.split(" ")[0]} pueda crear una nueva contraseña.`} onOk={enviarReset} onCancel={() => setPwModal(false)} okLabel="enviar email" />}
     </div>
   );
 }
@@ -3287,9 +3410,15 @@ function CAgendar({ clienta, data }) {
 
   const fechaNoDisponible = (fecha) => !fecha ? false : fechasBloq.has(fecha) || !esDiaLaboral(fecha, diasLaborales);
 
+  const waMsg = (() => {
+    const sv = form.servicio?.nombre || "A confirmar con Male";
+    return modo === "noSe"
+      ? `Hola! 🌿 Quiero agendar un turno:\n📅 ${form.fecha} a las ${form.hora}\n💭 No sé bien qué hacerme${form.notas ? `\n${form.notas}` : ""}\n💚 ${clienta.nombre}`
+      : `Hola! 🌿 Quiero agendar:\n${sv}\n📅 ${form.fecha} a las ${form.hora}${form.notas ? `\nNotas: ${form.notas}` : ""}\n💚 ${clienta.nombre}`;
+  })();
+
   const confirmar = async () => {
     setSaving(true);
-    // Crear la cita pendiente en Firebase (estado "solicitada" — Male confirma)
     try {
       await data.crearCita({
         clientaId:     clienta._id,
@@ -3301,17 +3430,10 @@ function CAgendar({ clienta, data }) {
         notas:         form.notas,
         estado:        "solicitada",
       });
-      // Push to admin so Male sees it even without WA
       sendPush(["admin"],
         `Nueva solicitud de turno 🗓`,
         `${clienta.nombre?.split(" ")[0]} quiere: ${form.servicio?.nombre || "A confirmar"} el ${form.fecha} a las ${form.hora}`);
     } catch (e) { console.warn("Firebase write:", e); }
-    // Abrir WA para avisar a Male
-    const sv  = form.servicio?.nombre || "A confirmar con Male";
-    const msg = modo === "noSe"
-      ? `Hola! 🌿 Quiero agendar un turno:\n📅 ${form.fecha} a las ${form.hora}\n💭 No sé bien qué hacerme${form.notas ? `\n${form.notas}` : ""}\n💚 ${clienta.nombre}`
-      : `Hola! 🌿 Quiero agendar:\n${sv}\n📅 ${form.fecha} a las ${form.hora}${form.notas ? `\nNotas: ${form.notas}` : ""}\n💚 ${clienta.nombre}`;
-    openWA(msg);
     setSaving(false);
     setEnviado(true);
   };
@@ -3319,9 +3441,10 @@ function CAgendar({ clienta, data }) {
   if (enviado) return (
     <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, textAlign:"center" }}>
       <div style={{ fontSize:44, marginBottom:12 }}>🌿</div>
-      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.greenL, margin:"0 0 8px" }}>¡solicitud enviada!</p>
-      <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 24px", lineHeight:1.7 }}>Male va a confirmar tu turno por WhatsApp. ¡Nos vemos pronto!</p>
-      <button style={s.btnG} onClick={() => { setEnviado(false); setPaso(1); setForm({ servicio:null, fecha:"", hora:"", notas:"" }); }}>volver →</button>
+      <p style={{ fontFamily:F.display, fontWeight:400, fontSize:28, letterSpacing:"1px", color:G.greenL, margin:"0 0 8px" }}>solicitud enviada</p>
+      <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 24px", lineHeight:1.7 }}>Male recibió tu pedido y te confirma a la brevedad. También podés avisarle por WhatsApp.</p>
+      <button style={{ ...s.btnGl, width:"100%", marginBottom:10 }} onClick={() => openWA(waMsg)}>también avisar por WhatsApp →</button>
+      <button style={s.btnG} onClick={() => { setEnviado(false); setPaso(1); setForm({ servicio:null, fecha:"", hora:"", notas:"" }); }}>volver al inicio →</button>
     </div>
   );
 
@@ -3426,7 +3549,7 @@ function CAgendar({ clienta, data }) {
                 </div>
               ))}
             </div>
-            <button style={{ ...s.btnG, marginTop:14, opacity:saving?0.6:1 }} onClick={confirmar} disabled={saving}>{saving?"enviando...":"confirmar y avisar a Male →"}</button>
+            <button style={{ ...s.btnG, marginTop:14, opacity:saving?0.6:1 }} onClick={confirmar} disabled={saving}>{saving?"enviando...":"enviar solicitud →"}</button>
             <button style={{ ...s.btnGl, marginTop:9, width:"100%" }} onClick={() => setPaso(1)}>modificar</button>
           </div>
         )}
