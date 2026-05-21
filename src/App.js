@@ -357,13 +357,14 @@ function useData() {
   const [clientas, setClientas]       = useState([]);
   const [citas, setCitas]             = useState([]);
   const [excepciones, setExcepciones] = useState([]);
+  const [bloques, setBloques]         = useState([]);
   const [config, setConfig]           = useState({});
   const [loading, setLoading]         = useState(true);
 
   const recargar = useCallback(async () => {
     setLoading(true);
-    const [sv, cl, ct, ex, cfg] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.getVal("config")]);
-    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setConfig(cfg || {});
+    const [sv, cl, ct, ex, bl, cfg] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config")]);
+    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {});
     setLoading(false);
   }, []);
 
@@ -377,6 +378,11 @@ function useData() {
   const borrarServicio = async (id)    => { await db.del(`servicios/${id}`); setServicios(p => p.filter(x => x._id !== id)); };
 
   const crearClientas = async (datos) => {
+    if (!datos.email) {
+      const id = await db.push("clientas", { ...datos, creadaEn:hoyISO() });
+      setClientas(p => [...p, { ...datos, creadaEn:hoyISO(), _id:id, historial:[] }]);
+      return { ok:true, noAccount:true };
+    }
     const pass = genPass();
     const res  = await fbAuth.create(datos.email, pass);
     if (res.error) return { error: res.error.message };
@@ -391,6 +397,9 @@ function useData() {
   const editarCita = async (id, d) => { await db.update(`citas/${id}`, d); setCitas(p => p.map(x => x._id === id ? { ...x, ...d } : x)); };
   const borrarCita = async (id)    => { await db.del(`citas/${id}`); setCitas(p => p.filter(x => x._id !== id)); };
 
+  const crearBloque  = async (d)  => { const id = await db.push("bloques", d); setBloques(p => [...p, { ...d, _id:id }]); return id; };
+  const borrarBloque = async (id) => { await db.del(`bloques/${id}`); setBloques(p => p.filter(x => x._id !== id)); };
+
   const registrarPago = async (clientaId, citaId, reg) => {
     await db.push(`clientas/${clientaId}/historial`, reg);
     await editarCita(citaId, { estado:"completada" });
@@ -401,7 +410,7 @@ function useData() {
     }));
   };
 
-  return { servicios, clientas, citas, excepciones, config, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago };
+  return { servicios, clientas, citas, excepciones, bloques, config, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque };
 }
 
 // ── Componentes UI comunes ─────────────────────────────────────────────────────
@@ -951,14 +960,69 @@ function AdminInicio({ data, push, setTab }) {
   );
 }
 
+// ── Nuevo Bloque (non-client calendar block) ───────────────────────────────────
+function NuevoBloque({ data, onClose, diaDefault, toast }) {
+  const [form, setForm] = useState({ fecha:diaDefault || hoyISO(), horaInicio:"", duracion:60, titulo:"" });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
+  const slots = (() => {
+    const global = data.getConfig("slots", []);
+    const porDia = data.getConfig("slotsPorDia", {});
+    const dow    = form.fecha ? new Date(form.fecha + "T12:00:00").getDay() : null;
+    return dow !== null && porDia[dow] !== undefined ? porDia[dow] : global;
+  })();
+  const guardar = async () => {
+    if (!form.fecha || !form.horaInicio || !form.titulo.trim()) { toast("completá todos los campos"); return; }
+    setSaving(true);
+    await data.crearBloque({ fecha:form.fecha, horaInicio:form.horaInicio, duracion:Number(form.duracion), titulo:form.titulo.trim() });
+    toast("✓ bloque guardado");
+    setSaving(false);
+    onClose();
+  };
+  return (
+    <Sheet titulo="Bloquear horario" onClose={onClose}>
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:0 }}>Bloqueá un horario para reuniones, capacitaciones u otras actividades. No se puede agendar una cita en este slot.</p>
+        <Field label="título"><input style={s.input} value={form.titulo} onChange={e => set("titulo", e.target.value)} placeholder="Reunión, capacitación, descanso…" /></Field>
+        <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} /></Field>
+        <Field label="hora">
+          <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+            {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>Configurá horarios en Config → Horarios</p>}
+            {slots.map(h => (
+              <button key={h} onClick={() => set("horaInicio", h)}
+                style={{ ...s.btnGl, padding:"8px 12px", fontSize:12,
+                  background:form.horaInicio === h ? G.greenM : G.glass,
+                  borderColor:form.horaInicio === h ? G.green : G.border,
+                  color:form.horaInicio === h ? G.greenL : G.sub }}>{h}</button>
+            ))}
+          </div>
+        </Field>
+        <Field label="duración">
+          <div style={{ display:"flex", gap:7 }}>
+            {[[30,"30 min"],[60,"1 h"],[90,"1:30 h"],[120,"2 h"]].map(([v, l]) => (
+              <button key={v} onClick={() => set("duracion", v)}
+                style={{ ...s.btnGl, flex:1, fontSize:12,
+                  background:form.duracion === v ? G.greenM : G.glass,
+                  borderColor:form.duracion === v ? G.green : G.border,
+                  color:form.duracion === v ? G.greenL : G.sub }}>{l}</button>
+            ))}
+          </div>
+        </Field>
+        <button style={{ ...s.btnG, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : "bloquear horario →"}</button>
+      </div>
+    </Sheet>
+  );
+}
+
 // ── Admin Agenda ───────────────────────────────────────────────────────────────
-function AdminAgenda({ data, push }) {
+function AdminAgenda({ data, push, toast }) {
   const hoy    = hoyISO();
   const ahora  = new Date();
   const [offset, setOffset]       = useState(0);
   const [diaS,   setDiaS]         = useState(hoy);
   const [vista,  setVista]         = useState("mes");
   const [weekOffset, setWeekOffset] = useState(0);
+  const [showBloque, setShowBloque] = useState(false);
   const wide = useIsWide();
 
   const mesD   = new Date(ahora.getFullYear(), ahora.getMonth() + offset, 1);
@@ -1002,6 +1066,7 @@ function AdminAgenda({ data, push }) {
                 {v}
               </button>
             ))}
+            <button style={{ ...s.btnGl, width:"auto", padding:"9px 11px", fontSize:12 }} onClick={() => setShowBloque(true)}>⊘ bloquear</button>
             <button style={{ ...s.btnG, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={() => push("nueva-cita")}>+ nueva</button>
           </div>
         </div>
@@ -1214,6 +1279,9 @@ function AdminAgenda({ data, push }) {
         </div>
       </div>
       }
+      {showBloque && (
+        <NuevoBloque data={data} onClose={() => setShowBloque(false)} diaDefault={diaS} toast={toast} />
+      )}
     </div>
   );
 }
@@ -1336,7 +1404,8 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
             const dow = d.getDay();
             const laboral = esDiaLaboral(key, diasLaborales);
             const daySlots = slotsPorDia[dow] !== undefined ? slotsPorDia[dow] : slotsGlobal;
-            const dayCitas = (citasPorFecha[key] || []).filter(c => c.estado !== "completada");
+            const dayCitas  = (citasPorFecha[key] || []).filter(c => c.estado !== "completada");
+            const dayBloques = (data.bloques || []).filter(b => b.fecha === key);
 
             return (
               <div key={key} style={{ flex:1, position:"relative", height:totalHours*ROW_H,
@@ -1385,6 +1454,26 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
                           {cita.servicio}
                         </p>
                       )}
+                    </div>
+                  );
+                })}
+                {/* Bloqueo blocks */}
+                {dayBloques.map(b => {
+                  const startMin = toMin(b.horaInicio);
+                  if (startMin < minMin || startMin >= maxMin) return null;
+                  const top    = ((startMin - minMin) / 60) * ROW_H;
+                  const height = Math.max(30, (b.duracion / 60) * ROW_H);
+                  return (
+                    <div key={b._id}
+                      onClick={e => { e.stopPropagation(); if (window.confirm(`Eliminar bloqueo "${b.titulo}"?`)) data.borrarBloque(b._id); }}
+                      style={{ position:"absolute", top, left:2, right:2, height,
+                        background:"rgba(120,120,120,0.15)", border:`1px dashed ${G.border}`,
+                        borderRadius:8, padding:"3px 5px", overflow:"hidden",
+                        cursor:"pointer", zIndex:2, display:"flex", alignItems:"center" }}>
+                      <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted,
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        ⊘ {b.titulo}
+                      </p>
                     </div>
                   );
                 })}
@@ -1494,6 +1583,23 @@ function AgendaDia({ data, push, diaInicial }) {
               </div>
             );
           })}
+          {/* Bloqueo blocks */}
+          {(data.bloques || []).filter(b => b.fecha === dia).map(b => {
+            const startMin = toMin(b.horaInicio);
+            if (startMin < minMin || startMin >= maxMin) return null;
+            const top    = ((startMin - minMin) / 60) * ROW_H;
+            const height = Math.max(30, (b.duracion / 60) * ROW_H);
+            return (
+              <div key={b._id}
+                onClick={e => { e.stopPropagation(); if (window.confirm(`Eliminar bloqueo "${b.titulo}"?`)) data.borrarBloque(b._id); }}
+                style={{ position:"absolute", top, left:4, right:4, height,
+                  background:"rgba(120,120,120,0.15)", border:`1px dashed ${G.border}`,
+                  borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2,
+                  display:"flex", alignItems:"center" }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>⊘ {b.titulo}</p>
+              </div>
+            );
+          })}
           {dia === hoy && nowMin >= minMin && nowMin <= maxMin && (
             <>
               <div style={{ position:"absolute", left:-4, top:((nowMin-minMin)/60)*ROW_H - 5, width:10, height:10, borderRadius:"50%", background:"#e07070", zIndex:10 }} />
@@ -1511,13 +1617,24 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
   const [form, setForm] = useState({ clientaId:clientaIdDefault, fecha:fechaDefault, hora:horaDefault, servicio:"", notas:"" });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
+  const initNombre = clientaIdDefault ? (data.clientas.find(c => c._id === clientaIdDefault)?.nombre || "") : "";
+  const [busq, setBusq]         = useState(initNombre);
+  const [showDrop, setShowDrop] = useState(false);
+  const clientasFiltradas = data.clientas
+    .filter(c => !busq || c.nombre?.toLowerCase().includes(busq.toLowerCase()))
+    .sort((a, b) => a.nombre?.localeCompare(b.nombre))
+    .slice(0, 20);
   const slots = (() => {
     const global = data.getConfig("slots", []);
     const porDia = data.getConfig("slotsPorDia", {});
     const dow    = form.fecha ? new Date(form.fecha + "T12:00:00").getDay() : null;
     return dow !== null && porDia[dow] !== undefined ? porDia[dow] : global;
   })();
-  const ocupadas = data.citas.filter(c => c.fecha === form.fecha && c.estado !== "completada").map(c => c.hora);
+  const ocupadasBloques = (data.bloques || []).filter(b => b.fecha === form.fecha).map(b => b.horaInicio);
+  const ocupadas = [
+    ...data.citas.filter(c => c.fecha === form.fecha).map(c => c.hora),
+    ...ocupadasBloques,
+  ];
 
   const guardar = async () => {
     if (!form.clientaId || !form.fecha || !form.hora || !form.servicio) { toast("completá todos los campos"); return; }
@@ -1539,10 +1656,28 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           <Field label="clienta">
-            <select style={{ ...s.input, appearance:"none" }} value={form.clientaId} onChange={e => set("clientaId", e.target.value)}>
-              <option value="">seleccionar clienta...</option>
-              {[...data.clientas].sort((a, b) => a.nombre?.localeCompare(b.nombre)).map(c => <option key={c._id} value={c._id}>{c.nombre}</option>)}
-            </select>
+            <div style={{ position:"relative" }}>
+              <input
+                style={s.input}
+                placeholder="Buscar clienta..."
+                value={busq}
+                autoComplete="off"
+                onChange={e => { setBusq(e.target.value); set("clientaId", ""); setShowDrop(true); }}
+                onFocus={() => setShowDrop(true)}
+                onBlur={() => setTimeout(() => setShowDrop(false), 180)}
+              />
+              {showDrop && clientasFiltradas.length > 0 && (
+                <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:60, background:G.card, border:`0.5px solid ${G.border}`, borderRadius:10, maxHeight:200, overflowY:"auto", boxShadow:`0 8px 24px ${G.shadow}` }}>
+                  {clientasFiltradas.map(c => (
+                    <div key={c._id}
+                      onMouseDown={() => { set("clientaId", c._id); setBusq(c.nombre); setShowDrop(false); }}
+                      style={{ padding:"10px 14px", cursor:"pointer", fontFamily:F.sans, fontSize:13, color:G.text, borderBottom:`0.5px solid ${G.border}` }}>
+                      {c.nombre}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </Field>
           <Field label="servicio">
             <select style={{ ...s.input, appearance:"none" }} value={form.servicio} onChange={e => set("servicio", e.target.value)}>
@@ -1723,13 +1858,15 @@ function AdminClientas({ data, push, toast }) {
     });
 
   const guardar = async () => {
-    if (!form.nombre || !form.email) { toast("nombre y email son obligatorios"); return; }
+    if (!form.nombre.trim()) { toast("el nombre es obligatorio"); return; }
     setSaving(true);
     const res = await data.crearClientas(form);
     setSaving(false);
     if (res.error) { toast("error: " + res.error); return; }
     setSheet(false);
-    setCreds({ email:res.email, pass:res.pass, nombre:form.nombre });
+    setCreds(res.noAccount
+      ? { noAccount:true, nombre:form.nombre }
+      : { email:res.email, pass:res.pass, nombre:form.nombre, telefono:form.telefono });
     setForm({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"" });
   };
 
@@ -1774,7 +1911,7 @@ function AdminClientas({ data, push, toast }) {
         <Sheet titulo="Nueva Clienta" onClose={() => setSheet(false)}>
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             <Field label="nombre y apellido *"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="Nombre Apellido" /></Field>
-            <Field label="email * (será su usuario)" hint="Lo usará para iniciar sesión en la app"><input style={s.input} type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="email@ejemplo.com" /></Field>
+            <Field label="email" hint="Opcional — sin email la clienta no tendrá acceso al panel"><input style={s.input} type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="email@ejemplo.com (opcional)" /></Field>
             <Field label="teléfono"><input style={s.input} type="tel" value={form.telefono} onChange={e => set("telefono", e.target.value)} placeholder="11 XXXX-XXXX" /></Field>
             <div style={s.div} />
             {opcCurvas.length > 0 && <Field label="curva habitual"><Chips options={opcCurvas} value={form.curva} onChange={v => set("curva", v)} /></Field>}
@@ -1784,20 +1921,29 @@ function AdminClientas({ data, push, toast }) {
             <div style={s.div} />
             <Field label="alergias / condiciones"><input style={s.input} value={form.alergias} onChange={e => set("alergias", e.target.value)} placeholder="Ninguna, o especificar..." /></Field>
             <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e => set("observaciones", e.target.value)} placeholder="preferencias, notas..." /></Field>
-            <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>{saving ? "creando cuenta..." : "crear clienta →"}</button>
-            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, textAlign:"center" }}>Se genera una contraseña automática para enviarle por WhatsApp</p>
+            <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : "crear clienta →"}</button>
+            <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, textAlign:"center" }}>Con email: se genera contraseña para enviar por WhatsApp. Sin email: contacto CRM sin acceso al panel.</p>
           </div>
         </Sheet>
       )}
 
       {creds && (
-        <Sheet titulo="✓ Clienta creada" onClose={() => setCreds(null)}>
-          <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
-            <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"0 0 8px" }}>accesos para {creds.nombre}:</p>
-            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 4px" }}><b style={{ color:G.white }}>{creds.email}</b></p>
-            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}>Contraseña: <b style={{ color:G.white, letterSpacing:"0.1em" }}>{creds.pass}</b></p>
-          </div>
-          <button style={s.btnG} onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const estudio = data.getConfig("estudio", {}); openWAClienta({ telefono:creds.telefono }, fillMsg(tpl.bienvenida || DEFAULT_MENSAJES.bienvenida, { nombre:creds.nombre?.split(" ")[0], estudio:estudio.nombre || "Lash Studio", email:creds.email, pass:creds.pass, url:DEPLOY_URL })); setCreds(null); }}>Enviar por WhatsApp →</button>
+        <Sheet titulo={creds.noAccount ? "✓ Contacto guardado" : "✓ Clienta creada"} onClose={() => setCreds(null)}>
+          {creds.noAccount ? (
+            <>
+              <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
+                <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}><b style={{ color:G.white }}>{creds.nombre}</b> fue guardada como contacto CRM.</p>
+              </div>
+              <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14 }}>Sin email, la clienta no puede acceder al panel de la app. Podés agregar su email desde la ficha para crear su cuenta cuando quiera.</p>
+            </>
+          ) : (
+            <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
+              <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"0 0 8px" }}>accesos para {creds.nombre}:</p>
+              <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 4px" }}><b style={{ color:G.white }}>{creds.email}</b></p>
+              <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}>Contraseña: <b style={{ color:G.white, letterSpacing:"0.1em" }}>{creds.pass}</b></p>
+            </div>
+          )}
+          {!creds.noAccount && <button style={s.btnG} onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const estudio = data.getConfig("estudio", {}); openWAClienta({ telefono:creds.telefono }, fillMsg(tpl.bienvenida || DEFAULT_MENSAJES.bienvenida, { nombre:creds.nombre?.split(" ")[0], estudio:estudio.nombre || "Lash Studio", email:creds.email, pass:creds.pass, url:DEPLOY_URL })); setCreds(null); }}>Enviar por WhatsApp →</button>}
           <button style={{ ...s.btnGl, marginTop:9, width:"100%" }} onClick={() => setCreds(null)}>cerrar</button>
         </Sheet>
       )}
@@ -1809,9 +1955,10 @@ function AdminClientas({ data, push, toast }) {
 function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
   const [c, setC]         = useState(cInit);
   const [tab, setTab]     = useState("info");
-  const [form, setForm]   = useState({ nombre:cInit.nombre||"", telefono:cInit.telefono||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"", estado:cInit.estado||"activa" });
+  const [form, setForm]   = useState({ nombre:cInit.nombre||"", telefono:cInit.telefono||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"", estado:cInit.estado||"activa", mapaTecnico:cInit.mapaTecnico||"" });
   const [editing, setEditing] = useState(false);
   const [pwModal, setPwModal] = useState(false);
+  const [uploadingMapa, setUploadingMapa] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
   const opcCurvas = data.getConfig("curvas",   []);
@@ -1892,6 +2039,30 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
             <div style={s.card}>
               <Field label="alergias"><input style={s.input} value={form.alergias} onChange={e => set("alergias", e.target.value)} onBlur={() => { data.editarClientas(c._id, { alergias:form.alergias }); toast("✓"); }} /></Field>
               <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e => set("observaciones", e.target.value)} onBlur={() => { data.editarClientas(c._id, { observaciones:form.observaciones }); toast("✓"); }} /></Field>
+            </div>
+            <div style={s.card}>
+              <p style={{ ...s.eyebrow, marginBottom:10 }}>mapa técnico</p>
+              {form.mapaTecnico ? (
+                <div style={{ position:"relative", marginBottom:10 }}>
+                  <img src={form.mapaTecnico} alt="mapa técnico" style={{ width:"100%", borderRadius:10, objectFit:"cover", maxHeight:280, display:"block" }} />
+                  <button onClick={async () => { await data.editarClientas(c._id, { mapaTecnico:"" }); set("mapaTecnico", ""); toast("Foto eliminada"); }}
+                    style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:12 }}>✕</button>
+                </div>
+              ) : (
+                <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:10 }}>Sin foto de mapa técnico aún</p>
+              )}
+              <label style={{ ...s.btnGl, display:"flex", alignItems:"center", gap:8, cursor:"pointer", opacity:uploadingMapa?0.6:1, justifyContent:"center" }}>
+                <Icon name="camera" size={14} color={G.sub} />
+                {uploadingMapa ? "Subiendo..." : form.mapaTecnico ? "Cambiar foto" : "Subir mapa técnico"}
+                <input type="file" accept="image/*" style={{ display:"none" }} disabled={uploadingMapa}
+                  onChange={async (e) => {
+                    const file = e.target.files[0]; if (!file) return;
+                    setUploadingMapa(true);
+                    try { const url = await subirFoto(file); await data.editarClientas(c._id, { mapaTecnico:url }); set("mapaTecnico", url); toast("Foto guardada"); }
+                    catch { toast("Error al subir foto"); }
+                    setUploadingMapa(false); e.target.value="";
+                  }} />
+              </label>
             </div>
           </div>
         )}
