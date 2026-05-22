@@ -51,6 +51,7 @@ const fbAuth = {
   signIn:  async (email, pass) => (await fetch(`${AUTH_URL}:signInWithPassword?key=${API_KEY}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email, password:pass, returnSecureToken:true }) })).json(),
   create:  async (email, pass) => (await fetch(`${AUTH_URL}:signUp?key=${API_KEY}`,             { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email, password:pass, returnSecureToken:true }) })).json(),
   resetPw: async (email)       => (await fetch(`${AUTH_URL}:sendOobCode?key=${API_KEY}`,        { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ requestType:"PASSWORD_RESET", email }) })).json(),
+  updatePass: async (idToken, newPass) => (await fetch(`${AUTH_URL}:update?key=${API_KEY}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ idToken, password:newPass, returnSecureToken:true }) })).json(),
 };
 
 // helper: construir link WA con el teléfono de una clienta (o el de Male como fallback)
@@ -348,6 +349,18 @@ const GlobalStyles = () => (
     select option { background:${G.bg}; color:${G.text}; }
     button:active { transform:scale(0.97) !important; }
     ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:${G.border}; border-radius:4px; }
+    @keyframes fadeInTab {
+      from { opacity:0; transform:translateY(6px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes scaleIn {
+      from { opacity:0; transform:scale(0.95); }
+      to   { opacity:1; transform:scale(1); }
+    }
+    @keyframes slideInFromRight {
+      from { transform:translateX(100%); opacity:0.6; }
+      to   { transform:translateX(0); opacity:1; }
+    }
   `}</style>
 );
 
@@ -386,8 +399,8 @@ function useData() {
     const pass = genPass();
     const res  = await fbAuth.create(datos.email, pass);
     if (res.error) return { error: res.error.message };
-    const id = await db.push("clientas", { ...datos, uid:res.localId, creadaEn:hoyISO() });
-    setClientas(p => [...p, { ...datos, uid:res.localId, creadaEn:hoyISO(), _id:id, historial:[] }]);
+    const id = await db.push("clientas", { ...datos, uid:res.localId, appPass:pass, creadaEn:hoyISO() });
+    setClientas(p => [...p, { ...datos, uid:res.localId, appPass:pass, creadaEn:hoyISO(), _id:id, historial:[] }]);
     return { ok:true, pass, email:datos.email };
   };
   const editarClientas        = async (id, d) => { await db.update(`clientas/${id}`, d); setClientas(p => p.map(x => x._id === id ? { ...x, ...d } : x)); };
@@ -461,7 +474,7 @@ function Sheet({ titulo, onClose, children }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", backdropFilter:"blur(10px)", zIndex:100, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background:G.bg, border:`0.5px solid ${G.border}`, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:430, maxHeight:"92vh", overflowY:"auto", padding:"18px 20px 44px", boxShadow:"0 -8px 32px rgba(0,0,0,0.5)" }}>
+      <div style={{ background:G.bg, border:`0.5px solid ${G.border}`, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:430, maxHeight:"92vh", overflowY:"auto", WebkitOverflowScrolling:"touch", overscrollBehavior:"contain", padding:"18px 20px 44px", boxShadow:"0 -8px 32px rgba(0,0,0,0.5)", animation:"slideInUp 0.32s cubic-bezier(0.4,0,0.2,1)" }}>
         <div style={{ width:36, height:4, background:G.border, borderRadius:2, margin:"0 auto 18px" }} />
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
           <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:21, color:G.text, margin:0 }}>{titulo}</p>
@@ -786,7 +799,7 @@ function AdminApp({ data, onLogout }) {
     <div style={s.app}>
       <GlobalStyles />
       <AppBg />
-      <div style={s.screen}>{renderScreen()}</div>
+      <div key={cur ? `${cur.screen}:${cur.props?.cita?._id || cur.props?.clienta?._id || ""}` : tab} style={{ ...s.screen, ...(cur ? { animation:"slideInFromRight 0.28s cubic-bezier(0.4,0,0.2,1)" } : { animation:"fadeInTab 0.18s ease" }) }}>{renderScreen()}</div>
       {!cur && (
         <button style={s.fab} onClick={() => setTab("agenda")} title="Ir a agenda">
           <Icon name="calendarPlus" size={22} color="#0a0a0a" strokeWidth={1.9} />
@@ -983,7 +996,7 @@ function AdminInicio({ data, push, setTab, toast }) {
                     <p style={{ margin:0, ...s.sub, fontSize:10 }}>{dias ? `hace ${dias}d` : ""}{ult?.servicio ? ` · ${ult.servicio}` : ""}</p>
                   </div>
                   <button style={{ ...s.btnGl, fontSize:11, padding:"5px 10px", borderColor:"rgba(37,211,102,0.3)", color:G.greenL }}
-                    onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); openWAClienta(c, fillMsg(tpl.service14d || DEFAULT_MENSAJES.service14d, { nombre:c.nombre?.split(" ")[0] })); }}>💬</button>
+                    onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); openWAClienta(c, fillMsg(tpl.service14d || DEFAULT_MENSAJES.service14d, { nombre:c.nombre?.split(" ")[0] })); }}><Icon name="messageCircle" size={13} color="rgba(37,211,102,0.8)" /></button>
                 </div>
               );
             })}
@@ -1115,7 +1128,7 @@ function AdminAgenda({ data, push, toast }) {
                 {v}
               </button>
             ))}
-            <button style={{ ...s.btnGl, width:"auto", padding:"9px 11px", fontSize:12 }} onClick={() => setShowBloque(true)}>⊘ bloquear</button>
+            <button style={{ ...s.btnGl, width:"auto", padding:"9px 11px", fontSize:12, display:"flex", alignItems:"center", gap:5 }} onClick={() => setShowBloque(true)}><Icon name="x" size={12} color={G.sub} /> bloquear</button>
             <button style={{ ...s.btnG, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={() => push("nueva-cita")}>+ nueva</button>
           </div>
         </div>
@@ -1317,7 +1330,7 @@ function AdminAgenda({ data, push, toast }) {
                     </div>
                     <div style={{ display:"flex", gap:6 }}>
                       <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}
-                        onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }}>💬</button>
+                        onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }}><Icon name="messageCircle" size={13} color="rgba(37,211,102,0.8)" /></button>
                       <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => push("cita-detalle", { cita })}>→</button>
                     </div>
                   </>
@@ -1520,8 +1533,8 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
                         borderRadius:8, padding:"3px 5px", overflow:"hidden",
                         cursor:"pointer", zIndex:2, display:"flex", alignItems:"center" }}>
                       <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted,
-                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                        ⊘ {b.titulo}
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:3 }}>
+                        <Icon name="x" size={9} color={G.muted} /> {b.titulo}
                       </p>
                     </div>
                   );
@@ -1645,7 +1658,7 @@ function AgendaDia({ data, push, diaInicial }) {
                   background:"rgba(120,120,120,0.15)", border:`1px dashed ${G.border}`,
                   borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2,
                   display:"flex", alignItems:"center" }}>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>⊘ {b.titulo}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted, display:"flex", alignItems:"center", gap:4 }}><Icon name="x" size={11} color={G.muted} /> {b.titulo}</p>
               </div>
             );
           })}
@@ -1838,7 +1851,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
             </div>
             {/* WA con número de la clienta */}
             <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:10, width:36, height:36, cursor:"pointer", fontSize:17, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}
-              onClick={() => openWAClienta(clienta, msgRecordatorio)}>💬</button>
+              onClick={() => openWAClienta(clienta, msgRecordatorio)}><Icon name="messageCircle" size={17} color="rgba(37,211,102,0.8)" /></button>
           </div>
         )}
         <div style={{ ...s.card, marginBottom:12 }}>
@@ -1862,7 +1875,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
         {cita.estado === "solicitada" && (
           <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
             <div style={{ ...s.card, background:"rgba(224,184,112,0.07)", borderColor:"rgba(224,184,112,0.35)", padding:"10px 14px", marginBottom:4 }}>
-              <p style={{ fontFamily:F.sans, fontSize:12, color:G.amber, margin:0 }}>⏳ Solicitud pendiente de confirmación</p>
+              <p style={{ fontFamily:F.sans, fontSize:12, color:G.amber, margin:0, display:"flex", alignItems:"center", gap:6 }}><Icon name="clock" size={13} color={G.amber} /> Solicitud pendiente de confirmación</p>
             </div>
             <button style={s.btnG} onClick={confirmarSolicitud}>✓ confirmar cita</button>
             <button style={{ ...s.btnRed, width:"100%" }} onClick={rechazarSolicitud}>rechazar solicitud</button>
@@ -2089,6 +2102,10 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
   const [form, setForm]   = useState({ nombre:cInit.nombre||"", telefono:cInit.telefono||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"", estado:cInit.estado||"activa", mapaTecnico:cInit.mapaTecnico||"" });
   const [editing, setEditing] = useState(false);
   const [uploadingMapa, setUploadingMapa] = useState(false);
+  const [showPass, setShowPass]     = useState(false);
+  const [resetModal, setResetModal] = useState(false);
+  const [resetting, setResetting]   = useState(false);
+  const [newPassGen, setNewPassGen]  = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
   const opcCurvas = data.getConfig("curvas",   []);
@@ -2105,6 +2122,21 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
   const curvaFav    = (() => { const cnt = {}; hist.forEach(h => { if (h.curva) cnt[h.curva] = (cnt[h.curva] || 0) + 1; }); return Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0] || c.curva || "—"; })();
 
   const guardar = async () => { await data.editarClientas(c._id, form); setC(p => ({ ...p, ...form })); setEditing(false); toast("✓ guardado"); };
+
+  const resetearContraseña = async () => {
+    setResetting(true);
+    try {
+      const newPass = genPass();
+      const signIn = await fbAuth.signIn(c.email, c.appPass);
+      if (signIn.error) { toast("No se pudo resetear: " + (signIn.error.message || "error")); setResetting(false); return; }
+      await fbAuth.updatePass(signIn.idToken, newPass);
+      await data.editarClientas(c._id, { appPass:newPass });
+      setC(p => ({ ...p, appPass:newPass }));
+      setNewPassGen(newPass);
+      toast("✓ contraseña actualizada");
+    } catch { toast("Error al resetear contraseña"); }
+    setResetting(false);
+  };
 
   return (
     <div>
@@ -2141,14 +2173,32 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                   <button style={s.btnG} onClick={guardar}>guardar →</button>
                 </>
               ) : (
-                [["teléfono", c.telefono || "—"], ["email", c.email || "—"], ["estado", c.estado || "activa"], ["clienta desde", fmtFecha(c.creadaEn)]].map(([k, v]) => (
-                  <div key={k} style={{ display:"flex", justifyContent:"space-between" }}>
-                    <span style={{ ...s.label, margin:0 }}>{k}</span>
-                    <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</span>
-                  </div>
-                ))
+                <>
+                  {[["teléfono", c.telefono || "—"], ["email", c.email || "—"], ["estado", c.estado || "activa"], ["clienta desde", fmtFecha(c.creadaEn)]].map(([k, v]) => (
+                    <div key={k} style={{ display:"flex", justifyContent:"space-between" }}>
+                      <span style={{ ...s.label, margin:0 }}>{k}</span>
+                      <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</span>
+                    </div>
+                  ))}
+                  {c.appPass && c.email && (
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <span style={{ ...s.label, margin:0 }}>contraseña app</span>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <span style={{ fontFamily:"monospace", fontSize:13, color:G.sub, letterSpacing:"0.08em" }}>{showPass ? c.appPass : "••••••"}</span>
+                        <button onClick={() => setShowPass(p => !p)} style={{ background:"transparent", border:"none", cursor:"pointer", padding:4, display:"flex", alignItems:"center" }}>
+                          <Icon name={showPass ? "unlock" : "lock"} size={14} color={G.muted} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
+            {c.email && c.appPass && (
+              <button style={{ ...s.btnGl, width:"100%", marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={() => setResetModal(true)}>
+                <Icon name="key" size={13} color={G.sub} /> Nueva contraseña
+              </button>
+            )}
           </div>
         )}
 
@@ -2168,7 +2218,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
               <p style={{ ...s.eyebrow, marginBottom:10 }}>mapa técnico</p>
               {form.mapaTecnico ? (
                 <div style={{ position:"relative", marginBottom:10 }}>
-                  <img src={form.mapaTecnico} alt="mapa técnico" style={{ width:"100%", borderRadius:10, objectFit:"cover", maxHeight:280, display:"block" }} />
+                  <img src={form.mapaTecnico} alt="mapa técnico" loading="lazy" style={{ width:"100%", borderRadius:10, objectFit:"cover", maxHeight:280, display:"block" }} />
                   <button onClick={async () => { await data.editarClientas(c._id, { mapaTecnico:"" }); set("mapaTecnico", ""); toast("Foto eliminada"); }}
                     style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:12 }}>✕</button>
                 </div>
@@ -2250,6 +2300,37 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
           </div>
         )}
       </div>
+      {resetModal && (
+        <Sheet titulo="Contraseña de acceso" onClose={() => { setResetModal(false); setNewPassGen(""); }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:`rgba(${G.greenRGB},0.2)` }}>
+              <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 6px" }}>contraseña actual de {c.nombre?.split(" ")[0]}</p>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <span style={{ fontFamily:"monospace", fontSize:16, color:G.sub, letterSpacing:"0.12em" }}>{showPass ? c.appPass : "••••••"}</span>
+                <button onClick={() => setShowPass(p => !p)} style={{ background:"transparent", border:"none", cursor:"pointer", padding:6, display:"flex", alignItems:"center" }}>
+                  <Icon name={showPass ? "unlock" : "lock"} size={16} color={G.muted} />
+                </button>
+              </div>
+            </div>
+            {newPassGen ? (
+              <>
+                <div style={{ ...s.card, background:"rgba(143,189,90,0.08)", borderColor:`rgba(${G.greenRGB},0.35)` }}>
+                  <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 6px" }}>nueva contraseña generada</p>
+                  <p style={{ fontFamily:"monospace", fontSize:20, color:G.greenL, letterSpacing:"0.16em", margin:0, fontWeight:700 }}>{newPassGen}</p>
+                </div>
+                <button style={s.btnG} onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const estudio = data.getConfig("estudio", {}); openWAClienta(c, fillMsg(tpl.bienvenida || DEFAULT_MENSAJES.bienvenida, { nombre:c.nombre?.split(" ")[0], estudio:estudio.nombre || "Lash Studio", email:c.email, pass:newPassGen, url:DEPLOY_URL })); }}>Compartir por WhatsApp →</button>
+                <button style={{ ...s.btnGl, width:"100%" }} onClick={() => { setResetModal(false); setNewPassGen(""); }}>cerrar</button>
+              </>
+            ) : (
+              <>
+                <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:0, lineHeight:1.6 }}>Generará una nueva contraseña aleatoria y actualizará el acceso de la clienta automáticamente.</p>
+                <button style={{ ...s.btnG, opacity:resetting?0.6:1 }} onClick={resetearContraseña} disabled={resetting}>{resetting ? "actualizando..." : "Generar nueva contraseña →"}</button>
+                <button style={{ ...s.btnGl, width:"100%" }} onClick={() => setResetModal(false)}>cancelar</button>
+              </>
+            )}
+          </div>
+        </Sheet>
+      )}
     </div>
   );
 }
