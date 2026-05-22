@@ -153,7 +153,7 @@ const mondayOfWeek = (weekOffset) => {
 // WA message templates — stored in /config/mensajes, editable by admin
 const DEFAULT_MENSAJES = {
   service14d:  "Hola {nombre}! 🌿 ¿Cómo están tus pestañas? Ya es momento del service. ¡Te espero! 💚",
-  recordatorio:"Hola {nombre}! 🌿 Te recuerdo tu cita mañana a las {hora}. ¡Te espero! 💚",
+  recordatorio:"Hola {nombre}! 🌿 Te recuerdo tu turno mañana a las {hora}. ¡Te espero! 💚",
   bienvenida:  "Hola {nombre}! 🌿 Te creé tu acceso en {estudio}.\n\nEmail: {email}\nContraseña: {pass}\n\nEntrá desde: {url}\n\n¡Podés ver tus citas, historial y más! 💚",
 };
 const fillMsg = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] !== undefined ? vars[k] : `{${k}}`);
@@ -619,8 +619,8 @@ function Login({ onLogin }) {
               <Icon name="heart" size={22} color={G.greenL} />
             </div>
             <div>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.text, margin:"0 0 3px" }}>Mi espacio</p>
-              <p style={{ ...s.sub, fontSize:12 }}>Ver mis citas y perfil</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.text, margin:"0 0 3px" }}>Soy Clienta</p>
+              <p style={{ ...s.sub, fontSize:12 }}>Ver mis turnos y reservar</p>
             </div>
             <Icon name="chevronRight" size={16} color={G.greenD} style={{ marginLeft:"auto" }} />
           </div>
@@ -778,7 +778,7 @@ function AdminApp({ data, onLogout }) {
             </div>
           ))}
           <div style={{ flex:1 }} />
-          <button style={{ ...s.btnG, margin:"0 4px", width:"auto" }} onClick={() => push("nueva-cita")}>+ Nueva cita</button>
+          <button style={{ ...s.btnG, margin:"0 4px", width:"auto" }} onClick={() => push("nueva-cita")}>+ Nuevo turno</button>
         </nav>
         {/* Content */}
         <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:24 }}>
@@ -832,8 +832,8 @@ function SolicitudCard({ cita, data, toast, push }) {
   const confirmar = async () => {
     setLoading(true);
     await data.editarCita(cita._id, { estado:"confirmada" });
-    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "¡Tu cita está confirmada! 🌿", `${cita.servicio} · ${fmtFecha(cita.fecha)} a las ${cita.hora}`);
-    toast("✓ cita confirmada"); setLoading(false);
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "¡Tu turno está confirmado! 🌿", `${cita.servicio} · ${fmtFecha(cita.fecha)} a las ${cita.hora}`);
+    toast("✓ turno confirmado"); setLoading(false);
   };
   const rechazar = async () => {
     setLoading(true);
@@ -1683,6 +1683,7 @@ function AgendaDia({ data, push, diaInicial }) {
 function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clientaIdDefault = "" }) {
   const [form, setForm] = useState({ clientaId:clientaIdDefault, fecha:fechaDefault, hora:horaDefault, servicio:"", notas:"" });
   const [saving, setSaving] = useState(false);
+  const [customHora, setCustomHora] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
   const initNombre = clientaIdDefault ? (data.clientas.find(c => c._id === clientaIdDefault)?.nombre || "") : "";
   const [busq, setBusq]         = useState(initNombre);
@@ -1711,15 +1712,15 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
     // Notify the clienta that their appointment was confirmed
     if (clienta?.uid) {
       sendPush([`clienta:${clienta.uid}`],
-        "¡Tu cita está confirmada! 🌿",
+        "¡Tu turno está confirmado! 🌿",
         `${form.servicio} · ${form.fecha} a las ${form.hora}`);
     }
-    toast("✓ cita agendada"); pop();
+    toast("✓ turno agendado"); pop();
   };
 
   return (
     <div>
-      <div style={s.topBar}><Back onClick={pop} label="agenda" /><h1 style={s.h1}>Nueva Cita</h1></div>
+      <div style={s.topBar}><Back onClick={pop} label="agenda" /><h1 style={s.h1}>Nuevo Turno</h1></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           <Field label="clienta">
@@ -1758,9 +1759,19 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
               {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>Configurá los horarios en Config → Horarios</p>}
               {slots.map(h => { const oc = ocupadas.includes(h); return <button key={h} disabled={oc} onClick={() => set("hora", h)} style={{ ...s.btnGl, padding:"8px 12px", fontSize:12, opacity:oc ? 0.3 : 1, background:form.hora === h ? G.greenM : G.glass, borderColor:form.hora === h ? G.green : G.border, color:form.hora === h ? G.greenL : G.sub, cursor:oc ? "not-allowed" : "pointer" }}>{h}{oc ? " ✕" : ""}</button>; })}
             </div>
+            <div style={{ marginTop:8 }}>
+              <button style={{ ...s.btnGl, width:"100%", fontSize:11 }} onClick={() => setCustomHora(h => !h)}>
+                {customHora ? "usar horarios configurados" : "ingresar horario personalizado"}
+              </button>
+              {customHora && (
+                <div style={{ marginTop:8 }}>
+                  <input style={s.input} type="time" value={form.hora} onChange={e => set("hora", e.target.value)} />
+                </div>
+              )}
+            </div>
           </Field>
           <Field label="notas (opcional)"><textarea style={{ ...s.input, height:70, resize:"none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder="indicaciones especiales..." /></Field>
-          <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : "confirmar cita →"}</button>
+          <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : "confirmar turno →"}</button>
         </div>
       </div>
     </div>
@@ -1825,8 +1836,8 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
   const confirmarSolicitud = async () => {
     await data.editarCita(cita._id, { estado:"confirmada" });
     setCita(c => ({ ...c, estado:"confirmada" }));
-    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "¡Tu cita está confirmada! 🌿", `${cita.servicio} · ${fmtFecha(cita.fecha)} a las ${cita.hora}`);
-    toast("✓ cita confirmada");
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "¡Tu turno está confirmado! 🌿", `${cita.servicio} · ${fmtFecha(cita.fecha)} a las ${cita.hora}`);
+    toast("✓ turno confirmado");
   };
 
   const rechazarSolicitud = async () => {
@@ -1850,15 +1861,15 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
     if (!reagForm.fecha || !reagForm.hora) { toast("elegí fecha y hora"); return; }
     await data.editarCita(cita._id, { fecha:reagForm.fecha, hora:reagForm.hora });
     setCita(c => ({ ...c, fecha:reagForm.fecha, hora:reagForm.hora }));
-    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "Tu cita fue reagendada 📅", `${cita.servicio} · ${fmtFecha(reagForm.fecha)} a las ${reagForm.hora}`);
-    toast("✓ cita reagendada"); setReag(false);
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "Tu turno fue reagendado 📅", `${cita.servicio} · ${fmtFecha(reagForm.fecha)} a las ${reagForm.hora}`);
+    toast("✓ turno reagendado"); setReag(false);
   };
 
-  const msgRecordatorio = `Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu cita el ${fmtFecha(cita.fecha)} a las ${cita.hora} en ${estudio.nombre || "el estudio"}. ¡Te espero! 💚`;
+  const msgRecordatorio = `Hola ${cita.clientaNombre?.split(" ")[0]}! 🌿 Te recuerdo tu turno el ${fmtFecha(cita.fecha)} a las ${cita.hora} en ${estudio.nombre || "el estudio"}. ¡Te espero! 💚`;
 
   return (
     <div>
-      <div style={s.topBar}><Back onClick={pop} /><h1 style={s.h1}>Detalle de Cita</h1><p style={s.sub}>{cita.fecha} · {cita.hora}</p></div>
+      <div style={s.topBar}><Back onClick={pop} /><h1 style={s.h1}>Detalle de Turno</h1><p style={s.sub}>{cita.fecha} · {cita.hora}</p></div>
       <div style={{ padding:"18px" }}>
         {clienta && (
           <div style={{ ...s.card, display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
@@ -1896,7 +1907,40 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
             <div style={{ ...s.card, background:"rgba(224,184,112,0.07)", borderColor:"rgba(224,184,112,0.35)", padding:"10px 14px", marginBottom:4 }}>
               <p style={{ fontFamily:F.sans, fontSize:12, color:G.amber, margin:0, display:"flex", alignItems:"center", gap:6 }}><Icon name="clock" size={13} color={G.amber} /> Solicitud pendiente de confirmación</p>
             </div>
-            <button style={s.btnG} onClick={confirmarSolicitud}>✓ confirmar cita</button>
+            <button style={s.btnG} onClick={confirmarSolicitud}>✓ confirmar turno</button>
+            {reagendando ? (
+              <div style={{ ...s.card }}>
+                <p style={{ ...s.eyebrow, marginBottom:10 }}>reagendar y confirmar</p>
+                <Field label="nueva fecha"><input style={s.input} type="date" value={reagForm.fecha} onChange={e => setReagForm(f => ({...f, fecha:e.target.value, hora:""}))} /></Field>
+                {reagForm.fecha && (
+                  <Field label="nuevo horario">
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:6 }}>
+                      {slots.map(h => {
+                        const oc = ocupadasReag.includes(h);
+                        return (
+                          <button key={h} disabled={oc} onClick={() => setReagForm(f => ({...f, hora:h}))}
+                            style={{ ...s.btnGl, padding:"8px 12px", fontSize:12, opacity:oc?0.3:1, background:reagForm.hora===h?G.greenM:G.glass, borderColor:reagForm.hora===h?G.green:G.border, color:reagForm.hora===h?G.greenL:G.sub }}>
+                            {h}{oc?" ✕":""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Field>
+                )}
+                <div style={{ display:"flex", gap:9, marginTop:12 }}>
+                  <button style={{ ...s.btnGl, flex:1 }} onClick={() => setReag(false)}>cancelar</button>
+                  <button style={{ ...s.btnG, flex:1 }} onClick={async () => {
+                    if (!reagForm.fecha || !reagForm.hora) { toast("elegí fecha y hora"); return; }
+                    await data.editarCita(cita._id, { fecha:reagForm.fecha, hora:reagForm.hora, estado:"confirmada" });
+                    setCita(c => ({ ...c, fecha:reagForm.fecha, hora:reagForm.hora, estado:"confirmada" }));
+                    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "¡Tu turno está confirmado! 🌿", `${cita.servicio} · ${fmtFecha(reagForm.fecha)} a las ${reagForm.hora}`);
+                    toast("✓ turno reagendado y confirmado"); setReag(false);
+                  }}>confirmar y guardar →</button>
+                </div>
+              </div>
+            ) : (
+              <button style={{ ...s.btnGl, width:"100%" }} onClick={() => setReag(true)}>Reagendar y confirmar</button>
+            )}
             <button style={{ ...s.btnRed, width:"100%" }} onClick={rechazarSolicitud}>rechazar solicitud</button>
           </div>
         )}
@@ -1904,7 +1948,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
           <>
             {reagendando ? (
               <div style={{ ...s.card, marginBottom:14 }}>
-                <p style={{ ...s.eyebrow, marginBottom:10 }}>reagendar cita</p>
+                <p style={{ ...s.eyebrow, marginBottom:10 }}>reagendar turno</p>
                 <Field label="nueva fecha"><input style={s.input} type="date" value={reagForm.fecha} onChange={e => setReagForm(f => ({...f, fecha:e.target.value, hora:""}))} /></Field>
                 {reagForm.fecha && (
                   <Field label="nuevo horario">
@@ -1935,7 +1979,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
                 <button style={s.btnG} onClick={() => setMP(true)}>✓ marcar como completada</button>
                 <button style={{ ...s.btnGl, width:"100%" }} onClick={() => setReag(true)}>Reagendar</button>
                 <button style={{ ...s.btnGl, width:"100%" }} onClick={() => openWAClienta(clienta, msgRecordatorio)}>Recordatorio a {clienta?.nombre?.split(" ")[0] || "clienta"}</button>
-                <button style={{ ...s.btnRed, width:"100%" }} onClick={() => setMB(true)}>eliminar cita</button>
+                <button style={{ ...s.btnRed, width:"100%" }} onClick={() => setMB(true)}>eliminar turno</button>
               </div>
             )}
           </>
@@ -1993,7 +2037,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
           <button style={s.btnG} onClick={completar}>guardar y cerrar cita →</button>
         </Sheet>
       )}
-      {modalBorrar && <Modal titulo="Eliminar cita" msg={`¿Segura que querés eliminar la cita de ${cita.clientaNombre}?`} onOk={borrar} onCancel={() => setMB(false)} okLabel="eliminar" danger />}
+      {modalBorrar && <Modal titulo="Eliminar turno" msg={`¿Segura que querés eliminar el turno de ${cita.clientaNombre}?`} onOk={borrar} onCancel={() => setMB(false)} okLabel="eliminar" danger />}
     </div>
   );
 }
@@ -2173,7 +2217,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
       </div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:6, marginBottom:16 }}>
-          {["info", "ficha", "historial", "citas", "métricas"].map(t => (
+          {["info", "ficha", "historial", "turnos", "métricas"].map(t => (
             <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, flex:1, fontSize:9, padding:"7px 2px", background:tab === t ? G.greenM : G.glass, borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.sub }}>{t}</button>
           ))}
         </div>
@@ -2286,9 +2330,9 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
           </div>
         )}
 
-        {tab === "citas" && (
+        {tab === "turnos" && (
           <div>
-            <button style={{ ...s.btnG, marginBottom:14 }} onClick={() => push("nueva-cita", { clientaIdDefault:c._id })}>+ nueva cita para {c.nombre?.split(" ")[0]}</button>
+            <button style={{ ...s.btnG, marginBottom:14 }} onClick={() => push("nueva-cita", { clientaIdDefault:c._id })}>+ nuevo turno para {c.nombre?.split(" ")[0]}</button>
             {citasC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>sin citas próximas ✦</p>}
             {citasC.map(ci => (
               <div key={ci._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:ci })}>
@@ -2366,7 +2410,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
 }
 
 // ── Admin Finanzas ─────────────────────────────────────────────────────────────
-function AdminFinanzas({ data }) {
+function AdminFinanzas({ data, toast }) {
   const [tab, setTab]         = useState("resumen");
   const [periodo, setPeriodo] = useState("mes");
   const hoy  = hoyISO();
@@ -2386,7 +2430,7 @@ function AdminFinanzas({ data }) {
         </div>
 
         {tab === "resumen" && <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} />}
-        {tab === "gastos" && <GastosTab data={data} toast={shwToast} />}
+        {tab === "gastos" && <GastosTab data={data} toast={toast} />}
         {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} />}
       </div>
     </div>
@@ -2397,6 +2441,8 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }
   const filtrar = (h) => { if (periodo === "hoy") return h.fecha === hoy; if (periodo === "mes") return h.fecha?.startsWith(mes); if (periodo === "año") return h.fecha?.startsWith(anio); return true; };
   const ings   = todoHist.filter(filtrar);
   const total  = ings.reduce((a, h) => a + (h.monto || 0), 0);
+  const totalGastos = (data.gastos || []).filter(g => filtrar({ fecha:g.fecha })).reduce((a, g) => a + (g.monto || 0), 0);
+  const ganancia = total - totalGastos;
   const transf = ings.filter(h => h.pago === "transferencia" || h.montoTransf > 0).reduce((a, h) => a + (h.montoTransf || (h.pago === "transferencia" ? h.monto : 0)), 0);
   const efect  = ings.filter(h => h.pago === "efectivo" || h.montoEfectivo > 0).reduce((a, h) => a + (h.montoEfectivo || (h.pago === "efectivo" ? h.monto : 0)), 0);
   const denom  = transf + efect || 1;
@@ -2417,6 +2463,18 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:36, color:G.green, margin:"0 0 4px" }}>{fmtPesos(total)}</p>
         <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0 }}>{ings.length} servicio{ings.length !== 1 ? "s" : ""}</p>
       </div>
+      {totalGastos > 0 && (
+        <div style={{ display:"flex", gap:9, marginBottom:14 }}>
+          <div style={{ ...s.card, flex:1, margin:0 }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>gastos</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.red, margin:"0 0 2px" }}>{fmtPesos(totalGastos)}</p>
+          </div>
+          <div style={{ ...s.card, flex:1, margin:0 }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>ganancia neta</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:ganancia >= 0 ? G.green : G.red, margin:"0 0 2px" }}>{fmtPesos(ganancia)}</p>
+          </div>
+        </div>
+      )}
       {total > 0 && (
         <div style={{ display:"flex", gap:9, marginBottom:14 }}>
           {[["transferencia", transf], ["efectivo", efect]].map(([m, v]) => (
@@ -2645,13 +2703,14 @@ function AdminConfig({ data, toast, onLogout }) {
       <div style={s.topBar}><h1 style={s.h1}>Configuración</h1><p style={s.sub}>Parámetros del estudio</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:7, marginBottom:18, flexWrap:"wrap" }}>
-          {["servicios","mensajes","técnico","horarios","estudio","notificaciones","apariencia"].map(t => (
+          {["servicios","mensajes","técnico","adicionales","horarios","estudio","notificaciones","apariencia"].map(t => (
             <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : G.glass, borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.sub, padding:"7px 14px", textTransform:"capitalize" }}>{t}</button>
           ))}
         </div>
         {tab === "servicios"      && <ConfigServicios      data={data} toast={toast} />}
         {tab === "mensajes"       && <ConfigMensajes       data={data} toast={toast} />}
         {tab === "técnico"        && <ConfigTecnico        data={data} toast={toast} />}
+        {tab === "adicionales"    && <ConfigAdicionales    data={data} toast={toast} />}
         {tab === "horarios"       && <ConfigHorarios       data={data} toast={toast} />}
         {tab === "estudio"        && <ConfigEstudio        data={data} toast={toast} onLogout={onLogout} />}
         {tab === "notificaciones" && <ConfigNotificaciones data={data} toast={toast} />}
@@ -2708,7 +2767,7 @@ function ConfigMensajes({ data, toast }) {
   };
 
   const LABELS = {
-    service14d:  "Recordatorio de service (14 días sin cita)",
+    service14d:  "Recordatorio de service (14 días sin turno)",
     recordatorio:"Recordatorio de turno (día anterior)",
     bienvenida:  "Bienvenida al registrar clienta nueva",
   };
@@ -2872,6 +2931,64 @@ function ConfigTecnico({ data, toast }) {
       <OpcionesEditor configKey="curvas"   label="Curvas de pestañas" placeholder="ej: C, CC, D..." />
       <OpcionesEditor configKey="grosores" label="Grosores"           placeholder="ej: 0.07, 0.10..." />
       <OpcionesEditor configKey="largos"   label="Largos"             placeholder="ej: 11mm, 12mm..." />
+    </div>
+  );
+}
+
+// ── Config Adicionales ─────────────────────────────────────────────────────────
+function ConfigAdicionales({ data, toast }) {
+  const [items, setItems] = useState(data.getConfig("adicionales", []));
+  const [form, setForm]   = useState({ nombre:"", descripcion:"", precio:"", duracion:"" });
+  const [showForm, setShowForm] = useState(false);
+  const set = (k,v) => setForm(f => ({...f, [k]:v}));
+
+  const guardar = async () => {
+    if (!form.nombre.trim()) { toast("el nombre es obligatorio"); return; }
+    const nuevo = { nombre:form.nombre.trim(), descripcion:form.descripcion.trim(), precio:parseFloat(form.precio)||0, duracion:parseInt(form.duracion)||0 };
+    const upd = [...items, nuevo];
+    await data.saveConfig("adicionales", upd);
+    setItems(upd);
+    setForm({ nombre:"", descripcion:"", precio:"", duracion:"" });
+    setShowForm(false);
+    toast("✓ adicional guardado");
+  };
+
+  const del = async (i) => {
+    const upd = items.filter((_,j) => j !== i);
+    await data.saveConfig("adicionales", upd);
+    setItems(upd);
+    toast("eliminado");
+  };
+
+  return (
+    <div style={{ padding:"0" }}>
+      <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14, lineHeight:1.6 }}>
+        Servicios adicionales que la clienta puede agregar a su turno (remoción, diseño de cejas, etc.)
+      </p>
+      <button style={{ ...s.btnG, width:"100%", marginBottom:14 }} onClick={() => setShowForm(sv => !sv)}>
+        {showForm ? "cancelar" : "+ nuevo adicional"}
+      </button>
+      {showForm && (
+        <div style={{ ...s.card, marginBottom:14 }}>
+          <Field label="nombre"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="ej: Remoción de lash" /></Field>
+          <Field label="descripción (opcional)"><input style={s.input} value={form.descripcion} onChange={e => set("descripcion", e.target.value)} /></Field>
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ flex:1 }}><Field label="precio ($)"><input style={s.input} type="number" value={form.precio} onChange={e => set("precio", e.target.value)} /></Field></div>
+            <div style={{ flex:1 }}><Field label="duración (min)"><input style={s.input} type="number" value={form.duracion} onChange={e => set("duracion", e.target.value)} /></Field></div>
+          </div>
+          <button style={{ ...s.btnG, width:"100%", marginTop:10 }} onClick={guardar}>guardar →</button>
+        </div>
+      )}
+      {items.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin adicionales configurados</p>}
+      {items.map((a, i) => (
+        <div key={i} style={{ ...s.card, marginBottom:8, display:"flex", gap:10, alignItems:"center" }}>
+          <div style={{ flex:1 }}>
+            <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14, color:G.white }}>{a.nombre}</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{a.duracion ? `+${a.duracion}min` : ""}{a.precio ? ` · ${fmtPesos(a.precio)}` : ""}</p>
+          </div>
+          <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.red, fontSize:13 }} onClick={() => del(i)}>✕</button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -3410,6 +3527,8 @@ function CInicio({ clienta, data, setTab }) {
     ? `https://maps.google.com/?q=${encodeURIComponent(estudio.direccion)}`
     : null;
 
+  const politicas = data.getConfig("politicas", []);
+
   return (
     <div>
       <div style={s.topBar}>
@@ -3426,33 +3545,57 @@ function CInicio({ clienta, data, setTab }) {
       <div style={{ padding:"18px" }}>
         <PushBanner role="clienta" uid={clienta.uid} />
 
-        {/* ── Banner service vencido ── */}
-        {necesitaService && (
-          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.18),rgba(143,189,90,0.05))", border:`1.5px solid ${G.green}`, borderRadius:16, padding:"16px", marginBottom:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
-              <div>
-                <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>¡es hora del service! ✦</p>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>hace {diasDesde} días de tu último tratamiento</p>
-              </div>
-              <div style={{ textAlign:"center", background:"rgba(143,189,90,0.2)", borderRadius:12, padding:"8px 12px", flexShrink:0 }}>
-                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.greenL }}>{diasDesde}</p>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>
-              </div>
+        {/* ── 1. Contact/quick-action 2x2 grid ── */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
+          <div onClick={() => openWA("Hola! Tengo una consulta 💚")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(37,211,102,0.07)", borderColor:"rgba(37,211,102,0.22)", display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
+            <div style={{ width:38, height:38, borderRadius:11, background:"rgba(37,211,102,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <Icon name="messageCircle" size={19} color="rgba(37,211,102,0.9)" strokeWidth={1.6} />
             </div>
-            <button style={{ ...s.btnG, padding:"10px 14px" }} onClick={() => setTab("agendar")}>agendar ahora →</button>
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>WhatsApp</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>consultas y turnos</p>
+          </div>
+          <div onClick={() => window.open(instagramUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(225,48,108,0.07)", borderColor:"rgba(225,48,108,0.18)", display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
+            <div style={{ width:38, height:38, borderRadius:11, background:"rgba(225,48,108,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <Icon name="instagram" size={19} color="rgba(225,48,108,0.9)" strokeWidth={1.6} />
+            </div>
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Instagram</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{estudio.instagram || "@bychulas.studio"}</p>
+          </div>
+          {ubicacionUrl ? (
+            <div onClick={() => window.open(ubicacionUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(66,133,244,0.07)", borderColor:"rgba(66,133,244,0.18)", display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
+              <div style={{ width:38, height:38, borderRadius:11, background:"rgba(66,133,244,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <Icon name="mapPin" size={19} color="rgba(100,160,255,0.9)" strokeWidth={1.6} />
+              </div>
+              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Cómo llegar</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:"100%" }}>{estudio.direccion}</p>
+            </div>
+          ) : (
+            <div style={{ ...s.card, margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(66,133,244,0.07)", borderColor:"rgba(66,133,244,0.18)", display:"flex", flexDirection:"column", alignItems:"center", gap:7, opacity:0.5 }}>
+              <div style={{ width:38, height:38, borderRadius:11, background:"rgba(66,133,244,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <Icon name="mapPin" size={19} color="rgba(100,160,255,0.9)" strokeWidth={1.6} />
+              </div>
+              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Mapa</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>sin dirección</p>
+            </div>
+          )}
+          <div onClick={() => setTab("agendar")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(143,189,90,0.07)", borderColor:G.greenD, display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
+            <div style={{ width:38, height:38, borderRadius:11, background:"rgba(143,189,90,0.15)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <Icon name="calendarPlus" size={19} color={G.greenL} strokeWidth={1.6} />
+            </div>
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Agendar</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>reservar turno</p>
+          </div>
+        </div>
+
+        {/* ── 2. Políticas card ── */}
+        {politicas.length > 0 && (
+          <div style={{ ...s.card, marginBottom:16, background:"rgba(143,189,90,0.03)", borderColor:G.border }}>
+            <p style={{ margin:"0 0 9px", fontFamily:F.serif, fontWeight:700, fontSize:14 }}>Políticas del Estudio</p>
+            {politicas.map((p, i) => <p key={i} style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{p}</p>)}
           </div>
         )}
 
-        {/* ── Cita solicitada pendiente ── */}
-        {citasSolicitadas.length > 0 && !proxCita && (
-          <div style={{ ...s.card, borderColor:G.amber, background:"rgba(224,184,112,0.06)", marginBottom:12 }}>
-            <p style={{ margin:"0 0 4px", fontFamily:F.sans, fontSize:10, color:G.amber, textTransform:"lowercase", letterSpacing:"0.08em" }}>solicitud pendiente</p>
-            <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{citasSolicitadas[0].servicio}</p>
-            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(citasSolicitadas[0].fecha)} · {citasSolicitadas[0].hora} · esperando confirmación</p>
-          </div>
-        )}
-
-        {/* ── Próxima cita con countdown ── */}
+        {/* ── 3. Próxima cita con countdown ── */}
         {proxCita && (
           <div style={{ ...s.cardHero, marginBottom:12 }}>
             <p style={s.eyebrow}>próxima cita</p>
@@ -3475,13 +3618,21 @@ function CInicio({ clienta, data, setTab }) {
           </div>
         )}
 
-        {/* ── Countdown al service (cuando no vence aún) ── */}
+        {/* ── 4. Solicitud pendiente (solo si no hay prox cita) ── */}
+        {citasSolicitadas.length > 0 && !proxCita && (
+          <div style={{ ...s.card, borderColor:G.amber, background:"rgba(224,184,112,0.06)", marginBottom:12 }}>
+            <p style={{ margin:"0 0 4px", fontFamily:F.sans, fontSize:10, color:G.amber, textTransform:"lowercase", letterSpacing:"0.08em" }}>solicitud pendiente</p>
+            <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{citasSolicitadas[0].servicio}</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(citasSolicitadas[0].fecha)} · {citasSolicitadas[0].hora} · esperando confirmación</p>
+          </div>
+        )}
+
+        {/* ── 5. Countdown al service (cuando no vence aún) ── */}
         {diasParaService !== null && diasParaService > 0 && !proxCita && (
           <div style={{ ...s.card, marginBottom:12 }}>
             <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 8px", textTransform:"lowercase" }}>próximo service recomendado</p>
             <div style={{ display:"flex", alignItems:"center", gap:14 }}>
               <div style={{ flex:1 }}>
-                {/* Barra de progreso */}
                 <div style={{ height:6, background:G.border, borderRadius:3, marginBottom:6, overflow:"hidden" }}>
                   <div style={{ height:"100%", width:`${((14 - diasParaService) / 14) * 100}%`, background:`linear-gradient(90deg, ${G.greenD}, ${G.green})`, borderRadius:3, transition:"width 0.5s ease" }} />
                 </div>
@@ -3497,8 +3648,25 @@ function CInicio({ clienta, data, setTab }) {
           </div>
         )}
 
-        {/* ── Widgets principales ── */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:9, marginBottom:16 }}>
+        {/* ── 6. Banner service vencido ── */}
+        {necesitaService && (
+          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.18),rgba(143,189,90,0.05))", border:`1.5px solid ${G.green}`, borderRadius:16, padding:"16px", marginBottom:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+              <div>
+                <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>¡es hora del service! ✦</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>hace {diasDesde} días de tu último tratamiento</p>
+              </div>
+              <div style={{ textAlign:"center", background:"rgba(143,189,90,0.2)", borderRadius:12, padding:"8px 12px", flexShrink:0 }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.greenL }}>{diasDesde}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>
+              </div>
+            </div>
+            <button style={{ ...s.btnG, padding:"10px 14px" }} onClick={() => setTab("agendar")}>agendar ahora →</button>
+          </div>
+        )}
+
+        {/* ── 7. Stats row: visitas | mi curva ── */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
           <div onClick={() => setTab("historial")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
             <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="star" size={16} color={G.muted} strokeWidth={1.5} /></div>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{hist.length}</p>
@@ -3509,49 +3677,9 @@ function CInicio({ clienta, data, setTab }) {
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{curvaFav}</p>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>mi curva</p>
           </div>
-          <div onClick={() => setTab("agendar")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px", background:"rgba(143,189,90,0.16)", borderColor:G.green }}>
-            <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="calendarPlus" size={16} color={G.greenL} strokeWidth={1.5} /></div>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.greenL, margin:"0 0 2px", lineHeight:1 }}>+</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.greenL, margin:0 }}>agendar</p>
-          </div>
         </div>
 
-        {/* ── Widgets de contacto ── */}
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>el estudio</p>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
-          <div onClick={() => openWA("Hola! Tengo una consulta 💚")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(37,211,102,0.07)", borderColor:"rgba(37,211,102,0.22)", display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
-            <div style={{ width:38, height:38, borderRadius:11, background:"rgba(37,211,102,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <Icon name="messageCircle" size={19} color="rgba(37,211,102,0.9)" strokeWidth={1.6} />
-            </div>
-            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>WhatsApp</p>
-            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>consultas y turnos</p>
-          </div>
-          <div onClick={() => window.open(instagramUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(225,48,108,0.07)", borderColor:"rgba(225,48,108,0.18)", display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
-            <div style={{ width:38, height:38, borderRadius:11, background:"rgba(225,48,108,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <Icon name="instagram" size={19} color="rgba(225,48,108,0.9)" strokeWidth={1.6} />
-            </div>
-            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Instagram</p>
-            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{estudio.instagram || "@bychulas.studio"}</p>
-          </div>
-          {ubicacionUrl && (
-            <div onClick={() => window.open(ubicacionUrl, "_blank")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(66,133,244,0.07)", borderColor:"rgba(66,133,244,0.18)", display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
-              <div style={{ width:38, height:38, borderRadius:11, background:"rgba(66,133,244,0.14)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <Icon name="mapPin" size={19} color="rgba(100,160,255,0.9)" strokeWidth={1.6} />
-              </div>
-              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Cómo llegar</p>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:"100%" }}>{estudio.direccion}</p>
-            </div>
-          )}
-          <div onClick={() => setTab("historial")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(143,189,90,0.07)", borderColor:G.greenD, display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
-            <div style={{ width:38, height:38, borderRadius:11, background:"rgba(143,189,90,0.15)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <Icon name="history" size={19} color={G.greenL} strokeWidth={1.6} />
-            </div>
-            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white }}>Mi historial</p>
-            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{hist.length > 0 ? `${hist.length} visitas` : "ver mis visitas"}</p>
-          </div>
-        </div>
-
-        {/* ── Último servicio ── */}
+        {/* ── 8. Último servicio ── */}
         {ultima && (
           <>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>último servicio</p>
@@ -3571,8 +3699,13 @@ function CInicio({ clienta, data, setTab }) {
 function CAgendar({ clienta, data }) {
   const [paso, setPaso]       = useState(1);
   const [modo, setModo]       = useState("individual");
-  const [form, setForm]       = useState({ servicio:null, fecha:"", hora:"", notas:"" });
-  const [fotoIdx, setFotoIdx] = useState(0);
+  const [form, setForm]       = useState({ servicio:null, fecha:"", hora:"", notas:"", adicionales:[] });
+  const [fotoIdxMap, setFotoIdxMap] = useState({});
+  const getFotoIdx = (svId) => fotoIdxMap[svId] || 0;
+  const setFotoIdx = (svId, i) => setFotoIdxMap(p => ({ ...p, [svId]:i }));
+  const [lightbox, setLightbox] = useState(null);
+  const [calOffset, setCalOffset] = useState(0);
+  const [customHora, setCustomHora] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [saving, setSaving]   = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
@@ -3602,6 +3735,7 @@ function CAgendar({ clienta, data }) {
         fecha:         form.fecha,
         hora:          form.hora,
         notas:         form.notas,
+        adicionales:   form.adicionales || [],
         estado:        "solicitada",
       });
       sendPush(["admin"],
@@ -3618,16 +3752,22 @@ function CAgendar({ clienta, data }) {
       <p style={{ fontFamily:F.display, fontWeight:400, fontSize:28, letterSpacing:"1px", color:G.greenL, margin:"0 0 8px" }}>solicitud enviada</p>
       <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 24px", lineHeight:1.7 }}>Male recibió tu pedido y te confirma a la brevedad. También podés avisarle por WhatsApp.</p>
       <button style={{ ...s.btnGl, width:"100%", marginBottom:10 }} onClick={() => openWA(waMsg)}>también avisar por WhatsApp →</button>
-      <button style={s.btnG} onClick={() => { setEnviado(false); setPaso(1); setForm({ servicio:null, fecha:"", hora:"", notas:"" }); }}>volver al inicio →</button>
+      <button style={s.btnG} onClick={() => { setEnviado(false); setPaso(1); setForm({ servicio:null, fecha:"", hora:"", notas:"", adicionales:[] }); }}>volver al inicio →</button>
     </div>
   );
 
+  const adicionalesConfig = data.getConfig("adicionales", []);
+  const tieneAdicionales = adicionalesConfig.length > 0;
+  const nextAfterServicio = tieneAdicionales ? 2 : 3;
+  const totalPasos = tieneAdicionales ? 4 : 3;
+  const pasoDisplay = tieneAdicionales ? paso : (paso <= 1 ? paso : paso - 1);
+
   return (
     <div>
-      <div style={s.topBar}><h1 style={s.h1}>Agendar</h1><p style={s.sub}>paso {paso} de 3</p></div>
+      <div style={s.topBar}><h1 style={s.h1}>Agendar</h1><p style={s.sub}>{pasoDisplay} de {totalPasos}</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:5, marginBottom:20 }}>
-          {[1,2,3].map(p => <div key={p} style={{ flex:1, height:3, borderRadius:2, background:p <= paso ? G.green : G.border, transition:"background 0.3s" }} />)}
+          {Array(totalPasos).fill(0).map((_, i) => <div key={i} style={{ flex:1, height:3, borderRadius:2, background:(i+1) <= pasoDisplay ? G.green : G.border, transition:"background 0.3s" }} />)}
         </div>
 
         {paso === 1 && (
@@ -3645,15 +3785,23 @@ function CAgendar({ clienta, data }) {
                   <div key={sv._id} style={{ ...s.card, borderColor:form.servicio?._id === sv._id ? G.green : G.border, background:form.servicio?._id === sv._id ? "rgba(143,189,90,0.06)" : G.card }}>
                     {sv.fotos?.length > 0 && (
                       <div style={{ marginBottom:10, position:"relative" }}>
-                        <img src={sv.fotos[fotoIdx % sv.fotos.length]} alt={sv.nombre} style={{ width:"100%", height:140, objectFit:"cover", borderRadius:10 }} onError={e => { e.target.style.display = "none"; }} />
+                        <img src={sv.fotos[getFotoIdx(sv._id)]} alt={sv.nombre} onClick={() => setLightbox(sv.fotos[getFotoIdx(sv._id)])} style={{ width:"100%", height:140, objectFit:"cover", borderRadius:10, cursor:"zoom-in" }} onError={e => { e.target.style.display = "none"; }} />
+                        {sv.fotos.length > 1 && (
+                          <>
+                            <button style={{ position:"absolute", left:4, top:"50%", transform:"translateY(-50%)", background:"rgba(0,0,0,0.5)", border:"none", borderRadius:6, color:"#fff", padding:"4px 8px", cursor:"pointer", zIndex:3, fontSize:16 }}
+                              onClick={e => { e.stopPropagation(); setFotoIdx(sv._id, (getFotoIdx(sv._id) - 1 + sv.fotos.length) % sv.fotos.length); }}>‹</button>
+                            <button style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)", background:"rgba(0,0,0,0.5)", border:"none", borderRadius:6, color:"#fff", padding:"4px 8px", cursor:"pointer", zIndex:3, fontSize:16 }}
+                              onClick={e => { e.stopPropagation(); setFotoIdx(sv._id, (getFotoIdx(sv._id) + 1) % sv.fotos.length); }}>›</button>
+                          </>
+                        )}
                         {sv.fotos.length > 1 && (
                           <div style={{ position:"absolute", bottom:6, left:0, right:0, display:"flex", justifyContent:"center", gap:4 }}>
-                            {sv.fotos.map((_, i) => <div key={i} style={{ width:5, height:5, borderRadius:"50%", background:i === fotoIdx % sv.fotos.length ? G.white : "rgba(255,255,255,0.4)", cursor:"pointer" }} onClick={e => { e.stopPropagation(); setFotoIdx(i); }} />)}
+                            {sv.fotos.map((_, i) => <div key={i} style={{ width:5, height:5, borderRadius:"50%", background:i === getFotoIdx(sv._id) ? G.white : "rgba(255,255,255,0.4)", cursor:"pointer" }} onClick={e => { e.stopPropagation(); setFotoIdx(sv._id, i); }} />)}
                           </div>
                         )}
                       </div>
                     )}
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }} onClick={() => { set("servicio", sv); setPaso(2); }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }} onClick={() => { set("servicio", sv); setPaso(nextAfterServicio); }}>
                       <div style={{ flex:1, cursor:"pointer" }}>
                         <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontSize:14 }}>{sv.nombre}</p>
                         {sv.descripcion && <p style={{ margin:"0 0 7px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{sv.descripcion}</p>}
@@ -3671,7 +3819,7 @@ function CAgendar({ clienta, data }) {
                   <div style={{ fontSize:30, marginBottom:9 }}>🌿</div>
                   <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>¡no te preocupes!</p>
                   <p style={{ margin:"0 0 14px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.7 }}>Agendá tu turno y Male te va a asesorar personalmente. Contale qué efecto buscás en las notas.</p>
-                  <button style={{ ...s.btnG, padding:"10px" }} onClick={() => setPaso(2)}>agendar igualmente →</button>
+                  <button style={{ ...s.btnG, padding:"10px" }} onClick={() => setPaso(nextAfterServicio)}>agendar igualmente →</button>
                 </div>
                 <div style={{ ...s.card, marginTop:8 }}>
                   <p style={{ ...s.sub, margin:"0 0 9px" }}>¿querés consultar antes?</p>
@@ -3682,36 +3830,120 @@ function CAgendar({ clienta, data }) {
           </div>
         )}
 
-        {paso === 2 && (
+        {paso === 2 && adicionalesConfig.length > 0 && (
           <div>
-            <button style={{ ...s.btnGl, marginBottom:14, fontSize:12 }} onClick={() => setPaso(1)}>← cambiar servicio</button>
-            {form.servicio && <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:16, padding:"9px 13px" }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL }}>{form.servicio.nombre}</p></div>}
-            <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} min={hoyISO()} /></Field>
-            {form.fecha && fechaNoDisponible(form.fecha) && <p style={{ color:G.red, fontSize:12, marginBottom:12 }}>⚠ Este día no está disponible. Elegí otra fecha.</p>}
-            {form.fecha && !fechaNoDisponible(form.fecha) && (
-              <>
-                <Field label="hora disponible">
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
-                    {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>sin horarios configurados</p>}
-                    {slots.map(h => { const oc = ocupadas.includes(h); return <button key={h} disabled={oc} onClick={() => set("hora", h)} style={{ ...s.btnGl, padding:"9px 12px", fontSize:12, opacity:oc ? 0.3 : 1, background:form.hora === h ? G.greenM : G.glass, borderColor:form.hora === h ? G.green : G.border, color:form.hora === h ? G.greenL : G.sub, cursor:oc ? "not-allowed" : "pointer" }}>{h}{oc ? " ✕" : ""}</button>; })}
+            <p style={{ ...s.eyebrow, marginBottom:8 }}>servicios adicionales</p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, marginBottom:14 }}>¿Querés agregar algo más? (opcional)</p>
+            {adicionalesConfig.map(a => {
+              const sel = (form.adicionales || []).includes(a.nombre);
+              return (
+                <div key={a.nombre}
+                  onClick={() => set("adicionales", sel ? (form.adicionales||[]).filter(x=>x!==a.nombre) : [...(form.adicionales||[]),a.nombre])}
+                  style={{ ...s.card, display:"flex", alignItems:"center", gap:12, cursor:"pointer", marginBottom:8, borderColor:sel?G.green:G.border, background:sel?G.greenM:G.card }}>
+                  <div style={{ width:20, height:20, borderRadius:6, border:`1.5px solid ${sel?G.green:G.border}`, background:sel?G.green:"transparent", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    {sel && <Icon name="check" size={12} color="#0a0a0a" strokeWidth={2.5} />}
                   </div>
-                </Field>
-                <Field label={modo === "noSe" ? "contanos qué efecto buscás" : "notas (opcional)"}>
-                  <textarea style={{ ...s.input, height:65, resize:"none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder={modo === "noSe" ? "largo, volumen, ocasión especial..." : "indicaciones especiales..."} />
-                </Field>
-                {form.hora && <button style={s.btnG} onClick={() => setPaso(3)}>confirmar horario →</button>}
-              </>
-            )}
+                  <div style={{ flex:1 }}>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{a.nombre}</p>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{[a.duracion?`+${a.duracion}min`:"", a.precio?fmtPesos(a.precio):""].filter(Boolean).join(" · ")}</p>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ display:"flex", gap:9, marginTop:14 }}>
+              <button style={{ ...s.btnGl, flex:1 }} onClick={() => setPaso(1)}>← volver</button>
+              <button style={{ ...s.btnG, flex:1 }} onClick={() => setPaso(3)}>continuar →</button>
+            </div>
           </div>
         )}
 
-        {paso === 3 && (
+        {paso === 3 && (() => {
+          const DIAS_SEM  = ["D","L","M","Mi","J","V","S"];
+          const MESES_CAL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+          const hoy = new Date(hoyISO() + "T12:00:00");
+          const calBase = new Date(hoy.getFullYear(), hoy.getMonth() + calOffset, 1);
+          const calYear  = calBase.getFullYear();
+          const calMonth = calBase.getMonth();
+          const primerDia   = new Date(calYear, calMonth, 1).getDay();
+          const diasEnMes   = new Date(calYear, calMonth + 1, 0).getDate();
+          const tieneDisponibilidad = (dateStr) => {
+            if (!dateStr) return false;
+            if (fechasBloq.has(dateStr)) return false;
+            if (!esDiaLaboral(dateStr, diasLaborales)) return false;
+            if (slots.length === 0) return true;
+            const ocDay = data.citas.filter(c => c.fecha === dateStr && c.estado !== "completada").map(c => c.hora);
+            return slots.some(h => !ocDay.includes(h));
+          };
+          const celdas = [];
+          for (let i = 0; i < primerDia; i++) celdas.push(null);
+          for (let d = 1; d <= diasEnMes; d++) celdas.push(d);
+          return (
+            <div>
+              <button style={{ ...s.btnGl, marginBottom:14, fontSize:12 }} onClick={() => { setPaso(adicionalesConfig.length > 0 ? 2 : 1); }}>← {adicionalesConfig.length > 0 ? "adicionales" : "cambiar servicio"}</button>
+              {form.servicio && <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, marginBottom:16, padding:"9px 13px" }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL }}>{form.servicio.nombre}</p></div>}
+              <div style={{ ...s.card, padding:"12px 10px" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                  <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:13 }} onClick={() => setCalOffset(o => o - 1)} disabled={calOffset <= 0}>&lt;</button>
+                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.text }}>{MESES_CAL[calMonth]} {calYear}</p>
+                  <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:13 }} onClick={() => setCalOffset(o => o + 1)}>&gt;</button>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:4 }}>
+                  {DIAS_SEM.map(d => <div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:10, color:G.muted, padding:"4px 0" }}>{d}</div>)}
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
+                  {celdas.map((dia, i) => {
+                    if (!dia) return <div key={`e${i}`} />;
+                    const mm = String(calMonth + 1).padStart(2,"0");
+                    const dd = String(dia).padStart(2,"0");
+                    const dateStr = `${calYear}-${mm}-${dd}`;
+                    const esPasado = dateStr < hoyISO();
+                    const disponible = !esPasado && tieneDisponibilidad(dateStr);
+                    const seleccionado = form.fecha === dateStr;
+                    return (
+                      <button key={dia} disabled={!disponible} onClick={() => { set("fecha", dateStr); set("hora", ""); }}
+                        style={{ textAlign:"center", fontFamily:F.sans, fontSize:12, padding:"8px 2px", borderRadius:8, border:`1px solid ${seleccionado ? G.green : disponible ? G.border : "transparent"}`, background:seleccionado ? G.green : disponible ? G.glass : "transparent", color:seleccionado ? "#0a0a0a" : disponible ? G.text : G.border, cursor:disponible ? "pointer" : "default", fontWeight:seleccionado ? 700 : 400, opacity:esPasado ? 0.2 : 1 }}>
+                        {dia}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {form.fecha && !fechaNoDisponible(form.fecha) && (
+                <div style={{ marginTop:14 }}>
+                  <Field label="hora disponible">
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+                      {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>sin horarios configurados</p>}
+                      {slots.map(h => { const oc = ocupadas.includes(h); return <button key={h} disabled={oc} onClick={() => set("hora", h)} style={{ ...s.btnGl, padding:"9px 12px", fontSize:12, opacity:oc ? 0.3 : 1, background:form.hora === h ? G.greenM : G.glass, borderColor:form.hora === h ? G.green : G.border, color:form.hora === h ? G.greenL : G.sub, cursor:oc ? "not-allowed" : "pointer" }}>{h}{oc ? " ✕" : ""}</button>; })}
+                    </div>
+                  </Field>
+                  <div style={{ marginTop:8 }}>
+                    <button style={{ ...s.btnGl, width:"100%", fontSize:11 }} onClick={() => setCustomHora(h => !h)}>
+                      {customHora ? "usar horarios configurados" : "ingresar horario personalizado"}
+                    </button>
+                    {customHora && (
+                      <div style={{ marginTop:8 }}>
+                        <input style={s.input} type="time" value={form.hora} onChange={e => set("hora", e.target.value)} />
+                      </div>
+                    )}
+                  </div>
+                  <Field label={modo === "noSe" ? "contanos qué efecto buscás" : "notas (opcional)"}>
+                    <textarea style={{ ...s.input, height:65, resize:"none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder={modo === "noSe" ? "largo, volumen, ocasión especial..." : "indicaciones especiales..."} />
+                  </Field>
+                  {form.hora && <button style={s.btnG} onClick={() => setPaso(4)}>confirmar horario →</button>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {paso === 4 && (
           <div>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>confirmá tu cita</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white, margin:"0 0 3px" }}>confirmá tu turno</p>
             <p style={{ ...s.sub, marginBottom:14 }}>revisá los detalles antes de enviar</p>
             <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD }}>
               {[
                 ["servicio",        form.servicio?.nombre || "a confirmar con Male"],
+                ...(form.adicionales?.length ? [["adicionales", form.adicionales.join(", ")]] : []),
                 ["fecha",           fmtFecha(form.fecha)],
                 ["hora",            form.hora],
                 ["duración aprox.", form.servicio?.duracion ? `${form.servicio.duracion}min est.` : "a confirmar"],
@@ -3728,6 +3960,13 @@ function CAgendar({ clienta, data }) {
           </div>
         )}
       </div>
+      {lightbox && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.94)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center" }}
+          onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="" style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", pointerEvents:"none" }} />
+          <button style={{ position:"absolute", top:20, right:20, background:"transparent", border:"none", color:"#fff", fontSize:28, cursor:"pointer", lineHeight:1 }} onClick={() => setLightbox(null)}>✕</button>
+        </div>
+      )}
     </div>
   );
 }
