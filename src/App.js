@@ -372,12 +372,13 @@ function useData() {
   const [excepciones, setExcepciones] = useState([]);
   const [bloques, setBloques]         = useState([]);
   const [config, setConfig]           = useState({});
+  const [gastos, setGastos]           = useState([]);
   const [loading, setLoading]         = useState(true);
 
   const recargar = useCallback(async () => {
     setLoading(true);
-    const [sv, cl, ct, ex, bl, cfg] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config")]);
-    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {});
+    const [sv, cl, ct, ex, bl, cfg, gs] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos")]);
+    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []);
     setLoading(false);
   }, []);
 
@@ -423,7 +424,11 @@ function useData() {
     }));
   };
 
-  return { servicios, clientas, citas, excepciones, bloques, config, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque };
+  const crearGasto  = async (d)     => { const id = await db.push("gastos", d); setGastos(p => [...p, { ...d, _id:id }]); };
+  const editarGasto = async (id, d) => { await db.set(`gastos/${id}`, d); setGastos(p => p.map(x => x._id === id ? { ...d, _id:id } : x)); };
+  const borrarGasto = async (id)    => { await db.del(`gastos/${id}`); setGastos(p => p.filter(x => x._id !== id)); };
+
+  return { servicios, clientas, citas, excepciones, bloques, config, gastos, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque, crearGasto, editarGasto, borrarGasto };
 }
 
 // ── Componentes UI comunes ─────────────────────────────────────────────────────
@@ -1747,7 +1752,7 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
               {data.servicios.map(sv => <option key={sv._id} value={sv.nombre}>{sv.nombre} · {fmtPesos(sv.precio)}</option>)}
             </select>
           </Field>
-          <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} /></Field>
+          <Field label="fecha"><input style={s.input} type="date" value={form.fecha} min={hoyISO()} onChange={e => set("fecha", e.target.value)} /></Field>
           <Field label="hora">
             <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
               {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>Configurá los horarios en Config → Horarios</p>}
@@ -1801,7 +1806,21 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
     setCita(p => ({ ...p, estado:"completada" }));
   };
 
-  const borrar = async () => { await data.borrarCita(cita._id); toast("cita eliminada"); pop(); };
+  const borrar = async () => {
+    if (cita.estado === "completada" && cita.clientaId) {
+      const cl = data.clientas.find(c => c._id === cita.clientaId);
+      if (cl?.historial && !Array.isArray(cl.historial)) {
+        const entries = Object.entries(cl.historial);
+        const match = entries.find(([k, v]) => v.fecha === cita.fecha && v.servicio === cita.servicio);
+        if (match) await db.del(`clientas/${cita.clientaId}/historial/${match[0]}`);
+      } else if (cl?.historial && Array.isArray(cl.historial)) {
+        const match = cl.historial.find(h => h.fecha === cita.fecha && h.servicio === cita.servicio && h._histId);
+        if (match) await db.del(`clientas/${cita.clientaId}/historial/${match._histId}`);
+      }
+    }
+    await data.borrarCita(cita._id);
+    toast("turno eliminado"); pop();
+  };
 
   const confirmarSolicitud = async () => {
     await data.editarCita(cita._id, { estado:"confirmada" });
@@ -1928,7 +1947,12 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
             <button style={{ ...s.btnRed, width:"100%" }} onClick={() => setMB(true)}>eliminar cita</button>
           </div>
         )}
-        {cita.estado === "completada" && <p style={{ color:G.green, fontFamily:F.sans, fontSize:13, textAlign:"center" }}>Cita completada y pago registrado</p>}
+        {cita.estado === "completada" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:9, alignItems:"center" }}>
+            <p style={{ color:G.green, fontFamily:F.sans, fontSize:13, textAlign:"center", margin:0 }}>✓ Turno completado y pago registrado</p>
+            <button style={{ ...s.btnRed, width:"100%" }} onClick={() => setMB(true)}>eliminar turno y revertir pago</button>
+          </div>
+        )}
       </div>
 
       {/* ── Modal Pago con opción mixta ── */}
@@ -2180,23 +2204,29 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                       <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</span>
                     </div>
                   ))}
-                  {c.appPass && c.email && (
+                  {c.email && (
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                       <span style={{ ...s.label, margin:0 }}>contraseña app</span>
                       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        <span style={{ fontFamily:"monospace", fontSize:13, color:G.sub, letterSpacing:"0.08em" }}>{showPass ? c.appPass : "••••••"}</span>
-                        <button onClick={() => setShowPass(p => !p)} style={{ background:"transparent", border:"none", cursor:"pointer", padding:4, display:"flex", alignItems:"center" }}>
-                          <Icon name={showPass ? "unlock" : "lock"} size={14} color={G.muted} />
-                        </button>
+                        {c.appPass ? (
+                          <>
+                            <span style={{ fontFamily:"monospace", fontSize:13, color:G.sub, letterSpacing:"0.08em" }}>{showPass ? c.appPass : "••••••"}</span>
+                            <button onClick={() => setShowPass(p => !p)} style={{ background:"transparent", border:"none", cursor:"pointer", padding:4, display:"flex", alignItems:"center" }}>
+                              <Icon name={showPass ? "unlock" : "lock"} size={14} color={G.muted} />
+                            </button>
+                          </>
+                        ) : (
+                          <span style={{ fontFamily:F.sans, fontSize:12, color:G.muted, fontStyle:"italic" }}>no registrada</span>
+                        )}
                       </div>
                     </div>
                   )}
                 </>
               )}
             </div>
-            {c.email && c.appPass && (
+            {c.email && (
               <button style={{ ...s.btnGl, width:"100%", marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={() => setResetModal(true)}>
-                <Icon name="key" size={13} color={G.sub} /> Nueva contraseña
+                <Icon name="key" size={13} color={G.sub} /> {c.appPass ? "Nueva contraseña" : "Generar contraseña"}
               </button>
             )}
           </div>
@@ -2350,12 +2380,13 @@ function AdminFinanzas({ data }) {
       <div style={s.topBar}><h1 style={s.h1}>Finanzas</h1><p style={s.sub}>resumen de ingresos</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:7, marginBottom:18 }}>
-          {[["resumen","resumen"],["calendario","calendario"]].map(([v, l]) => (
+          {[["resumen","resumen"],["gastos","gastos"],["calendario","calendario"]].map(([v, l]) => (
             <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:12, background:tab === v ? G.greenM : G.glass, borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.sub }}>{l}</button>
           ))}
         </div>
 
         {tab === "resumen" && <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} />}
+        {tab === "gastos" && <GastosTab data={data} toast={shwToast} />}
         {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} />}
       </div>
     </div>
@@ -2540,6 +2571,68 @@ function FinanzasCalendario({ data, todoHist }) {
           );
         })
       )}
+    </div>
+  );
+}
+
+// ── Gastos Tab ─────────────────────────────────────────────────────────────────
+function GastosTab({ data, toast }) {
+  const [form, setForm] = useState({ fecha:hoyISO(), categoria:"insumos", descripcion:"", monto:"" });
+  const [editId, setEditId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const set = (k, v) => setForm(f => ({...f, [k]:v}));
+  const CATS = ["insumos","operativo","marketing","personal","otro"];
+
+  const guardar = async () => {
+    if (!form.descripcion || !form.monto) { toast("completá descripción y monto"); return; }
+    const d = { ...form, monto:parseFloat(form.monto) || 0 };
+    if (editId) { await data.editarGasto(editId, d); toast("✓ gasto actualizado"); setEditId(null); }
+    else { await data.crearGasto(d); toast("✓ gasto guardado"); }
+    setForm({ fecha:hoyISO(), categoria:"insumos", descripcion:"", monto:"" });
+    setShowForm(false);
+  };
+
+  const sorted = [...(data.gastos || [])].sort((a,b) => b.fecha.localeCompare(a.fecha));
+
+  return (
+    <div style={{ padding:"18px" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <p style={{ ...s.eyebrow, margin:0 }}>gastos del estudio</p>
+        <button style={{ ...s.btnG, width:"auto", padding:"8px 14px", fontSize:12 }} onClick={() => { setShowForm(true); setEditId(null); setForm({ fecha:hoyISO(), categoria:"insumos", descripcion:"", monto:"" }); }}>+ agregar</button>
+      </div>
+      {showForm && (
+        <div style={{ ...s.card, marginBottom:14 }}>
+          <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} /></Field>
+          <Field label="categoría">
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {CATS.map(c => (
+                <button key={c} onClick={() => set("categoria", c)} style={{ ...s.btnGl, padding:"6px 12px", fontSize:11, background:form.categoria===c ? G.greenM : G.glass, borderColor:form.categoria===c ? G.green : G.border, color:form.categoria===c ? G.greenL : G.sub }}>{c}</button>
+              ))}
+            </div>
+          </Field>
+          <Field label="descripción"><input style={s.input} value={form.descripcion} onChange={e => set("descripcion", e.target.value)} placeholder="ej: pegamento, limpiador…" /></Field>
+          <Field label="monto ($)"><input style={s.input} type="number" value={form.monto} onChange={e => set("monto", e.target.value)} placeholder="0" /></Field>
+          <div style={{ display:"flex", gap:9, marginTop:10 }}>
+            <button style={{ ...s.btnGl, flex:1 }} onClick={() => { setShowForm(false); setEditId(null); }}>cancelar</button>
+            <button style={{ ...s.btnG, flex:1 }} onClick={guardar}>guardar →</button>
+          </div>
+        </div>
+      )}
+      {sorted.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin gastos registrados</p>}
+      {sorted.map(g => (
+        <div key={g._id} style={{ ...s.card, marginBottom:8, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ flex:1 }}>
+            <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:3 }}>
+              <span style={{ ...s.tag, fontSize:9 }}>{g.categoria}</span>
+              <span style={{ fontFamily:F.sans, fontSize:10, color:G.muted }}>{g.fecha}</span>
+            </div>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{g.descripcion}</p>
+            <p style={{ margin:"3px 0 0", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.red }}>{fmtPesos(g.monto)}</p>
+          </div>
+          <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.muted, fontSize:11, padding:"4px 8px" }} onClick={() => { setEditId(g._id); setForm({ fecha:g.fecha, categoria:g.categoria, descripcion:g.descripcion, monto:String(g.monto) }); setShowForm(true); }}>editar</button>
+          <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.red, fontSize:11, padding:"4px 8px" }} onClick={async () => { if (window.confirm("¿Eliminar gasto?")) { await data.borrarGasto(g._id); toast("gasto eliminado"); }}}>✕</button>
+        </div>
+      ))}
     </div>
   );
 }
