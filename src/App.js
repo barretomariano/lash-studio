@@ -382,7 +382,21 @@ function useData() {
     setLoading(false);
   }, []);
 
+  const recargarSilent = useCallback(async () => {
+    try {
+      const [sv, cl, ct, ex, bl, cfg, gs] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos")]);
+      setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []);
+    } catch {}
+  }, []);
+
   useEffect(() => { recargar(); }, []);
+
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") recargarSilent(); };
+    document.addEventListener("visibilitychange", onVisible);
+    const t = setInterval(recargarSilent, 60_000);
+    return () => { document.removeEventListener("visibilitychange", onVisible); clearInterval(t); };
+  }, [recargarSilent]);
 
   const getConfig  = (key, def) => config?.[key] ?? def;
   const saveConfig = async (key, val) => { await db.update("config", { [key]: val }); setConfig(p => ({ ...p, [key]: val })); };
@@ -405,6 +419,7 @@ function useData() {
     return { ok:true, pass, email:datos.email };
   };
   const editarClientas        = async (id, d) => { await db.update(`clientas/${id}`, d); setClientas(p => p.map(x => x._id === id ? { ...x, ...d } : x)); };
+  const borrarClientas        = async (id)    => { await db.del(`clientas/${id}`); setClientas(p => p.filter(x => x._id !== id)); };
   const resetPasswordClientas = async (email)  => { await fbAuth.resetPw(email); };
 
   const crearCita  = async (d)     => { const id = await db.push("citas", { ...d, creadaEn:hoyISO() }); setCitas(p => [...p, { ...d, creadaEn:hoyISO(), _id:id }]); return id; };
@@ -428,7 +443,7 @@ function useData() {
   const editarGasto = async (id, d) => { await db.set(`gastos/${id}`, d); setGastos(p => p.map(x => x._id === id ? { ...d, _id:id } : x)); };
   const borrarGasto = async (id)    => { await db.del(`gastos/${id}`); setGastos(p => p.filter(x => x._id !== id)); };
 
-  return { servicios, clientas, citas, excepciones, bloques, config, gastos, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque, crearGasto, editarGasto, borrarGasto };
+  return { servicios, clientas, citas, excepciones, bloques, config, gastos, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, borrarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque, crearGasto, editarGasto, borrarGasto };
 }
 
 // ── Componentes UI comunes ─────────────────────────────────────────────────────
@@ -1114,16 +1129,17 @@ function AdminAgenda({ data, push, toast }) {
     return porDia[dow] !== undefined ? porDia[dow] : global;
   })();
 
+  const esDiaPasado = diaS < hoy;
   const dtManana = new Date(diaS + "T12:00:00"); dtManana.setDate(dtManana.getDate() + 1);
   const keyManana = dtManana.toISOString().slice(0, 10);
   const citasManana = citasPorFecha[keyManana] || [];
 
   return (
     <div>
-      <div style={s.topBar}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+      <div style={{ ...s.topBar, ...(wide && { padding:"16px 20px 14px" }) }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
           <div><h1 style={s.h1}>Agenda</h1><p style={s.sub}>calendario del estudio</p></div>
-          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
             {["mes","semana","día"].map(v => (
               <button key={v} onClick={() => setVista(v)}
                 style={{ ...s.btnGl, padding:"6px 12px", fontSize:11, textTransform:"capitalize",
@@ -1196,7 +1212,7 @@ function AdminAgenda({ data, push, toast }) {
                 <div style={{ width:5, height:5, borderRadius:"50%", background:G.green }} />
                 <p style={{ margin:0, fontFamily:F.display, fontWeight:400, fontSize:20, letterSpacing:"0.5px", color:G.white }}>{DIAS_F[new Date(diaS + "T12:00:00").getDay()]} {fmtFecha(diaS)}</p>
                 {citasDia.length > 0 && <span style={s.tag}>{citasDia.length} citas</span>}
-                <button style={{ ...s.btnG, width:"auto", padding:"7px 14px", fontSize:11, marginLeft:"auto" }} onClick={() => push("nueva-cita", { fechaDefault:diaS })}>+ agendar</button>
+                {!esDiaPasado && <button style={{ ...s.btnG, width:"auto", padding:"7px 14px", fontSize:11, marginLeft:"auto" }} onClick={() => push("nueva-cita", { fechaDefault:diaS })}>+ agendar</button>}
               </div>
               {diaEsBloq && (
                 <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -1222,8 +1238,8 @@ function AdminAgenda({ data, push, toast }) {
                     </div>
                     {!cita ? (
                       <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                        <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>disponible</p>
-                        <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={e => { e.stopPropagation(); push("nueva-cita", { fechaDefault:diaS, horaDefault:hora }); }}>+ agendar</button>
+                        <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{esDiaPasado ? "pasado" : "disponible"}</p>
+                        {!esDiaPasado && <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={e => { e.stopPropagation(); push("nueva-cita", { fechaDefault:diaS, horaDefault:hora }); }}>+ agendar</button>}
                       </div>
                     ) : (
                       <>
@@ -1324,8 +1340,8 @@ function AdminAgenda({ data, push, toast }) {
                 </div>
                 {!cita ? (
                   <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>disponible</p>
-                    <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={() => push("nueva-cita", { fechaDefault:diaS, horaDefault:hora })}>+ agendar</button>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{esDiaPasado ? "pasado" : "disponible"}</p>
+                    {!esDiaPasado && <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={() => push("nueva-cita", { fechaDefault:diaS, horaDefault:hora })}>+ agendar</button>}
                   </div>
                 ) : (
                   <>
@@ -2174,6 +2190,8 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
   const [resetModal, setResetModal] = useState(false);
   const [resetting, setResetting]   = useState(false);
   const [newPassGen, setNewPassGen]  = useState("");
+  const [resetErr, setResetErr]     = useState("");
+  const [modalBorrar, setModalBorrar] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
   const opcCurvas = data.getConfig("curvas",   []);
@@ -2193,16 +2211,22 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
 
   const resetearContraseña = async () => {
     setResetting(true);
+    setResetErr("");
     try {
       const newPass = genPass();
-      const signIn = await fbAuth.signIn(c.email, c.appPass);
-      if (signIn.error) { toast("No se pudo resetear: " + (signIn.error.message || "error")); setResetting(false); return; }
-      await fbAuth.updatePass(signIn.idToken, newPass);
+      if (c.appPass) {
+        const signIn = await fbAuth.signIn(c.email, c.appPass);
+        if (signIn.error) {
+          setResetErr("No se pudo verificar la contraseña anterior (Firebase). La nueva clave se guarda igual — la clienta deberá restablecerla si no puede ingresar.");
+        } else {
+          await fbAuth.updatePass(signIn.idToken, newPass);
+        }
+      }
       await data.editarClientas(c._id, { appPass:newPass });
       setC(p => ({ ...p, appPass:newPass }));
       setNewPassGen(newPass);
-      toast("✓ contraseña actualizada");
-    } catch { toast("Error al resetear contraseña"); }
+      toast("✓ contraseña guardada");
+    } catch { setResetErr("Error inesperado. Intentá de nuevo."); }
     setResetting(false);
   };
 
@@ -2273,7 +2297,16 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                 <Icon name="key" size={13} color={G.sub} /> {c.appPass ? "Nueva contraseña" : "Generar contraseña"}
               </button>
             )}
+            {!editing && (
+              <button style={{ ...s.btnRed, width:"100%", marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={() => setModalBorrar(true)}>
+                <Icon name="trash" size={14} color={G.red} />
+                Eliminar clienta
+              </button>
+            )}
           </div>
+        )}
+        {modalBorrar && (
+          <Modal titulo="Eliminar clienta" msg={`¿Segura que querés eliminar a ${c.nombre}? Se perderán todos sus datos e historial.`} onOk={async () => { await data.borrarClientas(c._id); toast("Clienta eliminada"); pop(); }} onCancel={() => setModalBorrar(false)} okLabel="eliminar" danger />
         )}
 
         {tab === "ficha" && (
@@ -2375,17 +2408,20 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
         )}
       </div>
       {resetModal && (
-        <Sheet titulo="Contraseña de acceso" onClose={() => { setResetModal(false); setNewPassGen(""); }}>
+        <Sheet titulo="Contraseña de acceso" onClose={() => { setResetModal(false); setNewPassGen(""); setResetErr(""); }}>
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:`rgba(${G.greenRGB},0.2)` }}>
-              <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 6px" }}>contraseña actual de {c.nombre?.split(" ")[0]}</p>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <span style={{ fontFamily:"monospace", fontSize:16, color:G.sub, letterSpacing:"0.12em" }}>{showPass ? c.appPass : "••••••"}</span>
-                <button onClick={() => setShowPass(p => !p)} style={{ background:"transparent", border:"none", cursor:"pointer", padding:6, display:"flex", alignItems:"center" }}>
-                  <Icon name={showPass ? "unlock" : "lock"} size={16} color={G.muted} />
-                </button>
+            {c.appPass && (
+              <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:`rgba(${G.greenRGB},0.2)` }}>
+                <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 6px" }}>contraseña actual de {c.nombre?.split(" ")[0]}</p>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <span style={{ fontFamily:"monospace", fontSize:16, color:G.sub, letterSpacing:"0.12em" }}>{showPass ? c.appPass : "••••••"}</span>
+                  <button onClick={() => setShowPass(p => !p)} style={{ background:"transparent", border:"none", cursor:"pointer", padding:6, display:"flex", alignItems:"center" }}>
+                    <Icon name={showPass ? "unlock" : "lock"} size={16} color={G.muted} />
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
+            {resetErr && <p style={{ fontFamily:F.sans, fontSize:12, color:G.amber, margin:0, lineHeight:1.5, padding:"10px 12px", background:"rgba(224,184,112,0.08)", borderRadius:10, border:`0.5px solid rgba(224,184,112,0.25)` }}>{resetErr}</p>}
             {newPassGen ? (
               <>
                 <div style={{ ...s.card, background:"rgba(143,189,90,0.08)", borderColor:`rgba(${G.greenRGB},0.35)` }}>
@@ -2393,13 +2429,13 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                   <p style={{ fontFamily:"monospace", fontSize:20, color:G.greenL, letterSpacing:"0.16em", margin:0, fontWeight:700 }}>{newPassGen}</p>
                 </div>
                 <button style={s.btnG} onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const estudio = data.getConfig("estudio", {}); openWAClienta(c, fillMsg(tpl.bienvenida || DEFAULT_MENSAJES.bienvenida, { nombre:c.nombre?.split(" ")[0], estudio:estudio.nombre || "Lash Studio", email:c.email, pass:newPassGen, url:DEPLOY_URL })); }}>Compartir por WhatsApp →</button>
-                <button style={{ ...s.btnGl, width:"100%" }} onClick={() => { setResetModal(false); setNewPassGen(""); }}>cerrar</button>
+                <button style={{ ...s.btnGl, width:"100%" }} onClick={() => { setResetModal(false); setNewPassGen(""); setResetErr(""); }}>cerrar</button>
               </>
             ) : (
               <>
-                <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:0, lineHeight:1.6 }}>Generará una nueva contraseña aleatoria y actualizará el acceso de la clienta automáticamente.</p>
+                <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:0, lineHeight:1.6 }}>{c.appPass ? "Generará una nueva contraseña aleatoria y actualizará el acceso de la clienta." : "Sin contraseña registrada. Se generará una nueva clave para esta clienta."}</p>
                 <button style={{ ...s.btnG, opacity:resetting?0.6:1 }} onClick={resetearContraseña} disabled={resetting}>{resetting ? "actualizando..." : "Generar nueva contraseña →"}</button>
-                <button style={{ ...s.btnGl, width:"100%" }} onClick={() => setResetModal(false)}>cancelar</button>
+                <button style={{ ...s.btnGl, width:"100%" }} onClick={() => { setResetModal(false); setResetErr(""); }}>cancelar</button>
               </>
             )}
           </div>
@@ -2940,17 +2976,21 @@ function ConfigAdicionales({ data, toast }) {
   const [items, setItems] = useState(data.getConfig("adicionales", []));
   const [form, setForm]   = useState({ nombre:"", descripcion:"", precio:"", duracion:"" });
   const [showForm, setShowForm] = useState(false);
+  const [editIdx, setEditIdx]   = useState(null);
   const set = (k,v) => setForm(f => ({...f, [k]:v}));
+
+  const abrirNuevo = () => { setEditIdx(null); setForm({ nombre:"", descripcion:"", precio:"", duracion:"" }); setShowForm(true); };
+  const abrirEditar = (i) => { const a = items[i]; setEditIdx(i); setForm({ nombre:a.nombre, descripcion:a.descripcion||"", precio:String(a.precio||""), duracion:String(a.duracion||"") }); setShowForm(true); };
 
   const guardar = async () => {
     if (!form.nombre.trim()) { toast("el nombre es obligatorio"); return; }
-    const nuevo = { nombre:form.nombre.trim(), descripcion:form.descripcion.trim(), precio:parseFloat(form.precio)||0, duracion:parseInt(form.duracion)||0 };
-    const upd = [...items, nuevo];
+    const entry = { nombre:form.nombre.trim(), descripcion:form.descripcion.trim(), precio:parseFloat(form.precio)||0, duracion:parseInt(form.duracion)||0 };
+    const upd = editIdx !== null ? items.map((a,i) => i === editIdx ? entry : a) : [...items, entry];
     await data.saveConfig("adicionales", upd);
     setItems(upd);
     setForm({ nombre:"", descripcion:"", precio:"", duracion:"" });
-    setShowForm(false);
-    toast("✓ adicional guardado");
+    setShowForm(false); setEditIdx(null);
+    toast(editIdx !== null ? "✓ adicional editado" : "✓ adicional guardado");
   };
 
   const del = async (i) => {
@@ -2965,11 +3005,12 @@ function ConfigAdicionales({ data, toast }) {
       <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14, lineHeight:1.6 }}>
         Servicios adicionales que la clienta puede agregar a su turno (remoción, diseño de cejas, etc.)
       </p>
-      <button style={{ ...s.btnG, width:"100%", marginBottom:14 }} onClick={() => setShowForm(sv => !sv)}>
+      <button style={{ ...s.btnG, width:"100%", marginBottom:14 }} onClick={() => showForm ? (setShowForm(false), setEditIdx(null)) : abrirNuevo()}>
         {showForm ? "cancelar" : "+ nuevo adicional"}
       </button>
       {showForm && (
         <div style={{ ...s.card, marginBottom:14 }}>
+          <p style={{ ...s.eyebrow, marginBottom:8 }}>{editIdx !== null ? "editar adicional" : "nuevo adicional"}</p>
           <Field label="nombre"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="ej: Remoción de lash" /></Field>
           <Field label="descripción (opcional)"><input style={s.input} value={form.descripcion} onChange={e => set("descripcion", e.target.value)} /></Field>
           <div style={{ display:"flex", gap:10 }}>
@@ -2985,8 +3026,10 @@ function ConfigAdicionales({ data, toast }) {
           <div style={{ flex:1 }}>
             <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14, color:G.white }}>{a.nombre}</p>
             <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{a.duracion ? `+${a.duracion}min` : ""}{a.precio ? ` · ${fmtPesos(a.precio)}` : ""}</p>
+            {a.descripcion && <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:11, color:G.sub }}>{a.descripcion}</p>}
           </div>
-          <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.red, fontSize:13 }} onClick={() => del(i)}>✕</button>
+          <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.muted, fontSize:12, padding:"4px 6px" }} onClick={() => abrirEditar(i)}>✎</button>
+          <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.red, fontSize:13, padding:"4px 6px" }} onClick={() => del(i)}>✕</button>
         </div>
       ))}
     </div>
@@ -3332,6 +3375,19 @@ function ConfigEstudio({ data, toast, onLogout }) {
 function ConfigNotificaciones({ data, toast }) {
   const { status, subscribe, supported, loading } = usePushStatus("admin");
   const [sending, setSending] = useState(false);
+  const DEFAULT_PUSH_TEXTS = {
+    solicitud:    "Nueva solicitud de turno 🗓",
+    confirmacion: "¡Tu turno está confirmado! 🌿",
+    rechazo:      "Tu solicitud no pudo confirmarse",
+    recordatorio: "Recordatorio de tu turno mañana 🌿",
+  };
+  const [pushTexts, setPushTexts] = useState(() => data.getConfig("pushTexts", {}));
+  const savePushText = async (key, val) => {
+    const upd = { ...pushTexts, [key]: val };
+    setPushTexts(upd);
+    await data.saveConfig("pushTexts", upd);
+    toast("✓ guardado");
+  };
 
   const sendTest = async () => {
     setSending(true);
@@ -3404,6 +3460,17 @@ function ConfigNotificaciones({ data, toast }) {
             <span style={{ fontFamily:F.sans, fontSize:12, color:G.sub }}>{l}</span>
             <span style={s.tag}>{v}</span>
           </div>
+        ))}
+      </div>
+
+      {/* Push notification text editor */}
+      <div style={{ ...s.card, marginBottom:14 }}>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text, margin:"0 0 4px" }}>Textos de notificaciones</p>
+        <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 12px" }}>Editá el título de cada alerta push. Los cambios se aplican a partir del próximo envío.</p>
+        {Object.entries(DEFAULT_PUSH_TEXTS).map(([k, def]) => (
+          <Field key={k} label={k}>
+            <input style={s.input} defaultValue={pushTexts[k] || def} onBlur={e => { if (e.target.value !== (pushTexts[k] || def)) savePushText(k, e.target.value || def); }} />
+          </Field>
         ))}
       </div>
 
@@ -3545,6 +3612,22 @@ function CInicio({ clienta, data, setTab }) {
       <div style={{ padding:"18px" }}>
         <PushBanner role="clienta" uid={clienta.uid} />
 
+        {/* ── 0. Stats: visitas | curva fav ── */}
+        {hist.length > 0 && (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
+            <div onClick={() => setTab("historial")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
+              <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="star" size={16} color={G.muted} strokeWidth={1.5} /></div>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{hist.length}</p>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>visitas</p>
+            </div>
+            <div onClick={() => setTab("perfil")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
+              <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="scissors" size={16} color={G.muted} strokeWidth={1.5} /></div>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{curvaFav}</p>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>mi curva</p>
+            </div>
+          </div>
+        )}
+
         {/* ── 1. Contact/quick-action 2x2 grid ── */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
           <div onClick={() => openWA("Hola! Tengo una consulta 💚")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"18px 12px", textAlign:"center", background:"rgba(37,211,102,0.07)", borderColor:"rgba(37,211,102,0.22)", display:"flex", flexDirection:"column", alignItems:"center", gap:7 }}>
@@ -3665,20 +3748,6 @@ function CInicio({ clienta, data, setTab }) {
           </div>
         )}
 
-        {/* ── 7. Stats row: visitas | mi curva ── */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
-          <div onClick={() => setTab("historial")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
-            <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="star" size={16} color={G.muted} strokeWidth={1.5} /></div>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{hist.length}</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>visitas</p>
-          </div>
-          <div onClick={() => setTab("perfil")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
-            <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="scissors" size={16} color={G.muted} strokeWidth={1.5} /></div>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{curvaFav}</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>mi curva</p>
-          </div>
-        </div>
-
         {/* ── 8. Último servicio ── */}
         {ultima && (
           <>
@@ -3704,6 +3773,8 @@ function CAgendar({ clienta, data }) {
   const getFotoIdx = (svId) => fotoIdxMap[svId] || 0;
   const setFotoIdx = (svId, i) => setFotoIdxMap(p => ({ ...p, [svId]:i }));
   const [lightbox, setLightbox] = useState(null);
+  const [lbTouchY, setLbTouchY] = useState(null);
+  const [touchX, setTouchX]     = useState(null);
   const [calOffset, setCalOffset] = useState(0);
   const [customHora, setCustomHora] = useState(false);
   const [enviado, setEnviado] = useState(false);
@@ -3784,7 +3855,9 @@ function CAgendar({ clienta, data }) {
                 : data.servicios.map(sv => (
                   <div key={sv._id} style={{ ...s.card, borderColor:form.servicio?._id === sv._id ? G.green : G.border, background:form.servicio?._id === sv._id ? "rgba(143,189,90,0.06)" : G.card }}>
                     {sv.fotos?.length > 0 && (
-                      <div style={{ marginBottom:10, position:"relative" }}>
+                      <div style={{ marginBottom:10, position:"relative" }}
+                        onTouchStart={e => setTouchX(e.touches[0].clientX)}
+                        onTouchEnd={e => { if (touchX === null) return; const dx = e.changedTouches[0].clientX - touchX; if (Math.abs(dx) > 40) { const n = sv.fotos.length; const cur = getFotoIdx(sv._id); setFotoIdx(sv._id, dx < 0 ? (cur + 1) % n : (cur - 1 + n) % n); } setTouchX(null); }}>
                         <img src={sv.fotos[getFotoIdx(sv._id)]} alt={sv.nombre} onClick={() => setLightbox(sv.fotos[getFotoIdx(sv._id)])} style={{ width:"100%", height:140, objectFit:"cover", borderRadius:10, cursor:"zoom-in" }} onError={e => { e.target.style.display = "none"; }} />
                         {sv.fotos.length > 1 && (
                           <>
@@ -3846,6 +3919,7 @@ function CAgendar({ clienta, data }) {
                   <div style={{ flex:1 }}>
                     <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{a.nombre}</p>
                     <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{[a.duracion?`+${a.duracion}min`:"", a.precio?fmtPesos(a.precio):""].filter(Boolean).join(" · ")}</p>
+                    {a.descripcion && <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:11, color:G.sub }}>{a.descripcion}</p>}
                   </div>
                 </div>
               );
@@ -3962,9 +4036,11 @@ function CAgendar({ clienta, data }) {
       </div>
       {lightbox && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.94)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center" }}
-          onClick={() => setLightbox(null)}>
+          onClick={() => setLightbox(null)}
+          onTouchStart={e => setLbTouchY(e.touches[0].clientY)}
+          onTouchEnd={e => { if (lbTouchY !== null && e.changedTouches[0].clientY - lbTouchY > 80) setLightbox(null); setLbTouchY(null); }}>
           <img src={lightbox} alt="" style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", pointerEvents:"none" }} />
-          <button style={{ position:"absolute", top:20, right:20, background:"transparent", border:"none", color:"#fff", fontSize:28, cursor:"pointer", lineHeight:1 }} onClick={() => setLightbox(null)}>✕</button>
+          <button style={{ position:"absolute", top:"calc(env(safe-area-inset-top, 0px) + 24px)", right:20, background:"rgba(0,0,0,0.5)", border:"none", color:"#fff", fontSize:24, cursor:"pointer", lineHeight:1, borderRadius:8, padding:"4px 10px" }} onClick={e => { e.stopPropagation(); setLightbox(null); }}>✕</button>
         </div>
       )}
     </div>
@@ -4033,7 +4109,9 @@ function CPerfil({ clienta, data, onLogout }) {
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:22 }}>
           <div style={{ position:"relative", marginBottom:10 }}>
             {foto ? <img src={foto} alt="perfil" style={{ width:78, height:78, borderRadius:"50%", objectFit:"cover", border:`2px solid ${G.green}` }} /> : <Avatar nombre={clienta.nombre} size={78} />}
-            <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:editando ? G.green : G.glass, border:`1.5px solid ${editando ? G.bg : G.border}`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }}></label>
+            <label htmlFor="foto-input" style={{ position:"absolute", bottom:0, right:0, width:26, height:26, borderRadius:"50%", background:editando ? G.green : G.glass, border:`1.5px solid ${editando ? G.bg : G.border}`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
+              <Icon name="camera" size={13} color={editando ? "#0a0a0a" : G.sub} />
+            </label>
             <input id="foto-input" type="file" accept="image/*" style={{ display:"none" }} onChange={onFoto} />
           </div>
           <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.text }}>{clienta.nombre}</p>
