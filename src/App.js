@@ -1439,13 +1439,15 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
   const slotsPorDia   = data.getConfig("slotsPorDia", {});
   const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
 
-  // Collect all slot times across the week to determine time axis range
+  // Collect all slot times + cita times across the week to determine time axis range
   const allSlotMins = new Set();
   weekDays.forEach(d => {
     const dow = d.getDay();
     const slots = slotsPorDia[dow] !== undefined ? slotsPorDia[dow] : slotsGlobal;
     slots.forEach(t => allSlotMins.add(toMin(t)));
   });
+  // Also include actual cita times so nothing is clipped off the grid
+  data.citas.forEach(c => { if (weekKeys.includes(c.fecha)) allSlotMins.add(toMin(c.hora)); });
   const minsSorted = [...allSlotMins].sort((a, b) => a - b);
   const minMin = minsSorted.length ? minsSorted[0]                     : 8*60;
   const maxMin = minsSorted.length ? minsSorted[minsSorted.length-1]+60 : 18*60;
@@ -1531,7 +1533,7 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
             const dow = d.getDay();
             const laboral = esDiaLaboral(key, diasLaborales);
             const daySlots = slotsPorDia[dow] !== undefined ? slotsPorDia[dow] : slotsGlobal;
-            const dayCitas  = (citasPorFecha[key] || []).filter(c => c.estado !== "completada");
+            const dayCitas  = citasPorFecha[key] || [];
             const dayBloques = (data.bloques || []).filter(b => b.fecha === key);
 
             return (
@@ -1562,21 +1564,26 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
                   const duracion = sv?.duracion || 60;
                   const top = ((startMin - minMin) / 60) * ROW_H;
                   const height = Math.max(42, (duracion / 60) * ROW_H);
+                  const done = cita.estado === "completada";
+                  const bg  = done ? `rgba(${G.greenRGB},0.10)` : blkBg(cita.estado);
+                  const bdr = done ? `rgba(${G.greenRGB},0.25)` : blkBdr(cita.estado);
+                  const txt = done ? G.muted                    : blkTxt(cita.estado);
                   return (
                     <div key={cita._id}
                       onClick={e => { e.stopPropagation(); push("cita-detalle", { cita }); }}
                       style={{ position:"absolute", top, left:2, right:2, height,
-                        background:blkBg(cita.estado), border:`1px solid ${blkBdr(cita.estado)}`,
+                        background:bg, border:`1px solid ${bdr}`,
                         borderRadius:8, padding:"3px 5px", overflow:"hidden",
-                        cursor:"pointer", zIndex:2, boxSizing:"border-box" }}>
+                        cursor:"pointer", zIndex:2, boxSizing:"border-box",
+                        opacity:done ? 0.7 : 1 }}>
                       <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:10,
-                        color:blkTxt(cita.estado), lineHeight:1.3,
+                        color:txt, lineHeight:1.3,
                         overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                        {cita.hora} · {cita.clientaNombre?.split(" ")[0]}
+                        {done ? "✓ " : ""}{cita.hora} · {cita.clientaNombre?.split(" ")[0]}
                       </p>
                       {height >= 54 && (
                         <p style={{ margin:0, fontFamily:F.sans, fontSize:9,
-                          color:blkTxt(cita.estado), opacity:0.75, lineHeight:1.3,
+                          color:txt, opacity:0.75, lineHeight:1.3,
                           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                           {cita.servicio}
                         </p>
