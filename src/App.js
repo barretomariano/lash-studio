@@ -373,19 +373,20 @@ function useData() {
   const [bloques, setBloques]         = useState([]);
   const [config, setConfig]           = useState({});
   const [gastos, setGastos]           = useState([]);
+  const [insumos, setInsumos]         = useState([]);
   const [loading, setLoading]         = useState(true);
 
   const recargar = useCallback(async () => {
     setLoading(true);
-    const [sv, cl, ct, ex, bl, cfg, gs] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos")]);
-    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []);
+    const [sv, cl, ct, ex, bl, cfg, gs, ins] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos"), db.get("insumos")]);
+    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []); setInsumos(Array.isArray(ins) ? ins : []);
     setLoading(false);
   }, []);
 
   const recargarSilent = useCallback(async () => {
     try {
-      const [sv, cl, ct, ex, bl, cfg, gs] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos")]);
-      setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []);
+      const [sv, cl, ct, ex, bl, cfg, gs, ins] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos"), db.get("insumos")]);
+      setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []); setInsumos(Array.isArray(ins) ? ins : []);
     } catch {}
   }, []);
 
@@ -443,7 +444,11 @@ function useData() {
   const editarGasto = async (id, d) => { await db.set(`gastos/${id}`, d); setGastos(p => p.map(x => x._id === id ? { ...d, _id:id } : x)); };
   const borrarGasto = async (id)    => { await db.del(`gastos/${id}`); setGastos(p => p.filter(x => x._id !== id)); };
 
-  return { servicios, clientas, citas, excepciones, bloques, config, gastos, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, borrarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque, crearGasto, editarGasto, borrarGasto };
+  const crearInsumo  = async (d)     => { const id = await db.push("insumos", { ...d, creadoEn:hoyISO() }); setInsumos(p => [...p, { ...d, creadoEn:hoyISO(), _id:id }]); };
+  const editarInsumo = async (id, d) => { await db.update(`insumos/${id}`, d); setInsumos(p => p.map(x => x._id === id ? { ...x, ...d } : x)); };
+  const borrarInsumo = async (id)    => { await db.del(`insumos/${id}`); setInsumos(p => p.filter(x => x._id !== id)); };
+
+  return { servicios, clientas, citas, excepciones, bloques, config, gastos, insumos, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, borrarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque, crearGasto, editarGasto, borrarGasto, crearInsumo, editarInsumo, borrarInsumo };
 }
 
 // ── Componentes UI comunes ─────────────────────────────────────────────────────
@@ -453,7 +458,7 @@ function Loader({ msg = "Cargando..." }) {
       <GlobalStyles />
       <AppBg />
       <div style={{ width:56, height:56, borderRadius:"50%", background:`radial-gradient(circle, rgba(143,189,90,0.22) 0%, rgba(143,189,90,0.06) 100%)`, border:`1.5px solid rgba(143,189,90,0.45)`, display:"flex", alignItems:"center", justifyContent:"center", zIndex:1, animation:"logoPulse 2.5s ease-in-out infinite", boxShadow:"0 0 24px rgba(143,189,90,0.16)" }}>
-        <Icon name="scissors" size={24} color={G.greenL} />
+        <img src="/logo.svg" alt="Lash Studio" style={{ width:38, height:38, objectFit:"contain" }} />
       </div>
       <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, zIndex:1, letterSpacing:"0.08em" }}>{msg}</p>
     </div>
@@ -617,7 +622,7 @@ function Login({ onLogin }) {
       </button>
       <div style={{ textAlign:"center", marginBottom:44, zIndex:1, animation:"fadeInUp 0.6s ease both" }}>
         <div style={{ width:72, height:72, borderRadius:"50%", background:`radial-gradient(circle, rgba(${G.greenRGB},0.22) 0%, rgba(${G.greenRGB},0.08) 100%)`, border:`1.5px solid rgba(${G.greenRGB},0.45)`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite", boxShadow:`0 0 24px rgba(${G.greenRGB},0.18)` }}>
-          <Icon name="scissors" size={30} color={G.greenL} />
+          <img src="/logo.svg" alt="" style={{ width:46, height:46, objectFit:"contain" }} />
         </div>
         <h1 style={{ ...s.h1, fontSize:34, letterSpacing:"-0.5px", textAlign:"center", marginBottom:4 }}>Lash Studio</h1>
         <p style={{ fontFamily:F.serif, fontSize:14, fontStyle:"italic", color:G.green, margin:"0 0 14px", letterSpacing:"0.04em" }}>by chulas</p>
@@ -1166,7 +1171,12 @@ function AdminAgenda({ data, push, toast }) {
         <div style={{ ...s.card, padding:"14px 10px", marginBottom:14 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
             <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o - 1)}>‹</button>
-            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:16, letterSpacing:"0.5px", color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
+            <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+              <p style={{ fontFamily:F.display, fontWeight:400, fontSize:16, letterSpacing:"0.5px", color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
+              {(offset !== 0 || diaS !== hoy) && (
+                <button style={{ ...s.btnGl, fontSize:10, padding:"3px 8px" }} onClick={() => { setOffset(0); setDiaS(hoy); }}>hoy</button>
+              )}
+            </div>
             <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o + 1)}>›</button>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4 }}>
@@ -1191,7 +1201,7 @@ function AdminAgenda({ data, push, toast }) {
             })}
           </div>
         </div>
-              {citasManana.length > 0 && (
+              {diaS === hoy && citasManana.length > 0 && (
                 <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:12 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                     <div>
@@ -1229,7 +1239,10 @@ function AdminAgenda({ data, push, toast }) {
                 </div>
               )}
               {!diaEsBloq && slots.map(hora => {
-                const cita = citasDia.find(c => c.hora === hora && c.estado !== "completada");
+                const cita = esDiaPasado
+                  ? citasDia.find(c => c.hora === hora)
+                  : citasDia.find(c => c.hora === hora && c.estado !== "completada");
+                if (!cita && esDiaPasado) return null;
                 return (
                   <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.6, cursor:cita ? "pointer" : "default" }}
                     onClick={() => cita && push("cita-detalle", { cita })}>
@@ -1238,8 +1251,8 @@ function AdminAgenda({ data, push, toast }) {
                     </div>
                     {!cita ? (
                       <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                        <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{esDiaPasado ? "pasado" : "disponible"}</p>
-                        {!esDiaPasado && <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={e => { e.stopPropagation(); push("nueva-cita", { fechaDefault:diaS, horaDefault:hora }); }}>+ agendar</button>}
+                        <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>disponible</p>
+                        <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={e => { e.stopPropagation(); push("nueva-cita", { fechaDefault:diaS, horaDefault:hora }); }}>+ agendar</button>
                       </div>
                     ) : (
                       <>
@@ -1247,7 +1260,7 @@ function AdminAgenda({ data, push, toast }) {
                           <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontSize:14 }}>{cita.clientaNombre}</p>
                           <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}</p>
                         </div>
-                        <span style={s.tag}>{cita.estado}</span>
+                        <span style={s.tag}>{cita.estado === "completada" ? "finalizada" : cita.estado}</span>
                       </>
                     )}
                   </div>
@@ -1260,7 +1273,12 @@ function AdminAgenda({ data, push, toast }) {
         <div style={{ ...s.card, padding:"14px 10px", marginBottom:18 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
             <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o - 1)}>‹</button>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
+            <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
+              {(offset !== 0 || diaS !== hoy) && (
+                <button style={{ ...s.btnGl, fontSize:10, padding:"3px 8px" }} onClick={() => { setOffset(0); setDiaS(hoy); }}>hoy</button>
+              )}
+            </div>
             <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o + 1)}>›</button>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4 }}>
@@ -1306,7 +1324,7 @@ function AdminAgenda({ data, push, toast }) {
           </div>
         )}
 
-        {citasManana.length > 0 && (
+        {diaS === hoy && citasManana.length > 0 && (
           <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:12 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
@@ -1332,7 +1350,10 @@ function AdminAgenda({ data, push, toast }) {
               <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:0 }}>Andá a Config → Horarios para agregar tus horarios de trabajo</p>
             </div>
           ) : slots.map(hora => {
-            const cita = citasDia.find(c => c.hora === hora && c.estado !== "completada");
+            const cita = esDiaPasado
+              ? citasDia.find(c => c.hora === hora)
+              : citasDia.find(c => c.hora === hora && c.estado !== "completada");
+            if (!cita && esDiaPasado) return null;
             return (
               <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.6 }}>
                 <div style={{ background:cita ? G.greenM : "transparent", border:`0.5px solid ${cita ? G.green : G.border}`, borderRadius:8, padding:"5px 8px", minWidth:46, textAlign:"center" }}>
@@ -1340,8 +1361,8 @@ function AdminAgenda({ data, push, toast }) {
                 </div>
                 {!cita ? (
                   <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>{esDiaPasado ? "pasado" : "disponible"}</p>
-                    {!esDiaPasado && <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={() => push("nueva-cita", { fechaDefault:diaS, horaDefault:hora })}>+ agendar</button>}
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>disponible</p>
+                    <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={() => push("nueva-cita", { fechaDefault:diaS, horaDefault:hora })}>+ agendar</button>
                   </div>
                 ) : (
                   <>
@@ -1350,10 +1371,11 @@ function AdminAgenda({ data, push, toast }) {
                       <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}</p>
                     </div>
                     <div style={{ display:"flex", gap:6 }}>
-                      <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}
-                        onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }}><Icon name="messageCircle" size={13} color="rgba(37,211,102,0.8)" /></button>
+                      {!esDiaPasado && <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}
+                        onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }}><Icon name="messageCircle" size={13} color="rgba(37,211,102,0.8)" /></button>}
                       <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => push("cita-detalle", { cita })}>→</button>
                     </div>
+                    <span style={s.tag}>{cita.estado === "completada" ? "finalizada" : cita.estado}</span>
                   </>
                 )}
               </div>
@@ -1565,6 +1587,9 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
                   <>
                     <div style={{ position:"absolute", left:-4, top:((nowMin-minMin)/60)*ROW_H - 5, width:10, height:10, borderRadius:"50%", background:"#e07070", zIndex:10 }} />
                     <div style={{ position:"absolute", left:0, right:0, top:((nowMin-minMin)/60)*ROW_H, height:1.5, background:"rgba(224,112,112,0.85)", zIndex:9 }} />
+                    <div style={{ position:"absolute", left:2, top:((nowMin-minMin)/60)*ROW_H - 11, background:"#c85a5a", borderRadius:4, padding:"1px 5px", zIndex:11, pointerEvents:"none" }}>
+                      <span style={{ fontFamily:F.sans, fontSize:8, color:"#fff", fontWeight:700, lineHeight:1.5 }}>{String(Math.floor(nowMin/60)).padStart(2,"0")}:{String(nowMin%60).padStart(2,"0")}</span>
+                    </div>
                   </>
                 )}
               </div>
@@ -1687,6 +1712,9 @@ function AgendaDia({ data, push, diaInicial }) {
             <>
               <div style={{ position:"absolute", left:-4, top:((nowMin-minMin)/60)*ROW_H - 5, width:10, height:10, borderRadius:"50%", background:"#e07070", zIndex:10 }} />
               <div style={{ position:"absolute", left:0, right:0, top:((nowMin-minMin)/60)*ROW_H, height:1.5, background:"rgba(224,112,112,0.85)", zIndex:9 }} />
+              <div style={{ position:"absolute", left:2, top:((nowMin-minMin)/60)*ROW_H - 11, background:"#c85a5a", borderRadius:4, padding:"1px 5px", zIndex:11, pointerEvents:"none" }}>
+                <span style={{ fontFamily:F.sans, fontSize:8, color:"#fff", fontWeight:700, lineHeight:1.5 }}>{String(Math.floor(nowMin/60)).padStart(2,"0")}:{String(nowMin%60).padStart(2,"0")}</span>
+              </div>
             </>
           )}
         </div>
@@ -2460,13 +2488,14 @@ function AdminFinanzas({ data, toast }) {
       <div style={s.topBar}><h1 style={s.h1}>Finanzas</h1><p style={s.sub}>resumen de ingresos</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:7, marginBottom:18 }}>
-          {[["resumen","resumen"],["gastos","gastos"],["calendario","calendario"]].map(([v, l]) => (
+          {[["resumen","resumen"],["gastos","gastos"],["insumos","insumos"],["calendario","calendario"]].map(([v, l]) => (
             <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:12, background:tab === v ? G.greenM : G.glass, borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.sub }}>{l}</button>
           ))}
         </div>
 
         {tab === "resumen" && <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} />}
         {tab === "gastos" && <GastosTab data={data} toast={toast} />}
+        {tab === "insumos" && <InsumosTab data={data} toast={toast} />}
         {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} />}
       </div>
     </div>
@@ -2725,6 +2754,65 @@ function GastosTab({ data, toast }) {
           </div>
           <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.muted, fontSize:11, padding:"4px 8px" }} onClick={() => { setEditId(g._id); setForm({ fecha:g.fecha, categoria:g.categoria, descripcion:g.descripcion, monto:String(g.monto) }); setShowForm(true); }}>editar</button>
           <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.red, fontSize:11, padding:"4px 8px" }} onClick={async () => { if (window.confirm("¿Eliminar gasto?")) { await data.borrarGasto(g._id); toast("gasto eliminado"); }}}>✕</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Insumos Tab ────────────────────────────────────────────────────────────────
+function InsumosTab({ data, toast }) {
+  const EMPTY = { nombre:"", precio:"", detalle:"", duracion:"" };
+  const [form, setForm]     = useState(EMPTY);
+  const [editId, setEditId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const set = (k, v) => setForm(f => ({...f, [k]:v}));
+
+  const guardar = async () => {
+    if (!form.nombre.trim()) { toast("el nombre es obligatorio"); return; }
+    const d = { nombre:form.nombre.trim(), precio:parseFloat(form.precio)||0, detalle:form.detalle.trim(), duracion:form.duracion.trim() };
+    if (editId) { await data.editarInsumo(editId, d); toast("✓ insumo actualizado"); setEditId(null); }
+    else { await data.crearInsumo(d); toast("✓ insumo guardado"); }
+    setForm(EMPTY); setShowForm(false);
+  };
+
+  const sorted = [...(data.insumos || [])].sort((a,b) => (a.nombre||"").localeCompare(b.nombre||""));
+  const totalInvertido = sorted.reduce((acc, i) => acc + (i.precio||0), 0);
+
+  return (
+    <div style={{ padding:"18px" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <div>
+          <p style={{ ...s.eyebrow, margin:"0 0 2px" }}>insumos del estudio</p>
+          {sorted.length > 0 && <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:0 }}>{sorted.length} productos · {fmtPesos(totalInvertido)} invertidos</p>}
+        </div>
+        <button style={{ ...s.btnG, width:"auto", padding:"8px 14px", fontSize:12 }} onClick={() => { setShowForm(true); setEditId(null); setForm(EMPTY); }}>+ agregar</button>
+      </div>
+      {showForm && (
+        <div style={{ ...s.card, marginBottom:14 }}>
+          <Field label="nombre del insumo"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="ej: Extensiones J curl 0.07mm" /></Field>
+          <Field label="precio ($)"><input style={s.input} type="number" value={form.precio} onChange={e => set("precio", e.target.value)} placeholder="0" /></Field>
+          <Field label="detalle"><textarea style={{ ...s.input, height:55, resize:"none" }} value={form.detalle} onChange={e => set("detalle", e.target.value)} placeholder="Bandeja 12 líneas, marca, referencia…" /></Field>
+          <Field label="vida útil"><input style={s.input} value={form.duracion} onChange={e => set("duracion", e.target.value)} placeholder="ej: 3 meses, 50 aplicaciones" /></Field>
+          <div style={{ display:"flex", gap:9, marginTop:10 }}>
+            <button style={{ ...s.btnGl, flex:1 }} onClick={() => { setShowForm(false); setEditId(null); }}>cancelar</button>
+            <button style={{ ...s.btnG, flex:1 }} onClick={guardar}>guardar →</button>
+          </div>
+        </div>
+      )}
+      {sorted.length === 0 && !showForm && <p style={{ color:G.muted, fontSize:13 }}>Sin insumos registrados</p>}
+      {sorted.map(item => (
+        <div key={item._id} style={{ ...s.card, marginBottom:8, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ flex:1 }}>
+            <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:3 }}>
+              <p style={{ margin:0, fontFamily:F.serif, fontSize:14 }}>{item.nombre}</p>
+              {item.duracion && <span style={{ ...s.tag, fontSize:9 }}>{item.duracion}</span>}
+            </div>
+            {item.detalle && <p style={{ margin:"0 0 3px", fontFamily:F.sans, fontSize:11, color:G.muted }}>{item.detalle}</p>}
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.green }}>{fmtPesos(item.precio)}</p>
+          </div>
+          <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.muted, fontSize:11, padding:"4px 8px" }} onClick={() => { setEditId(item._id); setForm({ nombre:item.nombre||"", precio:String(item.precio||""), detalle:item.detalle||"", duracion:item.duracion||"" }); setShowForm(true); }}>✎</button>
+          <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.red, fontSize:11, padding:"4px 8px" }} onClick={async () => { if (window.confirm(`¿Eliminar "${item.nombre}"?`)) { await data.borrarInsumo(item._id); toast("insumo eliminado"); }}}>✕</button>
         </div>
       ))}
     </div>
@@ -3612,18 +3700,18 @@ function CInicio({ clienta, data, setTab }) {
       <div style={{ padding:"18px" }}>
         <PushBanner role="clienta" uid={clienta.uid} />
 
-        {/* ── 0. Stats: visitas | curva fav ── */}
-        {hist.length > 0 && (
+        {/* ── 0. Stats: última visita | curva fav ── */}
+        {ultima && (
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
             <div onClick={() => setTab("historial")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
               <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="star" size={16} color={G.muted} strokeWidth={1.5} /></div>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{hist.length}</p>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>visitas</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white, margin:"0 0 2px", lineHeight:1.3 }}>{fmtFecha(ultima.fecha)}</p>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>última visita</p>
             </div>
             <div onClick={() => setTab("perfil")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
               <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="scissors" size={16} color={G.muted} strokeWidth={1.5} /></div>
               <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{curvaFav}</p>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>mi curva</p>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>curva usada</p>
             </div>
           </div>
         )}
@@ -3678,6 +3766,19 @@ function CInicio({ clienta, data, setTab }) {
           </div>
         )}
 
+        {/* ── 2b. CTA agendar (sin turno próximo) ── */}
+        {!proxCita && !citasSolicitadas.length && (
+          <div style={{ ...s.cardHero, marginBottom:12, cursor:"pointer" }} onClick={() => setTab("agendar")}>
+            <p style={s.eyebrow}>¿lista para tu próximo turno?</p>
+            <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:"0 0 14px", lineHeight:1.5 }}>
+              {ultima
+                ? `Tu última visita fue ${diasDesde === 0 ? "hoy" : diasDesde === 1 ? "ayer" : `hace ${diasDesde} días`}${ultima.servicio ? ` · ${ultima.servicio}` : ""}`
+                : "Todavía no tenés visitas registradas. ¡Te esperamos!"}
+            </p>
+            <button style={{ ...s.btnG, width:"100%" }} onClick={e => { e.stopPropagation(); setTab("agendar"); }}>agendar ahora →</button>
+          </div>
+        )}
+
         {/* ── 3. Próxima cita con countdown ── */}
         {proxCita && (
           <div style={{ ...s.cardHero, marginBottom:12 }}>
@@ -3698,6 +3799,17 @@ function CInicio({ clienta, data, setTab }) {
               <Icon name="download" size={13} color={G.greenL} />
               Agregar al calendario
             </button>
+          </div>
+        )}
+
+        {/* ── 3b. Preparate widget (1 día antes) ── */}
+        {proxCita && diasHasta === 1 && (
+          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.18),rgba(143,189,90,0.05))", border:`1.5px solid ${G.green}`, borderRadius:16, padding:"16px", marginBottom:12 }}>
+            <p style={{ margin:"0 0 6px", fontFamily:F.display, fontSize:22, color:G.greenL, letterSpacing:"0.5px" }}>¡preparate! ✦</p>
+            <p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.6 }}>
+              Tu turno es mañana. Planificá tu llegada con tiempo, calculá la vuelta y revisá las políticas de cancelación si necesitás hacer algún cambio. ¡Te esperamos!
+            </p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.greenL }}>{proxCita.servicio} · {proxCita.hora}</p>
           </div>
         )}
 
@@ -3776,7 +3888,6 @@ function CAgendar({ clienta, data }) {
   const [lbTouchY, setLbTouchY] = useState(null);
   const [touchX, setTouchX]     = useState(null);
   const [calOffset, setCalOffset] = useState(0);
-  const [customHora, setCustomHora] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [saving, setSaving]   = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
@@ -3990,16 +4101,6 @@ function CAgendar({ clienta, data }) {
                       {slots.map(h => { const oc = ocupadas.includes(h); return <button key={h} disabled={oc} onClick={() => set("hora", h)} style={{ ...s.btnGl, padding:"9px 12px", fontSize:12, opacity:oc ? 0.3 : 1, background:form.hora === h ? G.greenM : G.glass, borderColor:form.hora === h ? G.green : G.border, color:form.hora === h ? G.greenL : G.sub, cursor:oc ? "not-allowed" : "pointer" }}>{h}{oc ? " ✕" : ""}</button>; })}
                     </div>
                   </Field>
-                  <div style={{ marginTop:8 }}>
-                    <button style={{ ...s.btnGl, width:"100%", fontSize:11 }} onClick={() => setCustomHora(h => !h)}>
-                      {customHora ? "usar horarios configurados" : "ingresar horario personalizado"}
-                    </button>
-                    {customHora && (
-                      <div style={{ marginTop:8 }}>
-                        <input style={s.input} type="time" value={form.hora} onChange={e => set("hora", e.target.value)} />
-                      </div>
-                    )}
-                  </div>
                   <Field label={modo === "noSe" ? "contanos qué efecto buscás" : "notas (opcional)"}>
                     <textarea style={{ ...s.input, height:65, resize:"none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder={modo === "noSe" ? "largo, volumen, ocasión especial..." : "indicaciones especiales..."} />
                   </Field>
