@@ -1163,7 +1163,7 @@ function AdminAgenda({ data, push, toast }) {
       {vista === "semana"
         ? <AgendaSemana data={data} push={push} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
         : vista === "día"
-        ? <AgendaDia data={data} push={push} diaInicial={diaS} />
+        ? <AgendaDia data={data} push={push} toast={toast} diaInicial={diaS} />
         : wide
         ? (
           <div style={{ display:"flex", height:"calc(100vh - 80px)", overflow:"hidden" }}>
@@ -1603,18 +1603,21 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
 }
 
 // ── Día View ───────────────────────────────────────────────────────────────────
-function AgendaDia({ data, push, diaInicial }) {
+function AgendaDia({ data, push, toast, diaInicial }) {
   const hoy = hoyISO();
   const [dia, setDia] = useState(diaInicial || hoy);
+  const esHoy = dia === hoy;
   const ROW_H = 56;
   const [nowMin, setNowMin] = useState(() => { const n = new Date(); return n.getHours()*60 + n.getMinutes(); });
+  const [pagoTarget, setPagoTarget] = useState(null);
+  const [quickPago, setQuickPago] = useState({ metodo:"efectivo", monto:"", montoEfectivo:"", montoTransf:"" });
+  const [savingPago, setSavingPago] = useState(false);
 
   useEffect(() => {
-    const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours()*60 + n.getMinutes()); }, 60_000);
+    const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours()*60 + n.getMinutes()); }, 30_000);
     return () => clearInterval(t);
   }, []);
 
-  const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
   const slotsGlobal   = data.getConfig("slots", []);
   const slotsPorDia   = data.getConfig("slotsPorDia", {});
   const dow           = new Date(dia + "T12:00:00").getDay();
@@ -1630,7 +1633,8 @@ function AgendaDia({ data, push, diaInicial }) {
     return `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
   });
 
-  const dayCitas = (data.citas.filter(c => c.fecha === dia && c.estado !== "completada"));
+  const allDayCitas = data.citas.filter(c => c.fecha === dia).sort((a,b) => a.hora.localeCompare(b.hora));
+  const dayCitas    = allDayCitas.filter(c => c.estado !== "completada");
 
   const blkBg  = (e) => e==="confirmada" ? `rgba(${G.greenRGB},0.18)` : e==="solicitada" ? "rgba(224,184,112,0.18)" : "rgba(240,240,240,0.06)";
   const blkBdr = (e) => e==="confirmada" ? `rgba(${G.greenRGB},0.55)` : e==="solicitada" ? "rgba(224,184,112,0.55)"  : G.border;
@@ -1642,19 +1646,135 @@ function AgendaDia({ data, push, diaInicial }) {
     setDia(d.toISOString().slice(0,10));
   };
 
+  const abrirPago = (cita) => {
+    const sv = data.servicios.find(s => s.nombre === cita.servicio);
+    const precio = sv?.precio || 0;
+    setQuickPago({ metodo:"efectivo", monto:String(precio), montoEfectivo:String(precio), montoTransf:"" });
+    setPagoTarget(cita);
+  };
+
+  const completarRapido = async () => {
+    if (!pagoTarget) return;
+    const metodo = quickPago.metodo;
+    let monto = 0;
+    if (metodo === "mixto") {
+      monto = (parseFloat(quickPago.montoEfectivo)||0) + (parseFloat(quickPago.montoTransf)||0);
+    } else {
+      monto = parseFloat(quickPago.monto)||0;
+    }
+    if (!monto) { toast("ingresá el monto"); return; }
+    setSavingPago(true);
+    try {
+      const registro = {
+        fecha:dia, servicio:pagoTarget.servicio,
+        monto, pago:metodo,
+        ...(metodo === "mixto" ? { montoEfectivo:parseFloat(quickPago.montoEfectivo)||0, montoTransf:parseFloat(quickPago.montoTransf)||0 } : {})
+      };
+      await data.registrarPago(pagoTarget.clientaId, pagoTarget._id, registro);
+      const svObj = data.servicios.find(s => s.nombre === pagoTarget.servicio);
+      if (svObj?.cuidados && pagoTarget.clientaUid) {
+        sendPush([`clienta:${pagoTarget.clientaUid}`], "Cuidados de tu tratamiento 💚", svObj.cuidados);
+      }
+      toast("✓ turno completado");
+      setPagoTarget(null);
+    } catch { toast("Error al guardar"); }
+    setSavingPago(false);
+  };
+
+  const cancelarRapido = async (cita) => {
+    if (!window.confirm(`¿Cancelar el turno de ${cita.clientaNombre}?`)) return;
+    await data.borrarCita(cita._id);
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "Tu turno fue cancelado", `${cita.servicio} · ${cita.hora}`);
+    toast("Turno cancelado");
+  };
+
+  const confirmarRapido = async (cita) => {
+    await data.editarCita(cita._id, { estado:"confirmada" });
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "¡Tu turno está confirmado! 🌿", `${cita.servicio} · ${fmtFecha(dia)} a las ${cita.hora}`);
+    toast("✓ turno confirmado");
+  };
+
+  const totalPago = quickPago.metodo === "mixto"
+    ? (parseFloat(quickPago.montoEfectivo)||0) + (parseFloat(quickPago.montoTransf)||0)
+    : parseFloat(quickPago.monto)||0;
+
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 130px)" }}>
+      {/* Header */}
       <div style={{ padding:"10px 14px 8px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
         <button style={{ ...s.btnGl, padding:"6px 14px", fontSize:15 }} onClick={() => stepDia(-1)}>‹</button>
         <div style={{ textAlign:"center" }}>
-          <p style={{ margin:0, fontFamily:F.display, fontWeight:400, fontSize:16, letterSpacing:"0.5px", color:G.white }}>{DIAS_F[dow]} {fmtFecha(dia)}</p>
-          {dayCitas.length > 0 && <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted }}>{dayCitas.length} cita{dayCitas.length > 1 ? "s" : ""}</p>}
+          {esHoy
+            ? <p style={{ margin:0, fontFamily:F.display, fontSize:18, letterSpacing:"1px", color:G.greenL }}>HOY</p>
+            : <p style={{ margin:0, fontFamily:F.display, fontWeight:400, fontSize:16, letterSpacing:"0.5px", color:G.white }}>{DIAS_F[dow]} {fmtFecha(dia)}</p>
+          }
+          {allDayCitas.length > 0 && <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted }}>{allDayCitas.length} turno{allDayCitas.length > 1 ? "s" : ""}</p>}
         </div>
         <div style={{ display:"flex", gap:6 }}>
-          {dia !== hoy && <button style={{ ...s.btnGl, padding:"6px 10px", fontSize:11 }} onClick={() => setDia(hoy)}>Hoy</button>}
+          {!esHoy && <button style={{ ...s.btnGl, padding:"6px 10px", fontSize:11 }} onClick={() => setDia(hoy)}>Hoy</button>}
           <button style={{ ...s.btnGl, padding:"6px 14px", fontSize:15 }} onClick={() => stepDia(1)}>›</button>
         </div>
       </div>
+
+      {/* Live action cards for today */}
+      {esHoy && allDayCitas.length > 0 && (
+        <div style={{ flexShrink:0, padding:"0 12px 8px", display:"flex", flexDirection:"column", gap:8, maxHeight:"55vh", overflowY:"auto" }}>
+          {allDayCitas.map(cita => {
+            const citaMin   = toMin(cita.hora);
+            const sv        = data.servicios.find(s => s.nombre === cita.servicio);
+            const duracion  = sv?.duracion || 60;
+            const enCurso   = cita.estado !== "completada" && citaMin <= nowMin && citaMin + duracion > nowMin;
+            const esPasada  = cita.estado !== "completada" && citaMin + duracion <= nowMin;
+            const completada = cita.estado === "completada";
+
+            let cardBg = G.card;
+            let cardBorder = G.border;
+            if (completada)    { cardBg = `rgba(${G.greenRGB},0.07)`; cardBorder = `rgba(${G.greenRGB},0.25)`; }
+            else if (enCurso)  { cardBg = `rgba(${G.greenRGB},0.14)`; cardBorder = `rgba(${G.greenRGB},0.7)`; }
+
+            return (
+              <div key={cita._id} style={{ border:`1.5px solid ${cardBorder}`, borderRadius:14, background:cardBg, overflow:"hidden", opacity:esPasada ? 0.6 : 1 }}>
+                <div style={{ padding:"10px 14px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}
+                  onClick={() => push("cita-detalle", { cita })}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:3 }}>
+                      <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:13, color:G.white }}>{cita.hora}</p>
+                      {enCurso && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.greenL, background:`rgba(${G.greenRGB},0.2)`, borderRadius:4, padding:"1px 6px" }}>EN CURSO</span>}
+                      {completada && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.greenL, background:`rgba(${G.greenRGB},0.15)`, borderRadius:4, padding:"1px 6px" }}>✓ finalizada</span>}
+                      {cita.estado === "solicitada" && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.amber, background:"rgba(224,184,112,0.15)", borderRadius:4, padding:"1px 6px" }}>pendiente</span>}
+                    </div>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{cita.clientaNombre}</p>
+                    <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}{cita.adicionales?.length ? ` + ${cita.adicionales.join(", ")}` : ""}</p>
+                  </div>
+                  <Icon name="chevronRight" size={14} color={G.muted} />
+                </div>
+                {!completada && (
+                  <div style={{ display:"flex", borderTop:`0.5px solid ${G.border}` }}>
+                    {cita.estado === "solicitada" && (
+                      <button style={{ flex:1, padding:"9px 0", background:"transparent", border:"none", cursor:"pointer", fontFamily:F.sans, fontSize:12, fontWeight:700, color:G.greenL, borderRight:`0.5px solid ${G.border}` }}
+                        onClick={() => confirmarRapido(cita)}>✓ confirmar</button>
+                    )}
+                    {cita.estado === "confirmada" && (
+                      <button style={{ flex:1, padding:"9px 0", background:"transparent", border:"none", cursor:"pointer", fontFamily:F.sans, fontSize:12, fontWeight:700, color:G.greenL, borderRight:`0.5px solid ${G.border}` }}
+                        onClick={() => abrirPago(cita)}>✓ completar</button>
+                    )}
+                    <button style={{ flex:1, padding:"9px 0", background:"transparent", border:"none", cursor:"pointer", fontFamily:F.sans, fontSize:12, color:"rgba(220,100,100,0.8)" }}
+                      onClick={() => cancelarRapido(cita)}>✕ cancelar</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {esHoy && allDayCitas.length === 0 && (
+        <div style={{ padding:"16px 16px 8px", flexShrink:0 }}>
+          <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, textAlign:"center", margin:0 }}>No hay turnos agendados para hoy</p>
+        </div>
+      )}
+
+      {/* Time grid */}
       <div style={{ flex:1, overflowY:"auto", display:"flex" }}>
         <div style={{ width:42, flexShrink:0, borderRight:`0.5px solid ${G.border}` }}>
           {hourLabels.map(lbl => (
@@ -1663,32 +1783,32 @@ function AgendaDia({ data, push, diaInicial }) {
             </div>
           ))}
         </div>
-        <div style={{ flex:1, position:"relative", height:totalH*ROW_H, background:dia===hoy ? `rgba(${G.greenRGB},0.02)` : "transparent" }}>
+        <div style={{ flex:1, position:"relative", height:totalH*ROW_H, background:esHoy ? `rgba(${G.greenRGB},0.02)` : "transparent" }}>
           {hourLabels.map((_, hi) => {
             const rowMin = minMin + hi*60;
             const nearestSlot = daySlots.find(sl => { const sm = toMin(sl); return sm >= rowMin && sm < rowMin+60; });
+            const isPast = esHoy && (rowMin + 60) <= nowMin;
             return (
-              <div key={hi} style={{ position:"absolute", top:hi*ROW_H, left:0, right:0, height:ROW_H, borderTop:`0.5px solid rgba(255,255,255,0.04)`, cursor:nearestSlot ? "pointer" : "default" }}
-                onClick={() => nearestSlot && push("nueva-cita", { fechaDefault:dia, horaDefault:nearestSlot })} />
+              <div key={hi} style={{ position:"absolute", top:hi*ROW_H, left:0, right:0, height:ROW_H, borderTop:`0.5px solid rgba(255,255,255,0.04)`, background:isPast ? "rgba(0,0,0,0.08)" : "transparent", cursor:nearestSlot && !isPast ? "pointer" : "default" }}
+                onClick={() => nearestSlot && !isPast && push("nueva-cita", { fechaDefault:dia, horaDefault:nearestSlot })} />
             );
           })}
-          {dayCitas.map(cita => {
+          {allDayCitas.map(cita => {
             const startMin = toMin(cita.hora);
             if (startMin < minMin || startMin >= maxMin) return null;
             const sv = data.servicios.find(s => s.nombre === cita.servicio);
             const duracion = sv?.duracion || 60;
-            const top = ((startMin - minMin) / 60) * ROW_H;
-            const height = Math.max(50, (duracion / 60) * ROW_H);
+            const top    = ((startMin - minMin) / 60) * ROW_H;
+            const height = Math.max(40, (duracion / 60) * ROW_H);
             return (
               <div key={cita._id}
                 onClick={e => { e.stopPropagation(); push("cita-detalle", { cita }); }}
                 style={{ position:"absolute", top, left:4, right:4, height,
                   background:blkBg(cita.estado), border:`1px solid ${blkBdr(cita.estado)}`,
                   borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2 }}>
-                <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:12, color:blkTxt(cita.estado) }}>{cita.hora} · {cita.clientaNombre}</p>
-                <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:11, color:blkTxt(cita.estado), opacity:0.8 }}>{cita.servicio}</p>
-                {height >= 70 && cita.notas && <p style={{ margin:"3px 0 0", fontFamily:F.sans, fontSize:10, color:blkTxt(cita.estado), opacity:0.6 }}>{cita.notas}</p>}
-                <span style={{ ...s.tag, position:"absolute", top:6, right:6, fontSize:9, padding:"2px 7px" }}>{cita.estado}</span>
+                <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:11, color:blkTxt(cita.estado) }}>{cita.hora} · {cita.clientaNombre}</p>
+                <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:10, color:blkTxt(cita.estado), opacity:0.8 }}>{cita.servicio}</p>
+                <span style={{ ...s.tag, position:"absolute", top:5, right:5, fontSize:8, padding:"2px 6px" }}>{cita.estado === "completada" ? "finalizada" : cita.estado}</span>
               </div>
             );
           })}
@@ -1705,11 +1825,11 @@ function AgendaDia({ data, push, diaInicial }) {
                   background:"rgba(120,120,120,0.15)", border:`1px dashed ${G.border}`,
                   borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2,
                   display:"flex", alignItems:"center" }}>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted, display:"flex", alignItems:"center", gap:4 }}><Icon name="x" size={11} color={G.muted} /> {b.titulo}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted, display:"flex", alignItems:"center", gap:4 }}><Icon name="x" size={11} color={G.muted} /> {b.titulo}</p>
               </div>
             );
           })}
-          {dia === hoy && nowMin >= minMin && nowMin <= maxMin && (
+          {esHoy && nowMin >= minMin && nowMin <= maxMin && (
             <>
               <div style={{ position:"absolute", left:-4, top:((nowMin-minMin)/60)*ROW_H - 5, width:10, height:10, borderRadius:"50%", background:"#e07070", zIndex:10 }} />
               <div style={{ position:"absolute", left:0, right:0, top:((nowMin-minMin)/60)*ROW_H, height:1.5, background:"rgba(224,112,112,0.85)", zIndex:9 }} />
@@ -1720,6 +1840,51 @@ function AgendaDia({ data, push, diaInicial }) {
           )}
         </div>
       </div>
+
+      {/* Payment sheet */}
+      {pagoTarget && (
+        <div style={{ position:"fixed", inset:0, zIndex:200, display:"flex", flexDirection:"column", justifyContent:"flex-end" }}>
+          <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.55)" }} onClick={() => setPagoTarget(null)} />
+          <div style={{ position:"relative", background:G.card, borderRadius:"18px 18px 0 0", padding:"20px 18px 32px", animation:"slideInUp 0.28s ease" }}>
+            <div style={{ width:36, height:4, background:G.border, borderRadius:2, margin:"0 auto 16px" }} />
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, margin:"0 0 4px" }}>Registrar pago</p>
+            <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"0 0 16px" }}>{pagoTarget.clientaNombre} · {pagoTarget.servicio}</p>
+            <p style={{ ...s.eyebrow, marginBottom:8 }}>método de cobro</p>
+            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+              {["efectivo","transferencia","mixto"].map(m => (
+                <button key={m} onClick={() => setQuickPago(p => ({ ...p, metodo:m }))}
+                  style={{ flex:1, padding:"9px 0", borderRadius:10, border:`1.5px solid ${quickPago.metodo===m ? G.green : G.border}`, background:quickPago.metodo===m ? G.greenM : "transparent", fontFamily:F.sans, fontSize:11, fontWeight:quickPago.metodo===m ? 700 : 400, color:quickPago.metodo===m ? G.greenL : G.muted, cursor:"pointer" }}>
+                  {m}
+                </button>
+              ))}
+            </div>
+            {quickPago.metodo === "mixto" ? (
+              <div style={{ display:"flex", gap:9, marginBottom:16 }}>
+                <div style={{ flex:1 }}>
+                  <p style={{ ...s.label, marginBottom:4 }}>efectivo</p>
+                  <input style={s.input} type="number" value={quickPago.montoEfectivo} onChange={e => setQuickPago(p => ({ ...p, montoEfectivo:e.target.value }))} placeholder="$0" />
+                </div>
+                <div style={{ flex:1 }}>
+                  <p style={{ ...s.label, marginBottom:4 }}>transferencia</p>
+                  <input style={s.input} type="number" value={quickPago.montoTransf} onChange={e => setQuickPago(p => ({ ...p, montoTransf:e.target.value }))} placeholder="$0" />
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginBottom:16 }}>
+                <p style={{ ...s.label, marginBottom:4 }}>monto</p>
+                <input style={s.input} type="number" value={quickPago.monto} onChange={e => setQuickPago(p => ({ ...p, monto:e.target.value }))} placeholder="$0" />
+              </div>
+            )}
+            {totalPago > 0 && (
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.green, margin:"0 0 14px", textAlign:"center" }}>{fmtPesos(totalPago)}</p>
+            )}
+            <button style={{ ...s.btnG, width:"100%", opacity:savingPago ? 0.6 : 1 }}
+              disabled={savingPago} onClick={completarRapido}>
+              {savingPago ? "guardando..." : "guardar y cerrar turno →"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
