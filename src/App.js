@@ -52,6 +52,7 @@ const fbAuth = {
   create:  async (email, pass) => (await fetch(`${AUTH_URL}:signUp?key=${API_KEY}`,             { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email, password:pass, returnSecureToken:true }) })).json(),
   resetPw: async (email)       => (await fetch(`${AUTH_URL}:sendOobCode?key=${API_KEY}`,        { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ requestType:"PASSWORD_RESET", email }) })).json(),
   updatePass: async (idToken, newPass) => (await fetch(`${AUTH_URL}:update?key=${API_KEY}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ idToken, password:newPass, returnSecureToken:true }) })).json(),
+  deleteUser: async (idToken) => (await fetch(`${AUTH_URL}:delete?key=${API_KEY}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ idToken }) })).json(),
 };
 
 // helper: construir link WA con el teléfono de una clienta (o el de Male como fallback)
@@ -420,7 +421,17 @@ function useData() {
     return { ok:true, pass, email:datos.email };
   };
   const editarClientas        = async (id, d) => { await db.update(`clientas/${id}`, d); setClientas(p => p.map(x => x._id === id ? { ...x, ...d } : x)); };
-  const borrarClientas        = async (id)    => { await db.del(`clientas/${id}`); setClientas(p => p.filter(x => x._id !== id)); };
+  const borrarClientas = async (id) => {
+    const c = clientas.find(x => x._id === id);
+    if (c?.email && c?.appPass) {
+      try {
+        const signIn = await fbAuth.signIn(c.email, c.appPass);
+        if (signIn.idToken) await fbAuth.deleteUser(signIn.idToken);
+      } catch { /* ignore auth cleanup failure */ }
+    }
+    await db.del(`clientas/${id}`);
+    setClientas(p => p.filter(x => x._id !== id));
+  };
   const resetPasswordClientas = async (email)  => { await fbAuth.resetPw(email); };
 
   const crearCita  = async (d)     => { const id = await db.push("citas", { ...d, creadaEn:hoyISO() }); setCitas(p => [...p, { ...d, creadaEn:hoyISO(), _id:id }]); return id; };
@@ -700,7 +711,7 @@ function Login({ onLogin }) {
 // ── App Root ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [session, setSession] = useState(null);
-  const [dark, setDark] = useState(() => localStorage.getItem("ls_theme") !== "light");
+  const [dark, setDark] = useState(() => localStorage.getItem("ls_theme") === "dark");
   const data = useData();
 
   Object.assign(G, dark ? G_dark : G_light);
@@ -733,12 +744,20 @@ function AdminApp({ data, onLogout }) {
 
   const push = (screen, props = {}) => {
     if (wide) setModal({ screen, props });
-    else setStack(p => [...p, { screen, props }]);
+    else {
+      history.pushState({ lashNav:true }, "");
+      setStack(p => [...p, { screen, props }]);
+    }
   };
   const pop = () => {
     if (wide) setModal(null);
     else setStack(p => p.slice(0, -1));
   };
+  useEffect(() => {
+    const handlePopState = () => setStack(p => p.length > 0 ? p.slice(0, -1) : p);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
   const shwToast = (msg) => setToast(msg);
   const cur      = stack[stack.length - 1];
 
@@ -1448,8 +1467,8 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
   // Also include actual cita times so nothing is clipped off the grid
   data.citas.forEach(c => { if (weekKeys.includes(c.fecha)) allSlotMins.add(toMin(c.hora)); });
   const minsSorted = [...allSlotMins].sort((a, b) => a - b);
-  const minMin = minsSorted.length ? minsSorted[0]                     : 8*60;
-  const maxMin = minsSorted.length ? minsSorted[minsSorted.length-1]+60 : 18*60;
+  const minMin = Math.max(0, (minsSorted.length ? minsSorted[0] : 8*60) - 3*60);
+  const maxMin = (minsSorted.length ? minsSorted[minsSorted.length-1] : 17*60) + 3*60;
   const totalHours = Math.ceil((maxMin - minMin) / 60);
 
   // Hour labels for the time axis
@@ -1651,8 +1670,8 @@ function AgendaDia({ data, push, toast, diaInicial }) {
   const daySlots      = slotsPorDia[dow] !== undefined ? slotsPorDia[dow] : slotsGlobal;
 
   const allMins = daySlots.map(toMin);
-  const minMin  = allMins.length ? Math.min(...allMins) : 8*60;
-  const maxMin  = allMins.length ? Math.max(...allMins) + 60 : 18*60;
+  const minMin  = Math.max(0, (allMins.length ? Math.min(...allMins) : 8*60) - 3*60);
+  const maxMin  = (allMins.length ? Math.max(...allMins) : 17*60) + 3*60;
   const totalH  = Math.ceil((maxMin - minMin) / 60);
 
   const hourLabels = Array.from({ length:totalH }, (_, i) => {
@@ -2342,14 +2361,16 @@ function AdminClientas({ data, push, toast }) {
   const guardar = async () => {
     if (!form.nombre.trim()) { toast("el nombre es obligatorio"); return; }
     setSaving(true);
-    const res = await data.crearClientas(form);
-    setSaving(false);
-    if (res.error) { toast("error: " + res.error); return; }
-    setSheet(false);
-    setCreds(res.noAccount
-      ? { noAccount:true, nombre:form.nombre }
-      : { email:res.email, pass:res.pass, nombre:form.nombre, telefono:form.telefono });
-    setForm({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
+    try {
+      const res = await data.crearClientas(form);
+      if (res.error) { toast("error: " + res.error); return; }
+      setSheet(false);
+      setCreds(res.noAccount
+        ? { noAccount:true, nombre:form.nombre }
+        : { email:res.email, pass:res.pass, nombre:form.nombre, telefono:form.telefono });
+      setForm({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
+    } catch(e) { toast("Error al crear: " + (e?.message || "intentá de nuevo")); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -3292,14 +3313,14 @@ function ConfigMensajes({ data, toast }) {
 function ConfigServicios({ data, toast }) {
   const [sheet, setSheet]     = useState(false);
   const [editSv, setEditSv]   = useState(null);
-  const [form, setForm]       = useState({ nombre:"", precio:"", duracion:"", descripcion:"", cuidados:"", fotos:[] });
+  const [form, setForm]       = useState({ nombre:"", precio:"", duracion:"", descripcion:"", cuidados:"", intervaloService:"14", fotos:[] });
   const [saving, setSaving]   = useState(false);
   const [confirm, setConfirm]   = useState(null);
   const [uploading, setUploading] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
-  const abrirNuevo  = () => { setEditSv(null); setForm({ nombre:"", precio:"", duracion:"", descripcion:"", cuidados:"", fotos:[] }); setSheet(true); };
-  const abrirEditar = (sv) => { setEditSv(sv); setForm({ nombre:sv.nombre, precio:String(sv.precio||""), duracion:String(sv.duracion||""), descripcion:sv.descripcion||"", cuidados:sv.cuidados||"", fotos:sv.fotos||[] }); setSheet(true); };
+  const abrirNuevo  = () => { setEditSv(null); setForm({ nombre:"", precio:"", duracion:"", descripcion:"", cuidados:"", intervaloService:"14", fotos:[] }); setSheet(true); };
+  const abrirEditar = (sv) => { setEditSv(sv); setForm({ nombre:sv.nombre, precio:String(sv.precio||""), duracion:String(sv.duracion||""), descripcion:sv.descripcion||"", cuidados:sv.cuidados||"", intervaloService:String(sv.intervaloService||14), fotos:sv.fotos||[] }); setSheet(true); };
 
   const onFotoFile = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -3312,7 +3333,7 @@ function ConfigServicios({ data, toast }) {
   const guardar = async () => {
     if (!form.nombre || !form.precio) { toast("nombre y precio son obligatorios"); return; }
     setSaving(true);
-    const payload = { nombre:form.nombre, precio:Number(form.precio), duracion:Number(form.duracion)||60, descripcion:form.descripcion, cuidados:form.cuidados||"", fotos:form.fotos||[] };
+    const payload = { nombre:form.nombre, precio:Number(form.precio), duracion:Number(form.duracion)||60, descripcion:form.descripcion, cuidados:form.cuidados||"", intervaloService:Number(form.intervaloService)||14, fotos:form.fotos||[] };
     if (editSv) await data.editarServicio(editSv._id, payload);
     else        await data.crearServicio(payload);
     setSaving(false); setSheet(false);
@@ -3357,6 +3378,7 @@ function ConfigServicios({ data, toast }) {
               <Field label="precio *"><input style={{ ...s.input }} type="number" value={form.precio} onChange={e => set("precio", e.target.value)} placeholder="0" /></Field>
               <Field label="duración (min)"><input style={{ ...s.input }} type="number" value={form.duracion} onChange={e => set("duracion", e.target.value)} placeholder="60" /></Field>
             </div>
+            <Field label="intervalo de service (días)" hint="Cada cuántos días se recomienda repetir este servicio"><input style={s.input} type="number" value={form.intervaloService} onChange={e => set("intervaloService", e.target.value)} placeholder="14" /></Field>
             <div style={s.div} />
             <p style={{ fontFamily:F.display, fontWeight:400, fontSize:16, letterSpacing:"0.5px", color:G.white, margin:"0 0 4px" }}>Fotos del servicio</p>
             <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 10px" }}>Subí fotos desde tu dispositivo. Se muestran a las clientas al agendar.</p>
@@ -3754,7 +3776,7 @@ function ConfigHorarios({ data, toast }) {
 // ── Config Estudio ─────────────────────────────────────────────────────────────
 function ConfigEstudio({ data, toast, onLogout }) {
   const est  = data.getConfig("estudio", {});
-  const [form, setForm] = useState({ nombre:est.nombre||"", direccion:est.direccion||"", telefono:est.telefono||"", instagram:est.instagram||"", descripcion:est.descripcion||"" });
+  const [form, setForm] = useState({ nombre:est.nombre||"", direccion:est.direccion||"", telefono:est.telefono||"", instagram:est.instagram||"", descripcion:est.descripcion||"", recordatorioCita:est.recordatorioCita||"" });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
@@ -3766,7 +3788,7 @@ function ConfigEstudio({ data, toast, onLogout }) {
 
   useEffect(() => {
     const e = data.getConfig("estudio", {});
-    setForm({ nombre:e.nombre||"", direccion:e.direccion||"", telefono:e.telefono||"", instagram:e.instagram||"", descripcion:e.descripcion||"" });
+    setForm({ nombre:e.nombre||"", direccion:e.direccion||"", telefono:e.telefono||"", instagram:e.instagram||"", descripcion:e.descripcion||"", recordatorioCita:e.recordatorioCita||"" });
   }, [data.config]);
 
   const guardarEstudio = async () => { setSaving(true); await data.saveConfig("estudio", form); setSaving(false); toast("✓ datos guardados"); };
@@ -3785,6 +3807,9 @@ function ConfigEstudio({ data, toast, onLogout }) {
         <Field label="instagram"><input style={s.input} value={form.instagram} onChange={e => set("instagram", e.target.value)} placeholder="@tuusuario" /></Field>
         <Field label="descripción (opcional)" hint="Se muestra a las clientas en la app">
           <textarea style={{ ...s.input, height:70, resize:"none" }} value={form.descripcion} onChange={e => set("descripcion", e.target.value)} placeholder="Breve descripción del estudio..." />
+        </Field>
+        <Field label="recordatorio para próxima cita" hint="Aparece en el card de próxima cita de la clienta">
+          <textarea style={{ ...s.input, height:60, resize:"none" }} value={form.recordatorioCita} onChange={e => set("recordatorioCita", e.target.value)} placeholder="Ej: Llegar 5 min antes, sin maquillaje en los ojos." />
         </Field>
         <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardarEstudio} disabled={saving}>{saving ? "guardando..." : "guardar datos →"}</button>
       </div>
@@ -3967,6 +3992,11 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
     const h = Array.isArray(fresh.historial) ? fresh.historial : Object.values(fresh.historial || {});
     return { ...clientaSession, ...fresh, historial: h };
   })();
+  useEffect(() => {
+    const onPop = () => setTab("inicio");
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const tabs = [
     { id:"inicio",    iconName:"home",        label:"Inicio"    },
     { id:"agendar",   iconName:"calendarPlus", label:"Agendar"   },
@@ -4071,6 +4101,43 @@ function CInicio({ clienta, data, setTab }) {
       <div style={{ padding:"18px" }}>
         <PushBanner role="clienta" uid={clienta.uid} />
 
+        {/* ── Próxima cita hero card (top) ── */}
+        {proxCita && (
+          <div style={{ ...s.cardHero, marginBottom:12 }}>
+            <p style={s.eyebrow}>próxima cita</p>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <div>
+                <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white }}>{proxCita.servicio}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(proxCita.fecha)} · {proxCita.hora}</p>
+              </div>
+              <div style={{ textAlign:"center", background:"rgba(143,189,90,0.22)", border:`1px solid rgba(143,189,90,0.4)`, borderRadius:14, padding:"12px 16px", flexShrink:0, boxShadow:"0 4px 12px rgba(143,189,90,0.15)" }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:28, color:G.greenL, lineHeight:1 }}>{diasHasta === 0 ? "¡hoy!" : diasHasta}</p>
+                {diasHasta !== 0 && <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted, marginTop:3 }}>días</p>}
+              </div>
+            </div>
+            {estudio.recordatorioCita && (
+              <p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:11, color:G.muted, fontStyle:"italic", lineHeight:1.5 }}>{estudio.recordatorioCita}</p>
+            )}
+            <button
+              onClick={() => generarICS(proxCita, estudio)}
+              style={{ ...s.btnGl, width:"100%", fontSize:12, borderColor:"rgba(143,189,90,0.35)", color:G.greenL, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+              <Icon name="download" size={13} color={G.greenL} />
+              Agregar al calendario
+            </button>
+          </div>
+        )}
+
+        {/* ── Preparate widget (1 día antes) ── */}
+        {proxCita && diasHasta === 1 && (
+          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.18),rgba(143,189,90,0.05))", border:`1.5px solid ${G.green}`, borderRadius:16, padding:"16px", marginBottom:12 }}>
+            <p style={{ margin:"0 0 6px", fontFamily:F.display, fontSize:22, color:G.greenL, letterSpacing:"0.5px" }}>¡preparate! ✦</p>
+            <p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.6 }}>
+              Tu turno es mañana. Planificá tu llegada con tiempo, calculá la vuelta y revisá las políticas de cancelación si necesitás hacer algún cambio. ¡Te esperamos!
+            </p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.greenL }}>{proxCita.servicio} · {proxCita.hora}</p>
+          </div>
+        )}
+
         {/* ── Post-care widget ── */}
         {(() => {
           const svUltima = data.servicios.find(sv => sv.nombre === ultima?.servicio);
@@ -4089,7 +4156,7 @@ function CInicio({ clienta, data, setTab }) {
           );
         })()}
 
-        {/* ── 0. Stats: última visita | curva fav ── */}
+        {/* ── Stats: última visita | curva fav ── */}
         {ultima && (
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
             <div onClick={() => setTab("historial")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
@@ -4169,15 +4236,51 @@ function CInicio({ clienta, data, setTab }) {
           </div>
         )}
 
-        {/* ── 2. Políticas card ── */}
-        {politicas.length > 0 && (
-          <div style={{ ...s.card, marginBottom:16, background:"rgba(143,189,90,0.03)", borderColor:G.border }}>
-            <p style={{ margin:"0 0 9px", fontFamily:F.serif, fontWeight:700, fontSize:14 }}>Políticas del Estudio</p>
-            {politicas.map((p, i) => <p key={i} style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{p}</p>)}
-          </div>
-        )}
+        {/* ── Per-service countdowns ── */}
+        {(() => {
+          const svsConHistorial = data.servicios.filter(sv => hist.some(h => h.servicio === sv.nombre));
+          if (svsConHistorial.length === 0) return null;
+          return (
+            <div style={{ marginBottom:16 }}>
+              <p style={{ ...s.eyebrow, marginBottom:9 }}>seguimiento de servicios</p>
+              {svsConHistorial.map(sv => {
+                const ultSvHist = [...hist].filter(h => h.servicio === sv.nombre).sort((a, b) => (b.fecha||"").localeCompare(a.fecha||""))[0];
+                if (!ultSvHist) return null;
+                const diasDesdeSv = Math.floor((new Date() - new Date(ultSvHist.fecha)) / (1000*60*60*24));
+                const intervalo = sv.intervaloService || 14;
+                const diasParaSv = Math.max(0, intervalo - diasDesdeSv);
+                const necesitaSv = diasDesdeSv >= intervalo;
+                const proxCitaSv = data.citas.find(c => c.clientaId === clienta._id && c.servicio === sv.nombre && c.fecha >= hoy && c.estado !== "completada");
+                return (
+                  <div key={sv._id} style={{ ...s.card, marginBottom:10 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:proxCitaSv ? 0 : 8 }}>
+                      <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13 }}>{sv.nombre}</p>
+                      {proxCitaSv ? (
+                        <span style={{ ...s.tag, fontSize:9 }}>turno confirmado</span>
+                      ) : necesitaSv ? (
+                        <span style={{ ...s.tag, fontSize:9, background:"rgba(143,189,90,0.25)", borderColor:G.green, color:G.greenL }}>¡es hora!</span>
+                      ) : (
+                        <span style={{ fontFamily:F.sans, fontSize:10, color:G.muted }}>en {diasParaSv} día{diasParaSv !== 1 ? "s" : ""}</span>
+                      )}
+                    </div>
+                    {!proxCitaSv && (
+                      <>
+                        <div style={{ height:5, background:G.border, borderRadius:3, overflow:"hidden", marginBottom:necesitaSv ? 8 : 0 }}>
+                          <div style={{ height:"100%", width:`${Math.min(100, (diasDesdeSv / intervalo) * 100)}%`, background:necesitaSv ? `linear-gradient(90deg, ${G.green}, ${G.greenL})` : `linear-gradient(90deg, ${G.greenD}, ${G.green})`, borderRadius:3, transition:"width 0.5s ease" }} />
+                        </div>
+                        {necesitaSv && (
+                          <button style={{ ...s.btnG, padding:"8px 12px", fontSize:11, width:"100%" }} onClick={() => setTab("agendar")}>agendar service →</button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
 
-        {/* ── 2b. CTA agendar (sin turno próximo) ── */}
+        {/* ── CTA agendar (sin turno próximo) ── */}
         {!proxCita && !citasSolicitadas.length && (
           <div style={{ ...s.cardHero, marginBottom:12, cursor:"pointer" }} onClick={() => setTab("agendar")}>
             <p style={s.eyebrow}>¿lista para tu próximo turno?</p>
@@ -4190,41 +4293,7 @@ function CInicio({ clienta, data, setTab }) {
           </div>
         )}
 
-        {/* ── 3. Próxima cita con countdown ── */}
-        {proxCita && (
-          <div style={{ ...s.cardHero, marginBottom:12 }}>
-            <p style={s.eyebrow}>próxima cita</p>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-              <div>
-                <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.white }}>{proxCita.servicio}</p>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{fmtFecha(proxCita.fecha)} · {proxCita.hora}</p>
-              </div>
-              <div style={{ textAlign:"center", background:"rgba(143,189,90,0.22)", border:`1px solid rgba(143,189,90,0.4)`, borderRadius:14, padding:"12px 16px", flexShrink:0, boxShadow:"0 4px 12px rgba(143,189,90,0.15)" }}>
-                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:28, color:G.greenL, lineHeight:1 }}>{diasHasta === 0 ? "¡hoy!" : diasHasta}</p>
-                {diasHasta !== 0 && <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted, marginTop:3 }}>días</p>}
-              </div>
-            </div>
-            <button
-              onClick={() => generarICS(proxCita, estudio)}
-              style={{ ...s.btnGl, width:"100%", fontSize:12, borderColor:"rgba(143,189,90,0.35)", color:G.greenL, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-              <Icon name="download" size={13} color={G.greenL} />
-              Agregar al calendario
-            </button>
-          </div>
-        )}
-
-        {/* ── 3b. Preparate widget (1 día antes) ── */}
-        {proxCita && diasHasta === 1 && (
-          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.18),rgba(143,189,90,0.05))", border:`1.5px solid ${G.green}`, borderRadius:16, padding:"16px", marginBottom:12 }}>
-            <p style={{ margin:"0 0 6px", fontFamily:F.display, fontSize:22, color:G.greenL, letterSpacing:"0.5px" }}>¡preparate! ✦</p>
-            <p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.6 }}>
-              Tu turno es mañana. Planificá tu llegada con tiempo, calculá la vuelta y revisá las políticas de cancelación si necesitás hacer algún cambio. ¡Te esperamos!
-            </p>
-            <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.greenL }}>{proxCita.servicio} · {proxCita.hora}</p>
-          </div>
-        )}
-
-        {/* ── 4. Solicitud pendiente (solo si no hay prox cita) ── */}
+        {/* ── Solicitud pendiente (solo si no hay prox cita) ── */}
         {citasSolicitadas.length > 0 && !proxCita && (
           <div style={{ ...s.card, borderColor:G.amber, background:"rgba(224,184,112,0.06)", marginBottom:12 }}>
             <p style={{ margin:"0 0 4px", fontFamily:F.sans, fontSize:10, color:G.amber, textTransform:"lowercase", letterSpacing:"0.08em" }}>solicitud pendiente</p>
@@ -4233,45 +4302,7 @@ function CInicio({ clienta, data, setTab }) {
           </div>
         )}
 
-        {/* ── 5. Countdown al service (cuando no vence aún) ── */}
-        {diasParaService !== null && diasParaService > 0 && !proxCita && (
-          <div style={{ ...s.card, marginBottom:12 }}>
-            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 8px", textTransform:"lowercase" }}>próximo service recomendado</p>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ flex:1 }}>
-                <div style={{ height:6, background:G.border, borderRadius:3, marginBottom:6, overflow:"hidden" }}>
-                  <div style={{ height:"100%", width:`${((14 - diasParaService) / 14) * 100}%`, background:`linear-gradient(90deg, ${G.greenD}, ${G.green})`, borderRadius:3, transition:"width 0.5s ease" }} />
-                </div>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.sub }}>
-                  {diasParaService === 1 ? "¡mañana es el momento ideal!" : `en ${diasParaService} días estarás lista para el service`}
-                </p>
-              </div>
-              <div style={{ textAlign:"center", flexShrink:0 }}>
-                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.green }}>{diasParaService}</p>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── 6. Banner service vencido ── */}
-        {necesitaService && (
-          <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.18),rgba(143,189,90,0.05))", border:`1.5px solid ${G.green}`, borderRadius:16, padding:"16px", marginBottom:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
-              <div>
-                <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>¡es hora del service! ✦</p>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>hace {diasDesde} días de tu último tratamiento</p>
-              </div>
-              <div style={{ textAlign:"center", background:"rgba(143,189,90,0.2)", borderRadius:12, padding:"8px 12px", flexShrink:0 }}>
-                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:22, color:G.greenL }}>{diasDesde}</p>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>días</p>
-              </div>
-            </div>
-            <button style={{ ...s.btnG, padding:"10px 14px" }} onClick={() => setTab("agendar")}>agendar ahora →</button>
-          </div>
-        )}
-
-        {/* ── 8. Último servicio ── */}
+        {/* ── Último servicio ── */}
         {ultima && (
           <>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>último servicio</p>
@@ -4282,6 +4313,14 @@ function CInicio({ clienta, data, setTab }) {
               <p style={{ margin:"9px 0 0", fontFamily:F.sans, fontSize:11, color:G.muted }}>ver historial completo →</p>
             </div>
           </>
+        )}
+
+        {/* ── Políticas del Estudio (fijo al final) ── */}
+        {politicas.length > 0 && (
+          <div style={{ ...s.card, marginTop:8, background:"rgba(143,189,90,0.03)", borderColor:G.border }}>
+            <p style={{ margin:"0 0 9px", fontFamily:F.serif, fontWeight:700, fontSize:14 }}>Políticas del Estudio</p>
+            {politicas.map((p, i) => <p key={i} style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:12, color:G.sub }}>{p}</p>)}
+          </div>
         )}
       </div>
     </div>

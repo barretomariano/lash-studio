@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 100" width="320" height="100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 90" width="240" height="90">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&amp;display=swap');
-    text { font-family: 'Bebas Neue', Impact, sans-serif; fill: #8fbd5a; }
+    .lash { font-family: 'Bebas Neue', Impact, 'Arial Narrow', sans-serif; fill: #8fbd5a; font-weight: 400; letter-spacing: 3px; }
+    .studio { font-family: 'Bebas Neue', Impact, 'Arial Narrow', sans-serif; fill: #8fbd5a; font-weight: 400; letter-spacing: 12px; }
   </style>
-  <text x="0" y="72" font-size="80" letter-spacing="2">LASH</text>
-  <text x="4" y="100" font-size="32" letter-spacing="16">STUDIO</text>
+  <text class="lash" x="4" y="64" font-size="74">LASH</text>
+  <text class="studio" x="6" y="88" font-size="26">STUDIO</text>
 </svg>
