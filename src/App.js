@@ -104,7 +104,7 @@ const DIAS_F = ["domingo","lunes","martes","miércoles","jueves","viernes","sáb
 const G_dark = {
   bg:"#0a0a0a", card:"rgba(255,255,255,0.045)", glass:"rgba(255,255,255,0.07)",
   border:"rgba(255,255,255,0.09)", borderHov:"rgba(255,255,255,0.18)",
-  green:"#8fbd5a", greenD:"#5c8f2e", greenL:"#b5d98a", greenM:"rgba(143,189,90,0.18)", greenRGB:"143,189,90",
+  green:"#8fbd5a", greenD:"#5c8f2e", greenL:"#b5d98a", greenM:"rgba(143,189,90,0.30)", greenRGB:"143,189,90",
   text:"#f0f0f0", muted:"rgba(240,240,240,0.45)", sub:"rgba(240,240,240,0.65)",
   white:"#fff", red:"#e07070", amber:"#e0b870",
   navBg:"rgba(12,12,12,0.95)", topBarBg:"rgba(10,10,10,0.88)",
@@ -115,7 +115,7 @@ const G_dark = {
 const G_light = {
   bg:"#f5f1eb", card:"rgba(255,255,255,0.85)", glass:"rgba(0,0,0,0.04)",
   border:"rgba(0,0,0,0.1)", borderHov:"rgba(0,0,0,0.2)",
-  green:"#5a9020", greenD:"#3d6e14", greenL:"#3a7010", greenM:"rgba(90,144,32,0.15)", greenRGB:"90,144,32",
+  green:"#5a9020", greenD:"#3d6e14", greenL:"#3a7010", greenM:"rgba(90,144,32,0.22)", greenRGB:"90,144,32",
   text:"#2a2a2a", muted:"rgba(20,20,20,0.6)", sub:"rgba(20,20,20,0.82)",
   white:"#1a1a1a", red:"#c04040", amber:"#9a6418",
   navBg:"rgba(244,240,234,0.96)", topBarBg:"rgba(244,240,234,0.92)",
@@ -374,19 +374,20 @@ function useData() {
   const [config, setConfig]           = useState({});
   const [gastos, setGastos]           = useState([]);
   const [insumos, setInsumos]         = useState([]);
+  const [ingresos, setIngresos]       = useState([]);
   const [loading, setLoading]         = useState(true);
 
   const recargar = useCallback(async () => {
     setLoading(true);
-    const [sv, cl, ct, ex, bl, cfg, gs, ins] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos"), db.get("insumos")]);
-    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []); setInsumos(Array.isArray(ins) ? ins : []);
+    const [sv, cl, ct, ex, bl, cfg, gs, ins, ing] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos"), db.get("insumos"), db.get("ingresos")]);
+    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []); setInsumos(Array.isArray(ins) ? ins : []); setIngresos(Array.isArray(ing) ? ing : []);
     setLoading(false);
   }, []);
 
   const recargarSilent = useCallback(async () => {
     try {
-      const [sv, cl, ct, ex, bl, cfg, gs, ins] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos"), db.get("insumos")]);
-      setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []); setInsumos(Array.isArray(ins) ? ins : []);
+      const [sv, cl, ct, ex, bl, cfg, gs, ins, ing] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos"), db.get("insumos"), db.get("ingresos")]);
+      setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []); setInsumos(Array.isArray(ins) ? ins : []); setIngresos(Array.isArray(ing) ? ing : []);
     } catch {}
   }, []);
 
@@ -395,7 +396,7 @@ function useData() {
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === "visible") recargarSilent(); };
     document.addEventListener("visibilitychange", onVisible);
-    const t = setInterval(recargarSilent, 60_000);
+    const t = setInterval(recargarSilent, 15_000);
     return () => { document.removeEventListener("visibilitychange", onVisible); clearInterval(t); };
   }, [recargarSilent]);
 
@@ -448,7 +449,10 @@ function useData() {
   const editarInsumo = async (id, d) => { await db.update(`insumos/${id}`, d); setInsumos(p => p.map(x => x._id === id ? { ...x, ...d } : x)); };
   const borrarInsumo = async (id)    => { await db.del(`insumos/${id}`); setInsumos(p => p.filter(x => x._id !== id)); };
 
-  return { servicios, clientas, citas, excepciones, bloques, config, gastos, insumos, loading, recargar, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, borrarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque, crearGasto, editarGasto, borrarGasto, crearInsumo, editarInsumo, borrarInsumo };
+  const crearIngreso  = async (d)  => { const id = await db.push("ingresos", { ...d, creadoEn:hoyISO() }); setIngresos(p => [...p, { ...d, creadoEn:hoyISO(), _id:id }]); };
+  const borrarIngreso = async (id) => { await db.del(`ingresos/${id}`); setIngresos(p => p.filter(x => x._id !== id)); };
+
+  return { servicios, clientas, citas, excepciones, bloques, config, gastos, insumos, ingresos, loading, recargar, recargarSilent, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, borrarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque, crearGasto, editarGasto, borrarGasto, crearInsumo, editarInsumo, borrarInsumo, crearIngreso, borrarIngreso };
 }
 
 // ── Componentes UI comunes ─────────────────────────────────────────────────────
@@ -528,7 +532,7 @@ function Chips({ options = [], value, onChange }) {
     <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
       {options.map(o => (
         <button key={o} onClick={() => onChange(o)}
-          style={{ ...s.btnGl, padding:"7px 13px", fontSize:13, background:value === o ? G.greenM : G.glass, borderColor:value === o ? G.green : G.border, color:value === o ? G.greenL : G.sub }}>
+          style={{ ...s.btnGl, padding:"8px 14px", fontSize:13, background:value === o ? G.greenM : "transparent", borderColor:value === o ? G.green : G.border, color:value === o ? G.greenL : G.muted, fontWeight:value === o ? 700 : 400 }}>
           {o}
         </button>
       ))}
@@ -1147,10 +1151,11 @@ function AdminAgenda({ data, push, toast }) {
           <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
             {["mes","semana","día"].map(v => (
               <button key={v} onClick={() => setVista(v)}
-                style={{ ...s.btnGl, padding:"6px 12px", fontSize:11, textTransform:"capitalize",
-                  background:vista===v ? G.greenM : G.glass,
+                style={{ ...s.btnGl, padding:"8px 14px", fontSize:11, textTransform:"capitalize",
+                  background:vista===v ? G.greenM : "transparent",
                   borderColor:vista===v ? G.green : G.border,
-                  color:vista===v ? G.greenL : G.sub }}>
+                  color:vista===v ? G.greenL : G.muted,
+                  fontWeight:vista===v ? 700 : 400 }}>
                 {v}
               </button>
             ))}
@@ -1725,7 +1730,7 @@ function AgendaDia({ data, push, diaInicial }) {
 
 // ── Nueva Cita ─────────────────────────────────────────────────────────────────
 function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clientaIdDefault = "" }) {
-  const [form, setForm] = useState({ clientaId:clientaIdDefault, fecha:fechaDefault, hora:horaDefault, servicio:"", notas:"" });
+  const [form, setForm] = useState({ clientaId:clientaIdDefault, fecha:fechaDefault, hora:horaDefault, servicio:"", notas:"", adicionales:[] });
   const [saving, setSaving] = useState(false);
   const [customHora, setCustomHora] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
@@ -1797,6 +1802,38 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
               {data.servicios.map(sv => <option key={sv._id} value={sv.nombre}>{sv.nombre} · {fmtPesos(sv.precio)}</option>)}
             </select>
           </Field>
+          {(() => {
+            const adics = data.getConfig("adicionales", []);
+            if (!adics.length) return null;
+            return (
+              <Field label="adicionales (opcional)">
+                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                  {adics.map(a => {
+                    const sel = (form.adicionales||[]).includes(a.nombre);
+                    return (
+                      <div key={a.nombre}
+                        onClick={() => set("adicionales", sel
+                          ? (form.adicionales||[]).filter(x => x !== a.nombre)
+                          : [...(form.adicionales||[]), a.nombre])}
+                        style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:10, border:`0.5px solid ${sel ? G.green : G.border}`, background:sel ? G.greenM : "transparent", cursor:"pointer" }}>
+                        <div style={{ width:16, height:16, borderRadius:4, border:`1.5px solid ${sel ? G.green : G.border}`, background:sel ? G.green : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                          {sel && <Icon name="check" size={10} color="#0a0a0a" strokeWidth={2.5} />}
+                        </div>
+                        <div>
+                          <p style={{ margin:"0 0 1px", fontFamily:F.sans, fontSize:13, color:G.text }}>{a.nombre}</p>
+                          {(a.precio || a.duracion) && (
+                            <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>
+                              {[a.duracion?`+${a.duracion}min`:"", a.precio?fmtPesos(a.precio):""].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Field>
+            );
+          })()}
           <Field label="fecha"><input style={s.input} type="date" value={form.fecha} min={hoyISO()} onChange={e => set("fecha", e.target.value)} /></Field>
           <Field label="hora">
             <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
@@ -1856,6 +1893,10 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
     };
 
     await data.registrarPago(cita.clientaId, cita._id, registro);
+    const svObj = data.servicios.find(s => s.nombre === cita.servicio);
+    if (svObj?.cuidados && cita.clientaUid) {
+      sendPush([`clienta:${cita.clientaUid}`], "Cuidados de tu tratamiento 💚", svObj.cuidados);
+    }
     toast("Cita completada y pago registrado");
     setMP(false);
     setCita(p => ({ ...p, estado:"completada" }));
@@ -2093,7 +2134,7 @@ function AdminClientas({ data, push, toast }) {
   const [sheet, setSheet]       = useState(false);
   const [creds, setCreds]       = useState(null);
   const [saving, setSaving]     = useState(false);
-  const [form, setForm]         = useState({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"" });
+  const [form, setForm]         = useState({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
   const opcCurvas = data.getConfig("curvas",   []);
@@ -2123,7 +2164,7 @@ function AdminClientas({ data, push, toast }) {
     setCreds(res.noAccount
       ? { noAccount:true, nombre:form.nombre }
       : { email:res.email, pass:res.pass, nombre:form.nombre, telefono:form.telefono });
-    setForm({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"" });
+    setForm({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
   };
 
   return (
@@ -2136,7 +2177,7 @@ function AdminClientas({ data, push, toast }) {
         </div>
         <div style={{ display:"flex", gap:7, marginBottom:14 }}>
           {[["az", "A → Z"], ["reciente", "última visita"]].map(([v, l]) => (
-            <button key={v} onClick={() => setOrden(v)} style={{ ...s.btnGl, fontSize:11, background:orden === v ? G.greenM : G.glass, borderColor:orden === v ? G.green : G.border, color:orden === v ? G.greenL : G.sub, padding:"6px 12px" }}>{l}</button>
+            <button key={v} onClick={() => setOrden(v)} style={{ ...s.btnGl, fontSize:11, background:orden === v ? G.greenM : "transparent", borderColor:orden === v ? G.green : G.border, color:orden === v ? G.greenL : G.muted, padding:"8px 14px", fontWeight:orden === v ? 700 : 400 }}>{l}</button>
           ))}
         </div>
         {filtradas.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin clientas aún</p>}
@@ -2177,6 +2218,7 @@ function AdminClientas({ data, push, toast }) {
             <div style={s.div} />
             <Field label="alergias / condiciones"><input style={s.input} value={form.alergias} onChange={e => set("alergias", e.target.value)} placeholder="Ninguna, o especificar..." /></Field>
             <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e => set("observaciones", e.target.value)} placeholder="preferencias, notas..." /></Field>
+            <Field label="contacto de emergencia"><input style={s.input} value={form.emergencia} onChange={e => set("emergencia", e.target.value)} placeholder="nombre y teléfono..." /></Field>
             <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : "crear clienta →"}</button>
             <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, textAlign:"center" }}>Con email: se genera contraseña para enviar por WhatsApp. Sin email: contacto CRM sin acceso al panel.</p>
           </div>
@@ -2270,7 +2312,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:6, marginBottom:16 }}>
           {["info", "ficha", "historial", "turnos", "métricas"].map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, flex:1, fontSize:9, padding:"7px 2px", background:tab === t ? G.greenM : G.glass, borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.sub }}>{t}</button>
+            <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, flex:1, fontSize:9, padding:"8px 2px", background:tab === t ? G.greenM : "transparent", borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.muted, fontWeight:tab === t ? 700 : 400 }}>{t}</button>
           ))}
         </div>
 
@@ -2489,14 +2531,14 @@ function AdminFinanzas({ data, toast }) {
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:7, marginBottom:18 }}>
           {[["resumen","resumen"],["gastos","gastos"],["insumos","insumos"],["calendario","calendario"]].map(([v, l]) => (
-            <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:12, background:tab === v ? G.greenM : G.glass, borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.sub }}>{l}</button>
+            <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:12, background:tab === v ? G.greenM : "transparent", borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.muted, fontWeight:tab === v ? 700 : 400 }}>{l}</button>
           ))}
         </div>
 
         {tab === "resumen" && <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} />}
         {tab === "gastos" && <GastosTab data={data} toast={toast} />}
         {tab === "insumos" && <InsumosTab data={data} toast={toast} />}
-        {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} />}
+        {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />}
       </div>
     </div>
   );
@@ -2505,7 +2547,9 @@ function AdminFinanzas({ data, toast }) {
 function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }) {
   const filtrar = (h) => { if (periodo === "hoy") return h.fecha === hoy; if (periodo === "mes") return h.fecha?.startsWith(mes); if (periodo === "año") return h.fecha?.startsWith(anio); return true; };
   const ings   = todoHist.filter(filtrar);
-  const total  = ings.reduce((a, h) => a + (h.monto || 0), 0);
+  const ingresosFiltr = (data.ingresos || []).filter(x => filtrar({ fecha:x.fecha }));
+  const totalIngresos = ingresosFiltr.reduce((a, x) => a + (x.monto || 0), 0);
+  const total  = ings.reduce((a, h) => a + (h.monto || 0), 0) + totalIngresos;
   const totalGastos = (data.gastos || []).filter(g => filtrar({ fecha:g.fecha })).reduce((a, g) => a + (g.monto || 0), 0);
   const ganancia = total - totalGastos;
   const transf = ings.filter(h => h.pago === "transferencia" || h.montoTransf > 0).reduce((a, h) => a + (h.montoTransf || (h.pago === "transferencia" ? h.monto : 0)), 0);
@@ -2520,7 +2564,7 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }
     <div>
       <div style={{ display:"flex", gap:7, marginBottom:18 }}>
         {[["hoy","hoy"],["mes","este mes"],["año","este año"],["todo","histórico"]].map(([v, l]) => (
-          <button key={v} onClick={() => setPeriodo(v)} style={{ ...s.btnGl, flex:1, fontSize:10, background:periodo === v ? G.greenM : G.glass, borderColor:periodo === v ? G.green : G.border, color:periodo === v ? G.greenL : G.sub, padding:"7px 2px" }}>{l}</button>
+          <button key={v} onClick={() => setPeriodo(v)} style={{ ...s.btnGl, flex:1, fontSize:10, background:periodo === v ? G.greenM : "transparent", borderColor:periodo === v ? G.green : G.border, color:periodo === v ? G.greenL : G.muted, padding:"8px 2px", fontWeight:periodo === v ? 700 : 400 }}>{l}</button>
         ))}
       </div>
       <div style={{ ...s.card, textAlign:"center", padding:"22px 16px", marginBottom:12 }}>
@@ -2577,10 +2621,14 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }
   );
 }
 
-function FinanzasCalendario({ data, todoHist }) {
+function FinanzasCalendario({ data, todoHist, toast }) {
   const ahora = new Date();
   const [offset, setOffset] = useState(0);
   const [diaS,   setDiaS]   = useState(hoyISO());
+  const [showIngForm, setShowIngForm] = useState(false);
+  const [ingForm, setIngForm] = useState({ concepto:"", clientaNombre:"", monto:"", pago:"efectivo" });
+  const setIF = (k, v) => setIngForm(f => ({...f, [k]:v}));
+  const PAGOS_ING = ["efectivo","transferencia","otro"];
 
   const mesD    = new Date(ahora.getFullYear(), ahora.getMonth() + offset, 1);
   const anio    = mesD.getFullYear();
@@ -2590,21 +2638,39 @@ function FinanzasCalendario({ data, todoHist }) {
   const fmtKey  = (d) => `${anio}-${String(mes + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   const hoy     = hoyISO();
 
-  // Ingresos agrupados por fecha
+  // Ingresos agrupados por fecha (historial de citas)
   const ingresosPorFecha = {};
   todoHist.forEach(h => {
     if (!h.fecha) return;
     if (!ingresosPorFecha[h.fecha]) ingresosPorFecha[h.fecha] = [];
-    ingresosPorFecha[h.fecha].push(h);
+    ingresosPorFecha[h.fecha].push({ ...h, _tipo:"cita" });
+  });
+  // Manual ingresos también agrupados
+  const manualesPorFecha = {};
+  (data.ingresos || []).forEach(x => {
+    if (!x.fecha) return;
+    if (!manualesPorFecha[x.fecha]) manualesPorFecha[x.fecha] = [];
+    manualesPorFecha[x.fecha].push({ ...x, _tipo:"manual" });
   });
 
-  const totalDia    = (fecha) => (ingresosPorFecha[fecha] || []).reduce((a, h) => a + (h.monto || 0), 0);
+  const totalDia    = (fecha) =>
+    (ingresosPorFecha[fecha] || []).reduce((a, h) => a + (h.monto || 0), 0) +
+    (manualesPorFecha[fecha] || []).reduce((a, x) => a + (x.monto || 0), 0);
   const maxDelMes   = Math.max(...Array(diasMes).fill(null).map((_, i) => totalDia(fmtKey(i + 1))), 1);
   const totalMes    = Array(diasMes).fill(null).reduce((a, _, i) => a + totalDia(fmtKey(i + 1)), 0);
 
   // Detalle del día seleccionado
   const registrosDia = ingresosPorFecha[diaS] || [];
-  const totalDiaS    = registrosDia.reduce((a, h) => a + (h.monto || 0), 0);
+  const manualesDia  = manualesPorFecha[diaS] || [];
+  const totalDiaS    = registrosDia.reduce((a, h) => a + (h.monto || 0), 0) + manualesDia.reduce((a, x) => a + (x.monto || 0), 0);
+
+  const guardarIngreso = async () => {
+    if (!ingForm.concepto || !ingForm.monto) { toast("completá concepto y monto"); return; }
+    await data.crearIngreso({ ...ingForm, fecha:diaS, monto:parseFloat(ingForm.monto) || 0 });
+    setIngForm({ concepto:"", clientaNombre:"", monto:"", pago:"efectivo" });
+    setShowIngForm(false);
+    toast("✓ ingreso registrado");
+  };
 
   // Buscar nombre de clienta por servicio + fecha
   const getNombreClienta = (registro) => {
@@ -2663,36 +2729,81 @@ function FinanzasCalendario({ data, todoHist }) {
         {totalDiaS > 0 && <span style={{ ...s.tag, marginLeft:"auto" }}>{fmtPesos(totalDiaS)}</span>}
       </div>
 
-      {registrosDia.length === 0 ? (
-        <p style={{ color:G.muted, fontSize:13 }}>sin ingresos registrados para este día ✦</p>
-      ) : (
-        registrosDia.map((h, i) => {
-          const nombreC = getNombreClienta(h);
-          return (
-            <div key={i} style={s.card}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
-                <div>
-                  <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{nombreC}</p>
-                  <p style={{ margin:0, ...s.sub, fontSize:11 }}>{h.servicio}</p>
-                  {h.curva && <p style={{ margin:"3px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted }}>curva {h.curva}</p>}
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:16 }}>{fmtPesos(h.monto)}</p>
-                  {/* Mostrar desglose si fue pago mixto */}
-                  {h.pago === "mixto" ? (
-                    <div style={{ display:"flex", flexDirection:"column", gap:2, alignItems:"flex-end" }}>
-                      <span style={{ ...s.tag, fontSize:9, marginRight:0, background:"rgba(143,189,90,0.1)" }}>{fmtPesos(h.montoEfectivo)}</span>
-                      <span style={{ ...s.tag, fontSize:9, marginRight:0 }}>{fmtPesos(h.montoTransf)}</span>
-                    </div>
-                  ) : (
-                    <span style={s.tag}>{h.pago === "transferencia" ? "🏦" : "💵"} {h.pago}</span>
-                  )}
-                </div>
+      {registrosDia.length === 0 && manualesDia.length === 0 && !showIngForm && (
+        <p style={{ color:G.muted, fontSize:13, marginBottom:12 }}>sin ingresos registrados para este día ✦</p>
+      )}
+
+      {registrosDia.map((h, i) => {
+        const nombreC = getNombreClienta(h);
+        return (
+          <div key={i} style={s.card}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+              <div>
+                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{nombreC}</p>
+                <p style={{ margin:0, ...s.sub, fontSize:11 }}>{h.servicio}</p>
+                {h.curva && <p style={{ margin:"3px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted }}>curva {h.curva}</p>}
               </div>
-              {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{h.notas}</p>}
+              <div style={{ textAlign:"right" }}>
+                <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:16 }}>{fmtPesos(h.monto)}</p>
+                {h.pago === "mixto" ? (
+                  <div style={{ display:"flex", flexDirection:"column", gap:2, alignItems:"flex-end" }}>
+                    <span style={{ ...s.tag, fontSize:9, marginRight:0, background:"rgba(143,189,90,0.1)" }}>{fmtPesos(h.montoEfectivo)}</span>
+                    <span style={{ ...s.tag, fontSize:9, marginRight:0 }}>{fmtPesos(h.montoTransf)}</span>
+                  </div>
+                ) : (
+                  <span style={s.tag}>{h.pago === "transferencia" ? "🏦" : "💵"} {h.pago}</span>
+                )}
+              </div>
             </div>
-          );
-        })
+            {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{h.notas}</p>}
+          </div>
+        );
+      })}
+
+      {manualesDia.map((x) => (
+        <div key={x._id} style={{ ...s.card, borderColor:"rgba(143,189,90,0.25)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
+            <div>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontSize:14 }}>{x.concepto}</p>
+                <span style={{ ...s.tag, fontSize:9, background:"rgba(143,189,90,0.15)", borderColor:G.greenD, color:G.greenL }}>manual</span>
+              </div>
+              {x.clientaNombre && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.sub }}>{x.clientaNombre}</p>}
+            </div>
+            <div style={{ textAlign:"right", flexShrink:0 }}>
+              <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:16 }}>{fmtPesos(x.monto)}</p>
+              <span style={s.tag}>{x.pago}</span>
+            </div>
+          </div>
+          <button style={{ ...s.btnRed, padding:"4px 10px", fontSize:11, marginTop:4 }}
+            onClick={async () => { if (window.confirm("¿Eliminar este ingreso?")) { await data.borrarIngreso(x._id); toast("ingreso eliminado"); } }}>
+            eliminar
+          </button>
+        </div>
+      ))}
+
+      {showIngForm ? (
+        <div style={{ ...s.card, marginTop:10 }}>
+          <p style={{ ...s.eyebrow, marginBottom:10 }}>registrar ingreso manual</p>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <Field label="concepto"><input style={s.input} value={ingForm.concepto} onChange={e => setIF("concepto", e.target.value)} placeholder="ej: venta de producto, seña..." /></Field>
+            <Field label="clienta (opcional)"><input style={s.input} value={ingForm.clientaNombre} onChange={e => setIF("clientaNombre", e.target.value)} placeholder="nombre de la clienta" /></Field>
+            <Field label="monto"><input style={s.input} type="number" value={ingForm.monto} onChange={e => setIF("monto", e.target.value)} placeholder="0" /></Field>
+            <Field label="forma de pago">
+              <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
+                {PAGOS_ING.map(p => (
+                  <button key={p} onClick={() => setIF("pago", p)} style={{ ...s.btnGl, padding:"7px 12px", fontSize:12, background:ingForm.pago === p ? G.greenM : "transparent", borderColor:ingForm.pago === p ? G.green : G.border, color:ingForm.pago === p ? G.greenL : G.muted, fontWeight:ingForm.pago === p ? 700 : 400 }}>{p}</button>
+                ))}
+              </div>
+            </Field>
+            <div style={{ display:"flex", gap:9 }}>
+              <button style={{ ...s.btnGl, flex:1 }} onClick={() => setShowIngForm(false)}>cancelar</button>
+              <button style={{ ...s.btnG, flex:1 }} onClick={guardarIngreso}>guardar →</button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <button style={{ ...s.btnGl, width:"100%", marginTop:8, fontSize:12 }} onClick={() => setShowIngForm(true)}>+ registrar ingreso manual</button>
       )}
     </div>
   );
@@ -2828,7 +2939,7 @@ function AdminConfig({ data, toast, onLogout }) {
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:7, marginBottom:18, flexWrap:"wrap" }}>
           {["servicios","mensajes","técnico","adicionales","horarios","estudio","notificaciones","apariencia"].map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : G.glass, borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.sub, padding:"7px 14px", textTransform:"capitalize" }}>{t}</button>
+            <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : "transparent", borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.muted, padding:"8px 14px", textTransform:"capitalize", fontWeight:tab === t ? 700 : 400 }}>{t}</button>
           ))}
         </div>
         {tab === "servicios"      && <ConfigServicios      data={data} toast={toast} />}
@@ -2930,14 +3041,14 @@ function ConfigMensajes({ data, toast }) {
 function ConfigServicios({ data, toast }) {
   const [sheet, setSheet]     = useState(false);
   const [editSv, setEditSv]   = useState(null);
-  const [form, setForm]       = useState({ nombre:"", precio:"", duracion:"", descripcion:"", fotos:[] });
+  const [form, setForm]       = useState({ nombre:"", precio:"", duracion:"", descripcion:"", cuidados:"", fotos:[] });
   const [saving, setSaving]   = useState(false);
   const [confirm, setConfirm]   = useState(null);
   const [uploading, setUploading] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
-  const abrirNuevo  = () => { setEditSv(null); setForm({ nombre:"", precio:"", duracion:"", descripcion:"", fotos:[] }); setSheet(true); };
-  const abrirEditar = (sv) => { setEditSv(sv); setForm({ nombre:sv.nombre, precio:String(sv.precio||""), duracion:String(sv.duracion||""), descripcion:sv.descripcion||"", fotos:sv.fotos||[] }); setSheet(true); };
+  const abrirNuevo  = () => { setEditSv(null); setForm({ nombre:"", precio:"", duracion:"", descripcion:"", cuidados:"", fotos:[] }); setSheet(true); };
+  const abrirEditar = (sv) => { setEditSv(sv); setForm({ nombre:sv.nombre, precio:String(sv.precio||""), duracion:String(sv.duracion||""), descripcion:sv.descripcion||"", cuidados:sv.cuidados||"", fotos:sv.fotos||[] }); setSheet(true); };
 
   const onFotoFile = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -2950,7 +3061,7 @@ function ConfigServicios({ data, toast }) {
   const guardar = async () => {
     if (!form.nombre || !form.precio) { toast("nombre y precio son obligatorios"); return; }
     setSaving(true);
-    const payload = { nombre:form.nombre, precio:Number(form.precio), duracion:Number(form.duracion)||60, descripcion:form.descripcion, fotos:form.fotos||[] };
+    const payload = { nombre:form.nombre, precio:Number(form.precio), duracion:Number(form.duracion)||60, descripcion:form.descripcion, cuidados:form.cuidados||"", fotos:form.fotos||[] };
     if (editSv) await data.editarServicio(editSv._id, payload);
     else        await data.crearServicio(payload);
     setSaving(false); setSheet(false);
@@ -2990,6 +3101,7 @@ function ConfigServicios({ data, toast }) {
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             <Field label="nombre del servicio *"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="Nombre del servicio" /></Field>
             <Field label="descripción"><input style={s.input} value={form.descripcion} onChange={e => set("descripcion", e.target.value)} placeholder="Breve descripción para las clientas" /></Field>
+            <Field label="cuidados post-tratamiento" hint="Se enviará a la clienta al finalizar la cita"><textarea style={{ ...s.input, height:80, resize:"none" }} value={form.cuidados||""} onChange={e => set("cuidados", e.target.value)} placeholder="Evitá mojar la zona por 24hs, no uses rímel..." /></Field>
             <div style={{ display:"flex", gap:10 }}>
               <Field label="precio *"><input style={{ ...s.input }} type="number" value={form.precio} onChange={e => set("precio", e.target.value)} placeholder="0" /></Field>
               <Field label="duración (min)"><input style={{ ...s.input }} type="number" value={form.duracion} onChange={e => set("duracion", e.target.value)} placeholder="60" /></Field>
@@ -3378,7 +3490,7 @@ function ConfigHorarios({ data, toast }) {
     <div>
       <div style={{ display:"flex", gap:7, marginBottom:16 }}>
         {[["dias","días laborales"],["slots","horarios"],["excepciones","días bloqueados"]].map(([v, l]) => (
-          <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:10, background:tab === v ? G.greenM : G.glass, borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.sub, padding:"7px 4px" }}>{l}</button>
+          <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:10, background:tab === v ? G.greenM : "transparent", borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.muted, padding:"8px 4px", fontWeight:tab === v ? 700 : 400 }}>{l}</button>
         ))}
       </div>
       {tab === "dias"        && <DiasConfig />}
@@ -3700,6 +3812,24 @@ function CInicio({ clienta, data, setTab }) {
       <div style={{ padding:"18px" }}>
         <PushBanner role="clienta" uid={clienta.uid} />
 
+        {/* ── Post-care widget ── */}
+        {(() => {
+          const svUltima = data.servicios.find(sv => sv.nombre === ultima?.servicio);
+          const cuidados = svUltima?.cuidados || "";
+          if (!ultima || !cuidados || diasDesde === null || diasDesde > 7) return null;
+          return (
+            <div style={{ ...s.cardHero, marginBottom:12 }}>
+              <p style={s.eyebrow}>cuidados post-tratamiento</p>
+              <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 10px" }}>
+                {ultima.servicio} · {fmtFecha(ultima.fecha)}
+              </p>
+              <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, lineHeight:1.7, margin:0 }}>
+                {cuidados}
+              </p>
+            </div>
+          );
+        })()}
+
         {/* ── 0. Stats: última visita | curva fav ── */}
         {ultima && (
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
@@ -3757,6 +3887,28 @@ function CInicio({ clienta, data, setTab }) {
             <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>reservar turno</p>
           </div>
         </div>
+
+        {/* ── 1b. Services carousel ── */}
+        {data.servicios.length > 0 && (
+          <div style={{ marginBottom:16 }}>
+            <p style={{ ...s.eyebrow, marginBottom:9 }}>servicios</p>
+            <div style={{ display:"flex", gap:9, overflowX:"auto", paddingBottom:4, scrollSnapType:"x mandatory", WebkitOverflowScrolling:"touch" }}>
+              {data.servicios.map(sv => (
+                <div key={sv._id} style={{ flexShrink:0, width:160, ...s.card, margin:0, padding:0, overflow:"hidden", scrollSnapAlign:"start" }}>
+                  {sv.fotos?.[0]
+                    ? <img src={sv.fotos[0]} alt={sv.nombre} style={{ width:"100%", height:90, objectFit:"cover" }} loading="lazy" />
+                    : <div style={{ height:70, background:"rgba(143,189,90,0.12)", display:"flex", alignItems:"center", justifyContent:"center" }}><Icon name="scissors" size={22} color={G.greenL} /></div>
+                  }
+                  <div style={{ padding:"8px 10px 10px" }}>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{sv.nombre}</p>
+                    <p style={{ margin:"0 0 8px", fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.green }}>{fmtPesos(sv.precio)}</p>
+                    <button style={{ ...s.btnG, padding:"7px 10px", fontSize:11, width:"100%" }} onClick={() => setTab("agendar")}>agendar →</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── 2. Políticas card ── */}
         {politicas.length > 0 && (
