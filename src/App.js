@@ -374,20 +374,19 @@ function useData() {
   const [config, setConfig]           = useState({});
   const [gastos, setGastos]           = useState([]);
   const [insumos, setInsumos]         = useState([]);
-  const [ingresos, setIngresos]       = useState([]);
   const [loading, setLoading]         = useState(true);
 
   const recargar = useCallback(async () => {
     setLoading(true);
-    const [sv, cl, ct, ex, bl, cfg, gs, ins, ing] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos"), db.get("insumos"), db.get("ingresos")]);
-    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []); setInsumos(Array.isArray(ins) ? ins : []); setIngresos(Array.isArray(ing) ? ing : []);
+    const [sv, cl, ct, ex, bl, cfg, gs, ins] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos"), db.get("insumos")]);
+    setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []); setInsumos(Array.isArray(ins) ? ins : []);
     setLoading(false);
   }, []);
 
   const recargarSilent = useCallback(async () => {
     try {
-      const [sv, cl, ct, ex, bl, cfg, gs, ins, ing] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos"), db.get("insumos"), db.get("ingresos")]);
-      setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []); setInsumos(Array.isArray(ins) ? ins : []); setIngresos(Array.isArray(ing) ? ing : []);
+      const [sv, cl, ct, ex, bl, cfg, gs, ins] = await Promise.all([db.get("servicios"), db.get("clientas"), db.get("citas"), db.get("excepciones"), db.get("bloques"), db.getVal("config"), db.get("gastos"), db.get("insumos")]);
+      setServicios(sv); setClientas(cl); setCitas(ct); setExcepciones(ex); setBloques(bl); setConfig(cfg || {}); setGastos(Array.isArray(gs) ? gs : []); setInsumos(Array.isArray(ins) ? ins : []);
     } catch {}
   }, []);
 
@@ -449,10 +448,7 @@ function useData() {
   const editarInsumo = async (id, d) => { await db.update(`insumos/${id}`, d); setInsumos(p => p.map(x => x._id === id ? { ...x, ...d } : x)); };
   const borrarInsumo = async (id)    => { await db.del(`insumos/${id}`); setInsumos(p => p.filter(x => x._id !== id)); };
 
-  const crearIngreso  = async (d)  => { const id = await db.push("ingresos", { ...d, creadoEn:hoyISO() }); setIngresos(p => [...p, { ...d, creadoEn:hoyISO(), _id:id }]); };
-  const borrarIngreso = async (id) => { await db.del(`ingresos/${id}`); setIngresos(p => p.filter(x => x._id !== id)); };
-
-  return { servicios, clientas, citas, excepciones, bloques, config, gastos, insumos, ingresos, loading, recargar, recargarSilent, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, borrarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque, crearGasto, editarGasto, borrarGasto, crearInsumo, editarInsumo, borrarInsumo, crearIngreso, borrarIngreso };
+  return { servicios, clientas, citas, excepciones, bloques, config, gastos, insumos, loading, recargar, recargarSilent, getConfig, saveConfig, crearServicio, editarServicio, borrarServicio, crearClientas, editarClientas, borrarClientas, resetPasswordClientas, crearCita, editarCita, borrarCita, registrarPago, crearBloque, borrarBloque, crearGasto, editarGasto, borrarGasto, crearInsumo, editarInsumo, borrarInsumo };
 }
 
 // ── Componentes UI comunes ─────────────────────────────────────────────────────
@@ -2547,9 +2543,7 @@ function AdminFinanzas({ data, toast }) {
 function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }) {
   const filtrar = (h) => { if (periodo === "hoy") return h.fecha === hoy; if (periodo === "mes") return h.fecha?.startsWith(mes); if (periodo === "año") return h.fecha?.startsWith(anio); return true; };
   const ings   = todoHist.filter(filtrar);
-  const ingresosFiltr = (data.ingresos || []).filter(x => filtrar({ fecha:x.fecha }));
-  const totalIngresos = ingresosFiltr.reduce((a, x) => a + (x.monto || 0), 0);
-  const total  = ings.reduce((a, h) => a + (h.monto || 0), 0) + totalIngresos;
+  const total  = ings.reduce((a, h) => a + (h.monto || 0), 0);
   const totalGastos = (data.gastos || []).filter(g => filtrar({ fecha:g.fecha })).reduce((a, g) => a + (g.monto || 0), 0);
   const ganancia = total - totalGastos;
   const transf = ings.filter(h => h.pago === "transferencia" || h.montoTransf > 0).reduce((a, h) => a + (h.montoTransf || (h.pago === "transferencia" ? h.monto : 0)), 0);
@@ -2625,11 +2619,12 @@ function FinanzasCalendario({ data, todoHist, toast }) {
   const ahora = new Date();
   const [offset, setOffset] = useState(0);
   const [diaS,   setDiaS]   = useState(hoyISO());
-  const [showIngForm, setShowIngForm] = useState(false);
-  const [ingForm, setIngForm] = useState({ concepto:"", clientaNombre:"", monto:"", pago:"efectivo" });
-  const setIF = (k, v) => setIngForm(f => ({...f, [k]:v}));
-  const PAGOS_ING = ["efectivo","transferencia","otro"];
-  const EXTRAS_ING = ["Seña / Reserva", "Otro"];
+  const [showTurnoForm, setShowTurnoForm] = useState(false);
+  const [turnoForm, setTurnoForm] = useState({ clientaId:"", servicio:"", hora:"", pago:"efectivo", monto:"", montoEfectivo:"", montoTransf:"" });
+  const setTF = (k, v) => setTurnoForm(f => ({...f, [k]:v}));
+  const [busqClienta, setBusqClienta] = useState("");
+  const [showDropC, setShowDropC] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const mesD    = new Date(ahora.getFullYear(), ahora.getMonth() + offset, 1);
   const anio    = mesD.getFullYear();
@@ -2644,34 +2639,61 @@ function FinanzasCalendario({ data, todoHist, toast }) {
   todoHist.forEach(h => {
     if (!h.fecha) return;
     if (!ingresosPorFecha[h.fecha]) ingresosPorFecha[h.fecha] = [];
-    ingresosPorFecha[h.fecha].push({ ...h, _tipo:"cita" });
-  });
-  // Manual ingresos también agrupados
-  const manualesPorFecha = {};
-  (data.ingresos || []).forEach(x => {
-    if (!x.fecha) return;
-    if (!manualesPorFecha[x.fecha]) manualesPorFecha[x.fecha] = [];
-    manualesPorFecha[x.fecha].push({ ...x, _tipo:"manual" });
+    ingresosPorFecha[h.fecha].push(h);
   });
 
-  const totalDia    = (fecha) =>
-    (ingresosPorFecha[fecha] || []).reduce((a, h) => a + (h.monto || 0), 0) +
-    (manualesPorFecha[fecha] || []).reduce((a, x) => a + (x.monto || 0), 0);
-  const maxDelMes   = Math.max(...Array(diasMes).fill(null).map((_, i) => totalDia(fmtKey(i + 1))), 1);
-  const totalMes    = Array(diasMes).fill(null).reduce((a, _, i) => a + totalDia(fmtKey(i + 1)), 0);
+  const totalDia  = (fecha) => (ingresosPorFecha[fecha] || []).reduce((a, h) => a + (h.monto || 0), 0);
+  const maxDelMes = Math.max(...Array(diasMes).fill(null).map((_, i) => totalDia(fmtKey(i + 1))), 1);
+  const totalMes  = Array(diasMes).fill(null).reduce((a, _, i) => a + totalDia(fmtKey(i + 1)), 0);
 
   // Detalle del día seleccionado
   const registrosDia = ingresosPorFecha[diaS] || [];
-  const manualesDia  = manualesPorFecha[diaS] || [];
-  const totalDiaS    = registrosDia.reduce((a, h) => a + (h.monto || 0), 0) + manualesDia.reduce((a, x) => a + (x.monto || 0), 0);
+  const totalDiaS    = registrosDia.reduce((a, h) => a + (h.monto || 0), 0);
 
-  const guardarIngreso = async () => {
-    const conceptoFinal = ingForm.concepto === "Otro" ? ingForm.conceptoOtro?.trim() : ingForm.concepto;
-    if (!conceptoFinal || !ingForm.monto) { toast("seleccioná el tipo de ingreso y el monto"); return; }
-    await data.crearIngreso({ concepto:conceptoFinal, clientaNombre:ingForm.clientaNombre, fecha:diaS, monto:parseFloat(ingForm.monto) || 0, pago:ingForm.pago });
-    setIngForm({ concepto:"", clientaNombre:"", monto:"", pago:"efectivo" });
-    setShowIngForm(false);
-    toast("✓ ingreso registrado");
+  const clientasFiltradas = data.clientas
+    .filter(c => !busqClienta || c.nombre?.toLowerCase().includes(busqClienta.toLowerCase()))
+    .sort((a, b) => a.nombre?.localeCompare(b.nombre))
+    .slice(0, 20);
+
+  const modoMixto = turnoForm.pago === "mixto";
+  const totalCalculado = modoMixto
+    ? (Number(turnoForm.montoEfectivo) || 0) + (Number(turnoForm.montoTransf) || 0)
+    : Number(turnoForm.monto) || 0;
+
+  const guardarTurno = async () => {
+    if (!turnoForm.clientaId || !turnoForm.servicio || !totalCalculado) {
+      toast("completá clienta, servicio y monto"); return;
+    }
+    setSaving(true);
+    try {
+      const clienta = data.clientas.find(c => c._id === turnoForm.clientaId);
+      const citaId = await data.crearCita({
+        clientaId: turnoForm.clientaId,
+        clientaNombre: clienta?.nombre || "",
+        clientaUid: clienta?.uid || "",
+        fecha: diaS,
+        hora: turnoForm.hora || "00:00",
+        servicio: turnoForm.servicio,
+        notas: "",
+        adicionales: [],
+        estado: "confirmada",
+      });
+      const registro = {
+        fecha: diaS,
+        servicio: turnoForm.servicio,
+        curva: clienta?.curva || "",
+        notas: "",
+        pago: turnoForm.pago,
+        monto: totalCalculado,
+        ...(modoMixto ? { montoEfectivo: Number(turnoForm.montoEfectivo)||0, montoTransf: Number(turnoForm.montoTransf)||0 } : {}),
+      };
+      await data.registrarPago(turnoForm.clientaId, citaId, registro);
+      setTurnoForm({ clientaId:"", servicio:"", hora:"", pago:"efectivo", monto:"", montoEfectivo:"", montoTransf:"" });
+      setBusqClienta("");
+      setShowTurnoForm(false);
+      toast("✓ turno registrado");
+    } catch { toast("Error al registrar"); }
+    setSaving(false);
   };
 
   // Buscar nombre de clienta por servicio + fecha
@@ -2731,7 +2753,7 @@ function FinanzasCalendario({ data, todoHist, toast }) {
         {totalDiaS > 0 && <span style={{ ...s.tag, marginLeft:"auto" }}>{fmtPesos(totalDiaS)}</span>}
       </div>
 
-      {registrosDia.length === 0 && manualesDia.length === 0 && !showIngForm && (
+      {registrosDia.length === 0 && !showTurnoForm && (
         <p style={{ color:G.muted, fontSize:13, marginBottom:12 }}>sin ingresos registrados para este día ✦</p>
       )}
 
@@ -2749,8 +2771,8 @@ function FinanzasCalendario({ data, todoHist, toast }) {
                 <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:16 }}>{fmtPesos(h.monto)}</p>
                 {h.pago === "mixto" ? (
                   <div style={{ display:"flex", flexDirection:"column", gap:2, alignItems:"flex-end" }}>
-                    <span style={{ ...s.tag, fontSize:9, marginRight:0, background:"rgba(143,189,90,0.1)" }}>{fmtPesos(h.montoEfectivo)}</span>
-                    <span style={{ ...s.tag, fontSize:9, marginRight:0 }}>{fmtPesos(h.montoTransf)}</span>
+                    <span style={{ ...s.tag, fontSize:9, marginRight:0, background:"rgba(143,189,90,0.1)" }}>{fmtPesos(h.montoEfectivo)} ef.</span>
+                    <span style={{ ...s.tag, fontSize:9, marginRight:0 }}>{fmtPesos(h.montoTransf)} transf.</span>
                   </div>
                 ) : (
                   <span style={s.tag}>{h.pago === "transferencia" ? "🏦" : "💵"} {h.pago}</span>
@@ -2762,66 +2784,88 @@ function FinanzasCalendario({ data, todoHist, toast }) {
         );
       })}
 
-      {manualesDia.map((x) => (
-        <div key={x._id} style={{ ...s.card, borderColor:"rgba(143,189,90,0.25)" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
-            <div>
-              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
-                <p style={{ margin:0, fontFamily:F.serif, fontSize:14 }}>{x.concepto}</p>
-                <span style={{ ...s.tag, fontSize:9, background:"rgba(143,189,90,0.15)", borderColor:G.greenD, color:G.greenL }}>manual</span>
-              </div>
-              {x.clientaNombre && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.sub }}>{x.clientaNombre}</p>}
-            </div>
-            <div style={{ textAlign:"right", flexShrink:0 }}>
-              <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:16 }}>{fmtPesos(x.monto)}</p>
-              <span style={s.tag}>{x.pago}</span>
-            </div>
-          </div>
-          <button style={{ ...s.btnRed, padding:"4px 10px", fontSize:11, marginTop:4 }}
-            onClick={async () => { if (window.confirm("¿Eliminar este ingreso?")) { await data.borrarIngreso(x._id); toast("ingreso eliminado"); } }}>
-            eliminar
-          </button>
-        </div>
-      ))}
-
-      {showIngForm ? (
+      {showTurnoForm ? (
         <div style={{ ...s.card, marginTop:10 }}>
-          <p style={{ ...s.eyebrow, marginBottom:10 }}>registrar ingreso manual</p>
+          <p style={{ ...s.eyebrow, marginBottom:10 }}>registrar turno pasado</p>
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            <Field label="tipo de ingreso">
+
+            {/* Clienta searchable */}
+            <Field label="clienta *">
+              <div style={{ position:"relative" }}>
+                <input style={s.input} placeholder="Buscar clienta..." value={busqClienta} autoComplete="off"
+                  onChange={e => { setBusqClienta(e.target.value); setTF("clientaId",""); setShowDropC(true); }}
+                  onFocus={() => setShowDropC(true)}
+                  onBlur={() => setTimeout(() => setShowDropC(false), 180)} />
+                {turnoForm.clientaId && (
+                  <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", fontSize:12, color:G.greenL }}>✓</span>
+                )}
+                {showDropC && clientasFiltradas.length > 0 && (
+                  <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:60, background:G.card, border:`0.5px solid ${G.border}`, borderRadius:10, maxHeight:180, overflowY:"auto", boxShadow:`0 8px 24px ${G.shadow}` }}>
+                    {clientasFiltradas.map(c => (
+                      <div key={c._id} onMouseDown={() => { setTF("clientaId", c._id); setBusqClienta(c.nombre); setShowDropC(false); }}
+                        style={{ padding:"10px 14px", cursor:"pointer", fontFamily:F.sans, fontSize:13, color:G.text, borderBottom:`0.5px solid ${G.border}` }}>
+                        {c.nombre}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Field>
+
+            {/* Servicio chips */}
+            <Field label="servicio *">
               <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
-                {[...data.servicios.map(sv => sv.nombre), ...EXTRAS_ING].map(op => (
-                  <button key={op} onClick={() => setIF("concepto", op)}
+                {data.servicios.map(sv => (
+                  <button key={sv._id} onClick={() => setTF("servicio", sv.nombre)}
                     style={{ ...s.btnGl, padding:"8px 13px", fontSize:12,
-                      background:ingForm.concepto === op ? G.greenM : "transparent",
-                      borderColor:ingForm.concepto === op ? G.green : G.border,
-                      color:ingForm.concepto === op ? G.greenL : G.muted,
-                      fontWeight:ingForm.concepto === op ? 700 : 400 }}>
-                    {op}
+                      background:turnoForm.servicio === sv.nombre ? G.greenM : "transparent",
+                      borderColor:turnoForm.servicio === sv.nombre ? G.green : G.border,
+                      color:turnoForm.servicio === sv.nombre ? G.greenL : G.muted,
+                      fontWeight:turnoForm.servicio === sv.nombre ? 700 : 400 }}>
+                    {sv.nombre}
                   </button>
                 ))}
               </div>
             </Field>
-            {ingForm.concepto === "Otro" && (
-              <Field label="descripción"><input style={s.input} value={ingForm.conceptoOtro||""} onChange={e => setIF("conceptoOtro", e.target.value)} placeholder="describí el ingreso..." /></Field>
-            )}
-            <Field label="clienta (opcional)"><input style={s.input} value={ingForm.clientaNombre} onChange={e => setIF("clientaNombre", e.target.value)} placeholder="nombre de la clienta" /></Field>
-            <Field label="monto"><input style={s.input} type="number" value={ingForm.monto} onChange={e => setIF("monto", e.target.value)} placeholder="0" /></Field>
-            <Field label="forma de pago">
-              <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
-                {PAGOS_ING.map(p => (
-                  <button key={p} onClick={() => setIF("pago", p)} style={{ ...s.btnGl, padding:"8px 12px", fontSize:12, background:ingForm.pago === p ? G.greenM : "transparent", borderColor:ingForm.pago === p ? G.green : G.border, color:ingForm.pago === p ? G.greenL : G.muted, fontWeight:ingForm.pago === p ? 700 : 400 }}>{p}</button>
+
+            {/* Hora opcional */}
+            <Field label="hora (opcional)"><input style={s.input} type="time" value={turnoForm.hora} onChange={e => setTF("hora", e.target.value)} /></Field>
+
+            {/* Forma de cobro */}
+            <Field label="forma de cobro *">
+              <div style={{ display:"flex", gap:7 }}>
+                {["efectivo","transferencia","mixto"].map(p => (
+                  <button key={p} onClick={() => setTF("pago", p)}
+                    style={{ ...s.btnGl, flex:1, padding:"8px 6px", fontSize:11,
+                      background:turnoForm.pago === p ? G.greenM : "transparent",
+                      borderColor:turnoForm.pago === p ? G.green : G.border,
+                      color:turnoForm.pago === p ? G.greenL : G.muted,
+                      fontWeight:turnoForm.pago === p ? 700 : 400 }}>{p}</button>
                 ))}
               </div>
             </Field>
+
+            {/* Monto(s) */}
+            {modoMixto ? (
+              <div style={{ display:"flex", gap:10 }}>
+                <Field label="efectivo"><input style={s.input} type="number" value={turnoForm.montoEfectivo} onChange={e => setTF("montoEfectivo", e.target.value)} placeholder="0" /></Field>
+                <Field label="transferencia"><input style={s.input} type="number" value={turnoForm.montoTransf} onChange={e => setTF("montoTransf", e.target.value)} placeholder="0" /></Field>
+              </div>
+            ) : (
+              <Field label="monto *"><input style={s.input} type="number" value={turnoForm.monto} onChange={e => setTF("monto", e.target.value)} placeholder="0" /></Field>
+            )}
+            {modoMixto && totalCalculado > 0 && (
+              <p style={{ fontFamily:F.sans, fontSize:12, color:G.greenL, margin:"-6px 0 0", textAlign:"right" }}>Total: {fmtPesos(totalCalculado)}</p>
+            )}
+
             <div style={{ display:"flex", gap:9 }}>
-              <button style={{ ...s.btnGl, flex:1 }} onClick={() => { setShowIngForm(false); setIngForm({ concepto:"", clientaNombre:"", monto:"", pago:"efectivo" }); }}>cancelar</button>
-              <button style={{ ...s.btnG, flex:1 }} onClick={guardarIngreso}>guardar →</button>
+              <button style={{ ...s.btnGl, flex:1 }} onClick={() => { setShowTurnoForm(false); setTurnoForm({ clientaId:"", servicio:"", hora:"", pago:"efectivo", monto:"", montoEfectivo:"", montoTransf:"" }); setBusqClienta(""); }}>cancelar</button>
+              <button style={{ ...s.btnG, flex:1, opacity:saving ? 0.6:1 }} onClick={guardarTurno} disabled={saving}>{saving ? "guardando..." : "registrar →"}</button>
             </div>
           </div>
         </div>
       ) : (
-        <button style={{ ...s.btnGl, width:"100%", marginTop:8, fontSize:12 }} onClick={() => setShowIngForm(true)}>+ registrar ingreso manual</button>
+        <button style={{ ...s.btnGl, width:"100%", marginTop:8, fontSize:12 }} onClick={() => setShowTurnoForm(true)}>+ registrar turno pasado</button>
       )}
     </div>
   );
