@@ -1105,6 +1105,7 @@ function NuevoBloque({ data, onClose, diaDefault, toast }) {
 function AdminAgenda({ data, push, toast }) {
   const hoy    = hoyISO();
   const ahora  = new Date();
+  const nowMin = ahora.getHours()*60 + ahora.getMinutes();
   const [offset, setOffset]       = useState(0);
   const [diaS,   setDiaS]         = useState(hoy);
   const [vista,  setVista]         = useState("mes");
@@ -1219,12 +1220,20 @@ function AdminAgenda({ data, push, toast }) {
             </div>
             {/* Right column: day slots */}
             <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 0" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
-                <div style={{ width:5, height:5, borderRadius:"50%", background:G.green }} />
-                <p style={{ margin:0, fontFamily:F.display, fontWeight:400, fontSize:20, letterSpacing:"0.5px", color:G.white }}>{DIAS_F[new Date(diaS + "T12:00:00").getDay()]} {fmtFecha(diaS)}</p>
-                {citasDia.length > 0 && <span style={s.tag}>{citasDia.length} citas</span>}
-                {!esDiaPasado && <button style={{ ...s.btnG, width:"auto", padding:"7px 14px", fontSize:11, marginLeft:"auto" }} onClick={() => push("nueva-cita", { fechaDefault:diaS })}>+ agendar</button>}
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:diaS===hoy ? 10 : 14 }}>
+                <div style={{ width:5, height:5, borderRadius:"50%", background:diaS===hoy ? G.greenL : G.green, boxShadow:diaS===hoy ? `0 0 6px rgba(${G.greenRGB},0.7)` : "none" }} />
+                <p style={{ margin:0, fontFamily:F.display, fontWeight:400, fontSize:20, letterSpacing:"0.5px", color:diaS===hoy ? G.greenL : G.white }}>{diaS===hoy ? "HOY · " : ""}{DIAS_F[new Date(diaS + "T12:00:00").getDay()]} {fmtFecha(diaS)}</p>
+                {citasDia.length > 0 && <span style={s.tag}>{citasDia.length} turno{citasDia.length>1?"s":""}</span>}
+                <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
+                  {diaS===hoy && <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }} onClick={() => setVista("día")}>vista día →</button>}
+                  {!esDiaPasado && <button style={{ ...s.btnG, width:"auto", padding:"7px 14px", fontSize:11 }} onClick={() => push("nueva-cita", { fechaDefault:diaS })}>+ agendar</button>}
+                </div>
               </div>
+              {diaS===hoy && (
+                <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 12px", paddingLeft:15 }}>
+                  {String(ahora.getHours()).padStart(2,"0")}:{String(ahora.getMinutes()).padStart(2,"0")} · los turnos pasados están ocultos
+                </p>
+              )}
               {diaEsBloq && (
                 <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <div>
@@ -1240,12 +1249,16 @@ function AdminAgenda({ data, push, toast }) {
                 </div>
               )}
               {!diaEsBloq && slots.map(hora => {
-                const cita = esDiaPasado
+                const esHoy = diaS === hoy;
+                const slotMin = toMin(hora);
+                const esSlotPasado = esDiaPasado || (esHoy && slotMin + 60 <= nowMin);
+                const cita = esSlotPasado
                   ? citasDia.find(c => c.hora === hora)
                   : citasDia.find(c => c.hora === hora && c.estado !== "completada");
-                if (!cita && esDiaPasado) return null;
+                if (!cita && esSlotPasado) return null;
+                const esEnCurso = esHoy && !esDiaPasado && slotMin <= nowMin && slotMin + 60 > nowMin;
                 return (
-                  <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.6, cursor:cita ? "pointer" : "default" }}
+                  <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${esEnCurso ? `rgba(${G.greenRGB},0.6)` : cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.5, cursor:cita ? "pointer" : "default" }}
                     onClick={() => cita && push("cita-detalle", { cita })}>
                     <div style={{ background:cita ? G.greenM : "transparent", border:`0.5px solid ${cita ? G.green : G.border}`, borderRadius:8, padding:"5px 8px", minWidth:46, textAlign:"center" }}>
                       <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:cita ? G.greenL : G.muted }}>{hora}</p>
@@ -1259,8 +1272,9 @@ function AdminAgenda({ data, push, toast }) {
                       <>
                         <div style={{ flex:1 }}>
                           <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontSize:14 }}>{cita.clientaNombre}</p>
-                          <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}</p>
+                          <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}{cita.adicionales?.length ? ` + ${cita.adicionales.join(", ")}` : ""}</p>
                         </div>
+                        {esEnCurso && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.greenL, background:`rgba(${G.greenRGB},0.18)`, borderRadius:4, padding:"2px 7px" }}>EN CURSO</span>}
                         <span style={s.tag}>{cita.estado === "completada" ? "finalizada" : cita.estado}</span>
                       </>
                     )}
@@ -1305,11 +1319,13 @@ function AdminAgenda({ data, push, toast }) {
           </div>
         </div>
 
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-          <div style={{ width:5, height:5, borderRadius:"50%", background:G.green }} />
-          <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white }}>{DIAS_F[new Date(diaS + "T12:00:00").getDay()]} {fmtFecha(diaS)}</p>
-          {citasDia.length > 0 && <span style={s.tag}>{citasDia.length} citas</span>}
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:4, flexWrap:"wrap" }}>
+          <div style={{ width:5, height:5, borderRadius:"50%", background:diaS===hoy ? G.greenL : G.green }} />
+          <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:diaS===hoy ? G.greenL : G.white }}>{diaS===hoy ? "HOY · " : ""}{DIAS_F[new Date(diaS + "T12:00:00").getDay()]} {fmtFecha(diaS)}</p>
+          {citasDia.length > 0 && <span style={s.tag}>{citasDia.length} turno{citasDia.length>1?"s":""}</span>}
+          {diaS===hoy && <button style={{ ...s.btnGl, fontSize:10, padding:"5px 10px", marginLeft:"auto", borderColor:G.green, color:G.greenL }} onClick={() => setVista("día")}>vista día →</button>}
         </div>
+        {diaS===hoy && <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 10px" }}>{String(ahora.getHours()).padStart(2,"0")}:{String(ahora.getMinutes()).padStart(2,"0")} · turnos pasados ocultos</p>}
 
         {diaEsBloq && (
           <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -1351,12 +1367,16 @@ function AdminAgenda({ data, push, toast }) {
               <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:0 }}>Andá a Config → Horarios para agregar tus horarios de trabajo</p>
             </div>
           ) : slots.map(hora => {
-            const cita = esDiaPasado
+            const esHoy = diaS === hoy;
+            const slotMin = toMin(hora);
+            const esSlotPasado = esDiaPasado || (esHoy && slotMin + 60 <= nowMin);
+            const cita = esSlotPasado
               ? citasDia.find(c => c.hora === hora)
               : citasDia.find(c => c.hora === hora && c.estado !== "completada");
-            if (!cita && esDiaPasado) return null;
+            if (!cita && esSlotPasado) return null;
+            const esEnCurso = esHoy && !esDiaPasado && slotMin <= nowMin && slotMin + 60 > nowMin;
             return (
-              <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.6 }}>
+              <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${esEnCurso ? `rgba(${G.greenRGB},0.6)` : cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.5 }}>
                 <div style={{ background:cita ? G.greenM : "transparent", border:`0.5px solid ${cita ? G.green : G.border}`, borderRadius:8, padding:"5px 8px", minWidth:46, textAlign:"center" }}>
                   <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:cita ? G.greenL : G.muted }}>{hora}</p>
                 </div>
@@ -1369,10 +1389,11 @@ function AdminAgenda({ data, push, toast }) {
                   <>
                     <div style={{ flex:1 }}>
                       <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontSize:13 }}>{cita.clientaNombre}</p>
-                      <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}</p>
+                      <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}{cita.adicionales?.length ? ` + ${cita.adicionales.join(", ")}` : ""}</p>
                     </div>
-                    <div style={{ display:"flex", gap:6 }}>
-                      {!esDiaPasado && <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      {esEnCurso && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.greenL, background:`rgba(${G.greenRGB},0.18)`, borderRadius:4, padding:"2px 7px" }}>EN CURSO</span>}
+                      {!esSlotPasado && <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
                         onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }}><Icon name="messageCircle" size={13} color="rgba(37,211,102,0.8)" /></button>}
                       <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => push("cita-detalle", { cita })}>→</button>
                     </div>
