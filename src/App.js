@@ -1418,7 +1418,6 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
   const hoy = hoyISO();
   const ROW_H = 56;
   const [nowMin, setNowMin] = useState(() => { const n = new Date(); return n.getHours()*60 + n.getMinutes(); });
-  const gridRef = useState(null);
 
   useEffect(() => {
     const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours()*60 + n.getMinutes()); }, 60_000);
@@ -2093,14 +2092,11 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
 
   const borrar = async () => {
     if (cita.estado === "completada" && cita.clientaId) {
-      const cl = data.clientas.find(c => c._id === cita.clientaId);
-      if (cl?.historial && !Array.isArray(cl.historial)) {
-        const entries = Object.entries(cl.historial);
-        const match = entries.find(([k, v]) => v.fecha === cita.fecha && v.servicio === cita.servicio);
+      // Always query Firebase directly to get the push keys — local state may be an array without keys
+      const rawHist = await db.getVal(`clientas/${cita.clientaId}/historial`);
+      if (rawHist && typeof rawHist === "object" && !Array.isArray(rawHist)) {
+        const match = Object.entries(rawHist).find(([, v]) => v.fecha === cita.fecha && v.servicio === cita.servicio);
         if (match) await db.del(`clientas/${cita.clientaId}/historial/${match[0]}`);
-      } else if (cl?.historial && Array.isArray(cl.historial)) {
-        const match = cl.historial.find(h => h.fecha === cita.fecha && h.servicio === cita.servicio && h._histId);
-        if (match) await db.del(`clientas/${cita.clientaId}/historial/${match._histId}`);
       }
     }
     await data.borrarCita(cita._id);
@@ -3960,9 +3956,17 @@ function ConfigNotificaciones({ data, toast }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // PANEL CLIENTA
 // ═══════════════════════════════════════════════════════════════════════════════
-function ClientaApp({ clienta, data, onLogout }) {
+function ClientaApp({ clienta: clientaSession, data, onLogout }) {
   const [tab, setTab] = useState("inicio");
   const wide = useIsWide();
+  // Derive live clienta from shared data (refreshed every 15s + on mutations)
+  // so historial and profile updates appear without re-login
+  const clienta = (() => {
+    const fresh = data.clientas.find(c => c._id === clientaSession._id);
+    if (!fresh) return clientaSession;
+    const h = Array.isArray(fresh.historial) ? fresh.historial : Object.values(fresh.historial || {});
+    return { ...clientaSession, ...fresh, historial: h };
+  })();
   const tabs = [
     { id:"inicio",    iconName:"home",        label:"Inicio"    },
     { id:"agendar",   iconName:"calendarPlus", label:"Agendar"   },
@@ -4028,7 +4032,7 @@ function ClientaApp({ clienta, data, onLogout }) {
 
 function CInicio({ clienta, data, setTab }) {
   const hoy   = hoyISO();
-  const hist  = clienta.historial || [];
+  const hist  = Array.isArray(clienta.historial) ? clienta.historial : Object.values(clienta.historial || {});
   const ultima = [...hist].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0];
   const diasDesde = ultima?.fecha ? Math.floor((new Date() - new Date(ultima.fecha)) / (1000 * 60 * 60 * 24)) : null;
   const proxCita  = data.citas.filter(c => c.clientaId === clienta._id && c.fecha >= hoy && c.estado !== "completada" && c.estado !== "solicitada").sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
@@ -4556,7 +4560,7 @@ function CAgendar({ clienta, data }) {
 }
 
 function CHistorial({ clienta }) {
-  const hist = clienta.historial || [];
+  const hist = Array.isArray(clienta.historial) ? clienta.historial : Object.values(clienta.historial || {});
   const cnt  = {}; hist.forEach(h => { cnt[h.curva] = (cnt[h.curva] || 0) + 1; });
   const curvaFav = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0] || clienta.curva || "—";
   const badge = hist.length >= 10 ? "Clienta VIP" : hist.length >= 5 ? "Clienta frecuente" : hist.length >= 2 ? "Clienta activa" : null;
