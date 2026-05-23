@@ -2629,6 +2629,7 @@ function FinanzasCalendario({ data, todoHist, toast }) {
   const [ingForm, setIngForm] = useState({ concepto:"", clientaNombre:"", monto:"", pago:"efectivo" });
   const setIF = (k, v) => setIngForm(f => ({...f, [k]:v}));
   const PAGOS_ING = ["efectivo","transferencia","otro"];
+  const EXTRAS_ING = ["Seña / Reserva", "Otro"];
 
   const mesD    = new Date(ahora.getFullYear(), ahora.getMonth() + offset, 1);
   const anio    = mesD.getFullYear();
@@ -2665,8 +2666,9 @@ function FinanzasCalendario({ data, todoHist, toast }) {
   const totalDiaS    = registrosDia.reduce((a, h) => a + (h.monto || 0), 0) + manualesDia.reduce((a, x) => a + (x.monto || 0), 0);
 
   const guardarIngreso = async () => {
-    if (!ingForm.concepto || !ingForm.monto) { toast("completá concepto y monto"); return; }
-    await data.crearIngreso({ ...ingForm, fecha:diaS, monto:parseFloat(ingForm.monto) || 0 });
+    const conceptoFinal = ingForm.concepto === "Otro" ? ingForm.conceptoOtro?.trim() : ingForm.concepto;
+    if (!conceptoFinal || !ingForm.monto) { toast("seleccioná el tipo de ingreso y el monto"); return; }
+    await data.crearIngreso({ concepto:conceptoFinal, clientaNombre:ingForm.clientaNombre, fecha:diaS, monto:parseFloat(ingForm.monto) || 0, pago:ingForm.pago });
     setIngForm({ concepto:"", clientaNombre:"", monto:"", pago:"efectivo" });
     setShowIngForm(false);
     toast("✓ ingreso registrado");
@@ -2785,19 +2787,35 @@ function FinanzasCalendario({ data, todoHist, toast }) {
       {showIngForm ? (
         <div style={{ ...s.card, marginTop:10 }}>
           <p style={{ ...s.eyebrow, marginBottom:10 }}>registrar ingreso manual</p>
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            <Field label="concepto"><input style={s.input} value={ingForm.concepto} onChange={e => setIF("concepto", e.target.value)} placeholder="ej: venta de producto, seña..." /></Field>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <Field label="tipo de ingreso">
+              <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+                {[...data.servicios.map(sv => sv.nombre), ...EXTRAS_ING].map(op => (
+                  <button key={op} onClick={() => setIF("concepto", op)}
+                    style={{ ...s.btnGl, padding:"8px 13px", fontSize:12,
+                      background:ingForm.concepto === op ? G.greenM : "transparent",
+                      borderColor:ingForm.concepto === op ? G.green : G.border,
+                      color:ingForm.concepto === op ? G.greenL : G.muted,
+                      fontWeight:ingForm.concepto === op ? 700 : 400 }}>
+                    {op}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            {ingForm.concepto === "Otro" && (
+              <Field label="descripción"><input style={s.input} value={ingForm.conceptoOtro||""} onChange={e => setIF("conceptoOtro", e.target.value)} placeholder="describí el ingreso..." /></Field>
+            )}
             <Field label="clienta (opcional)"><input style={s.input} value={ingForm.clientaNombre} onChange={e => setIF("clientaNombre", e.target.value)} placeholder="nombre de la clienta" /></Field>
             <Field label="monto"><input style={s.input} type="number" value={ingForm.monto} onChange={e => setIF("monto", e.target.value)} placeholder="0" /></Field>
             <Field label="forma de pago">
               <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
                 {PAGOS_ING.map(p => (
-                  <button key={p} onClick={() => setIF("pago", p)} style={{ ...s.btnGl, padding:"7px 12px", fontSize:12, background:ingForm.pago === p ? G.greenM : "transparent", borderColor:ingForm.pago === p ? G.green : G.border, color:ingForm.pago === p ? G.greenL : G.muted, fontWeight:ingForm.pago === p ? 700 : 400 }}>{p}</button>
+                  <button key={p} onClick={() => setIF("pago", p)} style={{ ...s.btnGl, padding:"8px 12px", fontSize:12, background:ingForm.pago === p ? G.greenM : "transparent", borderColor:ingForm.pago === p ? G.green : G.border, color:ingForm.pago === p ? G.greenL : G.muted, fontWeight:ingForm.pago === p ? 700 : 400 }}>{p}</button>
                 ))}
               </div>
             </Field>
             <div style={{ display:"flex", gap:9 }}>
-              <button style={{ ...s.btnGl, flex:1 }} onClick={() => setShowIngForm(false)}>cancelar</button>
+              <button style={{ ...s.btnGl, flex:1 }} onClick={() => { setShowIngForm(false); setIngForm({ concepto:"", clientaNombre:"", monto:"", pago:"efectivo" }); }}>cancelar</button>
               <button style={{ ...s.btnG, flex:1 }} onClick={guardarIngreso}>guardar →</button>
             </div>
           </div>
