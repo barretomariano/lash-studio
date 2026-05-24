@@ -159,6 +159,20 @@ const DEFAULT_MENSAJES = {
 };
 const fillMsg = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] !== undefined ? vars[k] : `{${k}}`);
 
+// Returns visits-discount status for a client, or null if feature disabled.
+const calcVisitasDesc = (hist, promosConfig) => {
+  const cfg = promosConfig?.visitasDesc || {};
+  if (!cfg.habilitado || !cfg.cantidad || cfg.cantidad <= 0) return null;
+  const total     = hist.length;
+  const usados    = hist.filter(h => h.descuentoVisitas).length;
+  const ganados   = Math.floor(total / cfg.cantidad);
+  const disponible = ganados > usados;
+  const enCiclo   = total % cfg.cantidad;
+  const progreso  = disponible ? cfg.cantidad : enCiclo;
+  const faltan    = disponible ? 0 : cfg.cantidad - enCiclo;
+  return { disponible, progreso, faltan, total, cfg, ganados, usados };
+};
+
 // ── Push notifications ─────────────────────────────────────────────────────────
 function urlBase64ToUint8Array(b64) {
   const pad = "=".repeat((4 - b64.length % 4) % 4);
@@ -1738,6 +1752,7 @@ function AgendaDia({ data, push, toast, diaInicial }) {
   const [pagoTarget, setPagoTarget] = useState(null);
   const [quickPago, setQuickPago] = useState({ metodo:"efectivo", monto:"", montoEfectivo:"", montoTransf:"" });
   const [savingPago, setSavingPago] = useState(false);
+  const [aplicarDescRapido, setAplicarDescRapido] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours()*60 + n.getMinutes()); }, 30_000);
@@ -1777,24 +1792,35 @@ function AgendaDia({ data, push, toast, diaInicial }) {
     const precio = sv?.precio || 0;
     setQuickPago({ metodo:"efectivo", monto:String(precio), montoEfectivo:String(precio), montoTransf:"" });
     setPagoTarget(cita);
+    setAplicarDescRapido(false);
   };
 
   const completarRapido = async () => {
     if (!pagoTarget) return;
     const metodo = quickPago.metodo;
-    let monto = 0;
+    let montoBase = 0;
     if (metodo === "mixto") {
-      monto = (parseFloat(quickPago.montoEfectivo)||0) + (parseFloat(quickPago.montoTransf)||0);
+      montoBase = (parseFloat(quickPago.montoEfectivo)||0) + (parseFloat(quickPago.montoTransf)||0);
     } else {
-      monto = parseFloat(quickPago.monto)||0;
+      montoBase = parseFloat(quickPago.monto)||0;
     }
-    if (!monto) { toast("ingresá el monto"); return; }
+    if (!montoBase) { toast("ingresá el monto"); return; }
+
+    const clientaRapida = data.clientas.find(c => c._id === pagoTarget.clientaId);
+    const histRapido    = clientaRapida ? (Array.isArray(clientaRapida.historial) ? clientaRapida.historial : Object.values(clientaRapida.historial || {})) : [];
+    const vInfoRapido   = calcVisitasDesc(histRapido, data.getConfig("promos", {}));
+    const descRapido    = (aplicarDescRapido && vInfoRapido?.disponible)
+      ? (vInfoRapido.cfg.tipo === "%" ? Math.round(montoBase * vInfoRapido.cfg.monto / 100) : Math.min(vInfoRapido.cfg.monto, montoBase))
+      : 0;
+    const monto = Math.max(0, montoBase - descRapido);
+
     setSavingPago(true);
     try {
       const registro = {
         fecha:dia, servicio:pagoTarget.servicio,
         monto, pago:metodo,
-        ...(metodo === "mixto" ? { montoEfectivo:parseFloat(quickPago.montoEfectivo)||0, montoTransf:parseFloat(quickPago.montoTransf)||0 } : {})
+        ...(metodo === "mixto" ? { montoEfectivo:parseFloat(quickPago.montoEfectivo)||0, montoTransf:parseFloat(quickPago.montoTransf)||0 } : {}),
+        ...(aplicarDescRapido && descRapido > 0 ? { descuentoVisitas:true, montoOriginal:montoBase, descuentoMonto:descRapido } : {}),
       };
       await data.registrarPago(pagoTarget.clientaId, pagoTarget._id, registro);
       const svObj = data.servicios.find(s => s.nombre === pagoTarget.servicio);
@@ -1820,9 +1846,18 @@ function AgendaDia({ data, push, toast, diaInicial }) {
     toast("✓ turno confirmado");
   };
 
-  const totalPago = quickPago.metodo === "mixto"
+  const totalPagoBase = quickPago.metodo === "mixto"
     ? (parseFloat(quickPago.montoEfectivo)||0) + (parseFloat(quickPago.montoTransf)||0)
     : parseFloat(quickPago.monto)||0;
+  const vInfoDisp = pagoTarget ? (() => {
+    const cliR = data.clientas.find(c => c._id === pagoTarget.clientaId);
+    const hR   = cliR ? (Array.isArray(cliR.historial) ? cliR.historial : Object.values(cliR.historial || {})) : [];
+    return calcVisitasDesc(hR, data.getConfig("promos", {}));
+  })() : null;
+  const descRapidoPreview = (aplicarDescRapido && vInfoDisp?.disponible && totalPagoBase > 0)
+    ? (vInfoDisp.cfg.tipo === "%" ? Math.round(totalPagoBase * vInfoDisp.cfg.monto / 100) : Math.min(vInfoDisp.cfg.monto, totalPagoBase))
+    : 0;
+  const totalPago = Math.max(0, totalPagoBase - descRapidoPreview);
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 130px)" }}>
@@ -2001,8 +2036,27 @@ function AgendaDia({ data, push, toast, diaInicial }) {
                 <input style={s.input} type="number" value={quickPago.monto} onChange={e => setQuickPago(p => ({ ...p, monto:e.target.value }))} placeholder="$0" />
               </div>
             )}
+            {vInfoDisp?.disponible && (
+              <div onClick={() => setAplicarDescRapido(p => !p)} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, border:`1.5px solid ${aplicarDescRapido ? G.green : G.border}`, background:aplicarDescRapido ? G.greenM : "transparent", cursor:"pointer", marginBottom:12 }}>
+                <div style={{ width:16, height:16, borderRadius:4, border:`1.5px solid ${aplicarDescRapido ? G.green : G.border}`, background:aplicarDescRapido ? G.green : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  {aplicarDescRapido && <Icon name="check" size={10} color="#0a0a0a" strokeWidth={2.5} />}
+                </div>
+                <div>
+                  <p style={{ margin:"0 0 1px", fontFamily:F.sans, fontSize:12, color:G.text, fontWeight:600 }}>🎯 Descuento por visitas</p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>
+                    {vInfoDisp.cfg.tipo === "%" ? `−${vInfoDisp.cfg.monto}%` : `−$${vInfoDisp.cfg.monto}`}
+                    {aplicarDescRapido && descRapidoPreview > 0 ? ` = −${fmtPesos(descRapidoPreview)}` : ""}
+                  </p>
+                </div>
+              </div>
+            )}
             {totalPago > 0 && (
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.green, margin:"0 0 14px", textAlign:"center" }}>{fmtPesos(totalPago)}</p>
+              <div style={{ marginBottom:14, textAlign:"center" }}>
+                {aplicarDescRapido && descRapidoPreview > 0 && (
+                  <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 2px", textDecoration:"line-through" }}>{fmtPesos(totalPagoBase)}</p>
+                )}
+                <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.green, margin:0 }}>{fmtPesos(totalPago)}</p>
+              </div>
             )}
             <button style={{ ...s.btnG, width:"100%", opacity:savingPago ? 0.6 : 1 }}
               disabled={savingPago} onClick={completarRapido}>
@@ -2154,16 +2208,29 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
   const [reagendando, setReag] = useState(false);
   const [reagForm, setReagForm] = useState({ fecha:"", hora:"" });
   const [pago, setPago] = useState({ metodo:"efectivo", montoEfectivo:"", montoTransf:"", montoTotal:"" });
+  const [aplicarDescVisitas, setAplicarDescVisitas] = useState(false);
 
   const sv      = data.servicios.find(s => s.nombre === cita.servicio);
   const clienta = data.clientas.find(c => c._id === cita.clientaId);
   const estudio = data.getConfig("estudio", {});
 
+  const clientaHist = clienta ? (Array.isArray(clienta.historial) ? clienta.historial : Object.values(clienta.historial || {})) : [];
+  const promosConfig = data.getConfig("promos", {});
+  const visitasDescInfo = calcVisitasDesc(clientaHist, promosConfig);
+
   // Calcular total según modo
   const modoMixto = pago.metodo === "mixto";
-  const totalCalculado = modoMixto
+  const totalSinDesc = modoMixto
     ? (Number(pago.montoEfectivo)||0) + (Number(pago.montoTransf)||0)
     : Number(pago.montoTotal)||0;
+
+  const calcDescMonto = (base) => {
+    if (!visitasDescInfo?.disponible || !aplicarDescVisitas) return 0;
+    const cfg = visitasDescInfo.cfg;
+    return cfg.tipo === "%" ? Math.round(base * cfg.monto / 100) : Math.min(cfg.monto, base);
+  };
+  const descMonto = calcDescMonto(totalSinDesc);
+  const totalCalculado = Math.max(0, totalSinDesc - descMonto);
 
   const completar = async () => {
     if (modoMixto && !pago.montoEfectivo && !pago.montoTransf) { toast("ingresá al menos un monto"); return; }
@@ -2177,6 +2244,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
       pago:     pago.metodo,
       monto:    totalCalculado,
       ...(modoMixto ? { montoEfectivo:Number(pago.montoEfectivo)||0, montoTransf:Number(pago.montoTransf)||0 } : {}),
+      ...(aplicarDescVisitas && descMonto > 0 ? { descuentoVisitas:true, montoOriginal:totalSinDesc, descuentoMonto:descMonto } : {}),
     };
 
     await data.registrarPago(cita.clientaId, cita._id, registro);
@@ -2390,7 +2458,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
               <Field label="monto por transferencia">
                 <input style={s.input} type="number" value={pago.montoTransf} onChange={e => setPago(p => ({ ...p, montoTransf:e.target.value }))} placeholder="0" />
               </Field>
-              {totalCalculado > 0 && (
+              {totalSinDesc > 0 && (
                 <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, padding:"10px 14px", marginBottom:4 }}>
                   <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 2px" }}>total a cobrar</p>
                   <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.green, margin:0 }}>{fmtPesos(totalCalculado)}</p>
@@ -2401,6 +2469,38 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
             <Field label="monto cobrado" hint={sv?.precio ? `precio sugerido: ${fmtPesos(sv.precio)}` : ""}>
               <input style={s.input} type="number" value={pago.montoTotal} onChange={e => setPago(p => ({ ...p, montoTotal:e.target.value }))} placeholder={String(sv?.precio || 0)} />
             </Field>
+          )}
+
+          {visitasDescInfo?.disponible && (
+            <div onClick={() => setAplicarDescVisitas(p => !p)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderRadius:12, border:`1.5px solid ${aplicarDescVisitas ? G.green : G.border}`, background:aplicarDescVisitas ? G.greenM : "transparent", cursor:"pointer", marginBottom:4 }}>
+              <div style={{ width:18, height:18, borderRadius:4, border:`1.5px solid ${aplicarDescVisitas ? G.green : G.border}`, background:aplicarDescVisitas ? G.green : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                {aplicarDescVisitas && <Icon name="check" size={11} color="#0a0a0a" strokeWidth={2.5} />}
+              </div>
+              <div>
+                <p style={{ margin:"0 0 1px", fontFamily:F.sans, fontSize:13, color:G.text, fontWeight:600 }}>🎯 Descuento por visitas</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>
+                  {visitasDescInfo.cfg.tipo === "%" ? `−${visitasDescInfo.cfg.monto}%` : `−$${visitasDescInfo.cfg.monto}`}
+                  {aplicarDescVisitas && descMonto > 0 ? ` = −${fmtPesos(descMonto)}` : ""}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {aplicarDescVisitas && descMonto > 0 && totalSinDesc > 0 && (
+            <div style={{ ...s.card, margin:"0 0 4px", background:"rgba(143,189,90,0.06)", borderColor:G.greenD, padding:"10px 14px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>precio original</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtPesos(totalSinDesc)}</p>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.greenL }}>descuento</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.greenL }}>−{fmtPesos(descMonto)}</p>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between" }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.green }}>total</p>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.green }}>{fmtPesos(totalCalculado)}</p>
+              </div>
+            </div>
           )}
 
           <button style={s.btnG} onClick={completar}>guardar y cerrar cita →</button>
@@ -2736,9 +2836,17 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
               <div key={i} style={s.card}>
                 <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
                   <div><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p><p style={{ margin:0, ...s.sub, fontSize:11 }}>{fmtFecha(h.fecha)}{h.curva ? ` · curva ${h.curva}` : ""}</p></div>
-                  <div style={{ textAlign:"right" }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(h.monto)}</p><span style={s.tag}>{h.pago}</span></div>
+                  <div style={{ textAlign:"right" }}>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(h.monto)}</p>
+                    {h.descuentoVisitas && <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.muted, textDecoration:"line-through" }}>{fmtPesos(h.montoOriginal)}</p>}
+                    <span style={s.tag}>{h.pago}</span>
+                    {h.descuentoVisitas && <span style={{ ...s.tag, marginLeft:4, background:`rgba(${G.greenRGB},0.18)`, color:G.greenL }}>🎯 desc.</span>}
+                  </div>
                 </div>
                 {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{h.notas}</p>}
+                {h.descuentoVisitas && (
+                  <p style={{ margin:"4px 0 0", fontFamily:F.sans, fontSize:10, color:G.greenL }}>descuento por visitas aplicado · −{fmtPesos(h.descuentoMonto)}</p>
+                )}
               </div>
             ))}
           </div>
@@ -2770,6 +2878,27 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                 </div>
               ))}
             </div>
+            {(() => {
+              const vInfo = calcVisitasDesc(hist, data.getConfig("promos", {}));
+              if (!vInfo) return null;
+              return (
+                <div style={{ ...s.card, marginBottom:14 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, fontWeight:600 }}>🎯 Descuento por visitas</p>
+                    <span style={{ ...s.tag, ...(vInfo.disponible ? { background:`rgba(${G.greenRGB},0.18)`, color:G.greenL } : {}) }}>
+                      {vInfo.disponible ? "¡disponible!" : `${vInfo.progreso}/${vInfo.cfg.cantidad}`}
+                    </span>
+                  </div>
+                  <div style={{ height:6, borderRadius:3, background:`rgba(${G.greenRGB},0.12)`, overflow:"hidden", marginBottom:6 }}>
+                    <div style={{ height:"100%", borderRadius:3, background:G.green, width:`${Math.round(vInfo.progreso / vInfo.cfg.cantidad * 100)}%` }} />
+                  </div>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>
+                    {vInfo.disponible ? "Clienta tiene un descuento listo para aplicar" : `Faltan ${vInfo.faltan} visita${vInfo.faltan !== 1 ? "s" : ""} para el próximo descuento`}
+                    {" · "}{vInfo.cfg.tipo === "%" ? `${vInfo.cfg.monto}%` : `$${vInfo.cfg.monto}`}
+                  </p>
+                </div>
+              );
+            })()}
             {(() => {
               const cnt = {}; hist.forEach(h => { cnt[h.servicio] = (cnt[h.servicio] || 0) + 1; });
               const sorted = Object.entries(cnt).sort((a, b) => b[1] - a[1]);
@@ -3379,10 +3508,61 @@ function ConfigPromos({ data, toast }) {
           </div>
         )}
       </div>
-      <div style={{ ...s.card, opacity:0.5 }}>
-        <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white }}>🎯 Descuento por visitas</p>
-        <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Próximamente — descuento automático al alcanzar X visitas</p>
+      <VisitasDescCard data={data} toast={toast} saved={saved} />
+    </div>
+  );
+}
+
+function VisitasDescCard({ data, toast, saved }) {
+  const [vis, setVis] = useState({
+    habilitado: saved.visitasDesc?.habilitado ?? false,
+    tipo:       saved.visitasDesc?.tipo       || "%",
+    monto:      saved.visitasDesc?.monto      || 10,
+    cantidad:   saved.visitasDesc?.cantidad   || 5,
+  });
+  const saveVis = async (upd) => {
+    const next = { ...vis, ...upd };
+    setVis(next);
+    await data.saveConfig("promos", { ...saved, visitasDesc: next });
+    toast("✓ guardado");
+  };
+  return (
+    <div style={{ ...s.card, borderColor: vis.habilitado ? "rgba(143,189,90,0.4)" : G.border }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: vis.habilitado ? 14 : 0 }}>
+        <div>
+          <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white }}>🎯 Descuento por visitas</p>
+          <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Se activa automáticamente al llegar a X visitas</p>
+        </div>
+        <button onClick={() => saveVis({ habilitado: !vis.habilitado })} style={{ background: vis.habilitado ? G.greenM : "transparent", border:`1.5px solid ${vis.habilitado ? G.green : G.border}`, borderRadius:50, width:48, height:26, cursor:"pointer", position:"relative", transition:"all 0.2s", flexShrink:0 }}>
+          <div style={{ position:"absolute", top:3, left: vis.habilitado ? 25 : 3, width:18, height:18, borderRadius:"50%", background: vis.habilitado ? G.greenL : G.muted, transition:"left 0.2s" }} />
+        </button>
       </div>
+      {vis.habilitado && (
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          <Field label="visitas necesarias para el descuento">
+            <input style={s.input} type="number" min="1" max="50" value={vis.cantidad}
+              onChange={e => setVis(p => ({ ...p, cantidad: Number(e.target.value) }))}
+              onBlur={() => saveVis({})} />
+          </Field>
+          <Field label="tipo de descuento">
+            <div style={{ display:"flex", gap:7 }}>
+              {["%", "$"].map(t => (
+                <button key={t} onClick={() => saveVis({ tipo: t })} style={{ ...s.btnGl, flex:1, fontSize:13, background: vis.tipo===t ? G.greenM : "transparent", borderColor: vis.tipo===t ? G.green : G.border, color: vis.tipo===t ? G.greenL : G.muted, fontWeight: vis.tipo===t ? 700 : 400 }}>{t === "%" ? "Porcentaje (%)" : "Monto fijo ($)"}</button>
+              ))}
+            </div>
+          </Field>
+          <Field label={vis.tipo === "%" ? "porcentaje de descuento" : "monto de descuento ($)"}>
+            <input style={s.input} type="number" min="1" max={vis.tipo==="%"?100:99999} value={vis.monto}
+              onChange={e => setVis(p => ({ ...p, monto: Number(e.target.value) }))}
+              onBlur={() => saveVis({})} />
+          </Field>
+          <div style={{ ...s.card, margin:0, background:"rgba(143,189,90,0.06)", borderColor:"rgba(143,189,90,0.3)" }}>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL, lineHeight:1.5 }}>
+              Cada {vis.cantidad} visitas la clienta recibe {vis.tipo === "%" ? `${vis.monto}% de descuento` : `$${vis.monto} de descuento`} en su próximo turno.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4304,6 +4484,7 @@ function CInicio({ clienta, data, setTab }) {
   const esCumple = diasHastaCumple === 0;
   const cumpleEnBreve = diasHastaCumple !== null && diasHastaCumple <= 14;
   const bdayPromo = data.getConfig("promos", {})?.cumpleanos || {};
+  const visitasDescInfo = calcVisitasDesc(hist, data.getConfig("promos", {}));
 
   return (
     <div>
@@ -4342,6 +4523,38 @@ function CInicio({ clienta, data, setTab }) {
             </div>
             {!esCumple && <button style={{ ...s.btnG, width:"100%", marginTop:12, background:"rgba(245,200,66,0.18)", borderColor:"rgba(245,200,66,0.5)", color:"#f5c842" }} onClick={() => setTab("agendar")}>reservar turno →</button>}
           </div>
+        )}
+
+        {/* ── Descuento por visitas ── */}
+        {visitasDescInfo && (
+          visitasDescInfo.disponible ? (
+            <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.18),rgba(143,189,90,0.05))", border:`1.5px solid ${G.green}`, borderRadius:18, padding:"18px 16px", marginBottom:14 }}>
+              <p style={{ fontFamily:F.display, fontSize:26, color:G.greenL, letterSpacing:"0.5px", margin:"0 0 4px" }}>¡Descuento disponible! 🎯</p>
+              <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 12px", lineHeight:1.5 }}>
+                Llegaste a {visitasDescInfo.total} visitas. Tenés un regalo en tu próxima reserva — mencionalo al admin.
+              </p>
+              <div style={{ ...s.card, margin:0, display:"flex", alignItems:"center", gap:12, background:`rgba(${G.greenRGB},0.1)`, borderColor:`rgba(${G.greenRGB},0.4)` }}>
+                <span style={{ fontSize:24 }}>✨</span>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>
+                  {visitasDescInfo.cfg.tipo === "%" ? `${visitasDescInfo.cfg.monto}% de descuento` : `$${visitasDescInfo.cfg.monto} de descuento`}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...s.card, marginBottom:14 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, fontWeight:600 }}>🎯 Programa de visitas</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{visitasDescInfo.progreso}/{visitasDescInfo.cfg.cantidad}</p>
+              </div>
+              <div style={{ height:6, borderRadius:3, background:`rgba(${G.greenRGB},0.12)`, overflow:"hidden", marginBottom:6 }}>
+                <div style={{ height:"100%", borderRadius:3, background:G.green, width:`${Math.round(visitasDescInfo.progreso / visitasDescInfo.cfg.cantidad * 100)}%`, transition:"width 0.5s ease" }} />
+              </div>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>
+                {visitasDescInfo.faltan === 1 ? "¡1 visita más y desbloqueás tu descuento!" : `${visitasDescInfo.faltan} visitas más para tu próximo descuento`}
+                {" · "}{visitasDescInfo.cfg.tipo === "%" ? `${visitasDescInfo.cfg.monto}%` : `$${visitasDescInfo.cfg.monto}`} de descuento
+              </p>
+            </div>
+          )
         )}
 
         {/* ── Próxima cita hero card (top) ── */}
