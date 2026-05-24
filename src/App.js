@@ -296,7 +296,7 @@ function Icon({ name, size = 20, color = "currentColor", strokeWidth = 1.7 }) {
 const s = {
   get app()    { return { minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, maxWidth:430, margin:"0 auto", position:"relative", overflowX:"hidden" }; },
   screen: { minHeight:"100vh", paddingBottom:110, position:"relative", zIndex:1 },
-  get topBar() { return { padding:"52px 20px 14px", background:G.topBarBg, backdropFilter:"blur(28px) saturate(180%)", position:"sticky", top:0, zIndex:10, boxShadow:`0 0.5px 0 ${G.border}, 0 4px 20px ${G.shadow}` }; },
+  get topBar() { return { padding:`calc(env(safe-area-inset-top, 0px) + 20px) 28px 14px`, background:G.topBarBg, backdropFilter:"blur(28px) saturate(180%)", position:"sticky", top:0, zIndex:10, boxShadow:`0 0.5px 0 ${G.border}, 0 4px 20px ${G.shadow}` }; },
   get h1()     { return { fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:G.text, margin:0, lineHeight:1.1 }; },
   get sub()    { return { fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0", fontWeight:400 }; },
   get eyebrow(){ return { fontFamily:F.sans, fontSize:10, letterSpacing:"0.18em", textTransform:"uppercase", color:`rgba(${G.greenRGB},${G.eyebrowOpacity||0.65})`, margin:"0 0 3px", fontWeight:500 }; },
@@ -306,7 +306,7 @@ const s = {
   get cardSub(){ return { background:G.glass, border:`0.5px solid ${G.border}`, borderRadius:14, padding:"12px 14px", marginBottom:8, boxShadow:`0 1px 8px ${G.shadowSm}` }; },
   get input()  { return { background:G.glass, border:`0.5px solid ${G.border}`, borderRadius:11, padding:"13px 15px", color:G.text, fontFamily:F.sans, fontSize:15, width:"100%", outline:"none", boxSizing:"border-box", transition:"border-color 0.2s" }; },
   get label()  { return { fontFamily:F.sans, fontSize:12, color:G.muted, display:"block", marginBottom:6, fontWeight:500 }; },
-  btnG:   { background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", borderRadius:13, padding:"14px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:14, fontWeight:700, cursor:"pointer", width:"100%", transition:"opacity 0.15s, transform 0.1s", letterSpacing:"0.02em", boxShadow:"0 4px 18px rgba(143,189,90,0.38), 0 1px 3px rgba(0,0,0,0.3)" },
+  btnG:   { background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", borderRadius:13, padding:"14px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:14, fontWeight:700, cursor:"pointer", width:"100%", maxWidth:420, display:"block", transition:"opacity 0.15s, transform 0.1s", letterSpacing:"0.02em", boxShadow:"0 4px 18px rgba(143,189,90,0.38), 0 1px 3px rgba(0,0,0,0.3)" },
   get btnGl()  { return { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:12, padding:"10px 16px", color:G.text, fontFamily:F.sans, fontSize:13, fontWeight:500, cursor:"pointer", backdropFilter:"blur(10px)", transition:"all 0.2s", boxShadow:`0 2px 8px ${G.shadowSm}` }; },
   get btnRed() { return { background:"rgba(224,112,112,0.1)", border:`0.5px solid rgba(224,112,112,0.35)`, borderRadius:12, padding:"10px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" }; },
   get tag()    { return { background:G.greenM, border:`0.5px solid rgba(${G.greenRGB},0.35)`, borderRadius:20, padding:"3px 11px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3, fontWeight:500 }; },
@@ -361,6 +361,9 @@ const GlobalStyles = () => (
     @keyframes slideInFromRight {
       from { transform:translateX(100%); opacity:0.6; }
       to   { transform:translateX(0); opacity:1; }
+    }
+    @media (min-width: 681px) {
+      .ls-wide-content > * { animation: fadeInTab 0.18s ease; }
     }
   `}</style>
 );
@@ -808,28 +811,26 @@ function AdminApp({ data, onLogout }) {
         <GlobalStyles />
         <AppBg />
         {/* Sidebar nav */}
-        <nav style={{ width:190, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"24px 10px 20px", gap:3, height:"100vh", overflowY:"auto", zIndex:20 }}>
-          <p style={{ fontFamily:F.display, fontWeight:400, fontSize:20, letterSpacing:"1px", color:G.green, padding:"0 4px 18px", margin:0 }}>Lash Studio</p>
+        <nav style={{ width:240, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"28px 14px 24px", gap:2, height:"100vh", overflowY:"auto", zIndex:20 }}>
+          <img src="/logo.svg" alt="Lash Studio" style={{ width:"100%", height:40, objectFit:"contain", objectPosition:"left", marginBottom:24, flexShrink:0 }} />
           {navItems.map(n => (
-            <div key={n.id} style={sideNavItmSty(tab === n.id && !cur)} onClick={() => { setStack([]); setTab(n.id); }}>
-              <Icon name={n.iconName} size={17} color={tab===n.id && !cur ? G.green : G.muted} strokeWidth={tab===n.id && !cur ? 1.8 : 1.5} />
+            <div key={n.id} style={{ ...sideNavItmSty(tab === n.id && !cur), padding:"12px 16px", fontSize:14 }} onClick={() => { setStack([]); setTab(n.id); }}>
+              <Icon name={n.iconName} size={18} color={tab===n.id && !cur ? G.green : G.muted} strokeWidth={tab===n.id && !cur ? 1.8 : 1.5} />
               <span>{n.label}</span>
             </div>
           ))}
           <div style={{ flex:1 }} />
-          <button style={{ ...s.btnG, margin:"0 4px", width:"auto" }} onClick={() => push("nueva-cita")}>+ Nuevo turno</button>
+          <button style={{ ...s.btnG, maxWidth:"100%", fontSize:13 }} onClick={() => push("nueva-cita")}>+ Nuevo turno</button>
         </nav>
         {/* Content */}
-        <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:24 }}>
-          <div style={{ maxWidth:760, margin:"0 auto" }}>
-            {renderScreen()}
-          </div>
+        <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:40 }} className="ls-wide-content">
+          {renderScreen()}
         </div>
         {/* PC Drawer */}
         {modal && (
           <div style={{ position:"fixed", inset:0, zIndex:100 }}>
             <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.38)", backdropFilter:"blur(2px)" }} onClick={() => setModal(null)} />
-            <div style={{ position:"absolute", top:0, right:0, width:460, height:"100%", background:G.bg, borderLeft:`0.5px solid ${G.border}`, overflowY:"auto", zIndex:1, boxShadow:"-8px 0 32px rgba(0,0,0,0.3)", animation:"slideInRight 0.22s ease" }}>
+            <div style={{ position:"absolute", top:0, right:0, width:520, height:"100%", background:G.bg, borderLeft:`0.5px solid ${G.border}`, overflowY:"auto", zIndex:1, boxShadow:"-8px 0 32px rgba(0,0,0,0.3)", animation:"slideInRight 0.22s ease" }}>
               {renderModalContent(modal.screen, modal.props)}
             </div>
           </div>
@@ -905,8 +906,9 @@ function AdminInicio({ data, push, setTab, toast }) {
   const hoy = hoyISO();
   const mes = mesISO();
   const { dark, toggleTheme } = useTheme();
+  const wide = useIsWide();
   const citasHoy    = data.citas.filter(c => c.fecha === hoy && c.estado !== "completada");
-  const proximas    = data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)).slice(0, 4);
+  const proximas    = data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)).slice(0, 6);
   const todoHist    = data.clientas.flatMap(c => Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []));
   const ingresosMes = todoHist.filter(h => h.fecha?.startsWith(mes)).reduce((a, h) => a + (h.monto || 0), 0);
   const estudio     = data.getConfig("estudio", {});
@@ -942,10 +944,10 @@ function AdminInicio({ data, push, setTab, toast }) {
           </button>
         </div>
       </div>
-      <div style={{ padding:"18px 18px 0" }}>
+      <div style={{ padding:wide ? "24px 32px 0" : "18px 18px 0" }}>
         <PushBanner role="admin" />
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
-          <div onClick={() => setTab("finanzas")} style={{ ...s.cardHero, cursor:"pointer", margin:0, padding:"16px 14px", gridColumn:"1 / -1" }}>
+        <div style={{ display:"grid", gridTemplateColumns:wide ? "2fr 1fr 1fr 1fr" : "1fr 1fr", gap:10, marginBottom:18 }}>
+          <div onClick={() => setTab("finanzas")} style={{ ...s.cardHero, cursor:"pointer", margin:0, padding:"16px 14px", gridColumn:wide ? "1" : "1 / -1" }}>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.sub, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.14em" }}>ingresos del mes</p>
             <p style={{ fontFamily:F.display, fontWeight:400, fontSize:32, letterSpacing:"1px", color:G.greenL, margin:"0 0 2px", lineHeight:1.1 }}>{fmtPesos(ingresosMes)}</p>
             <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{todoHist.filter(h => h.fecha?.startsWith(mes)).length} servicios este mes</p>
@@ -958,8 +960,15 @@ function AdminInicio({ data, push, setTab, toast }) {
           <div onClick={() => setTab("clientas")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"14px 12px", textAlign:"center" }}>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.1em" }}>clientas</p>
             <p style={{ fontFamily:F.display, fontWeight:400, fontSize:28, letterSpacing:"1px", color:G.white, margin:"0 0 2px", lineHeight:1.1 }}>{data.clientas.length}</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>activas</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>registradas</p>
           </div>
+          {wide && (
+            <div onClick={() => setTab("agenda")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"14px 12px", textAlign:"center" }}>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.1em" }}>próximas</p>
+              <p style={{ fontFamily:F.display, fontWeight:400, fontSize:28, letterSpacing:"1px", color:G.green, margin:"0 0 2px", lineHeight:1.1 }}>{data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").length}</p>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>confirmadas</p>
+            </div>
+          )}
         </div>
 
         {/* Solicitudes pendientes inbox */}
@@ -1006,22 +1015,61 @@ function AdminInicio({ data, push, setTab, toast }) {
           ))
         }
 
-        <div style={s.div} />
-        <p style={{ fontFamily:F.display, fontWeight:400, fontSize:19, letterSpacing:"0.5px", color:G.white, margin:"0 0 3px" }}>próximas</p>
-        <p style={{ ...s.sub, marginBottom:12 }}>turnos confirmados</p>
-        {proximas.length === 0
-          ? <p style={{ color:G.muted, fontSize:13 }}>Sin citas agendadas</p>
-          : proximas.map(c => (
-            <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
-              <div style={{ textAlign:"center", minWidth:40 }}>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{c.fecha?.slice(5).replace("-", "/")}</p>
-                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.green }}>{c.hora}</p>
-              </div>
-              <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.clientaNombre}</p><p style={{ margin:0, ...s.sub, fontSize:11 }}>{c.servicio}</p></div>
+        {!wide && <div style={s.div} />}
+        {wide ? (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginTop:8 }}>
+            <div>
+              <p style={{ fontFamily:F.display, fontWeight:400, fontSize:17, letterSpacing:"0.5px", color:G.white, margin:"0 0 10px" }}>próximas</p>
+              {proximas.length === 0
+                ? <p style={{ color:G.muted, fontSize:13 }}>Sin citas agendadas</p>
+                : proximas.slice(0, 3).map(c => (
+                  <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
+                    <div style={{ textAlign:"center", minWidth:44 }}>
+                      <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{c.fecha?.slice(5).replace("-", "/")}</p>
+                      <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.green }}>{c.hora}</p>
+                    </div>
+                    <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.clientaNombre}</p><p style={{ margin:0, ...s.sub, fontSize:11 }}>{c.servicio}</p></div>
+                  </div>
+                ))
+              }
+              <button style={{ ...s.btnG, marginTop:8 }} onClick={() => setTab("agenda")}>ver agenda →</button>
             </div>
-          ))
-        }
-        <button style={{ ...s.btnG, marginTop:10 }} onClick={() => setTab("agenda")}>ver agenda completa →</button>
+            <div>
+              <p style={{ fontFamily:F.display, fontWeight:400, fontSize:17, letterSpacing:"0.5px", color:G.white, margin:"0 0 10px" }}>hoy</p>
+              {citasHoy.length === 0
+                ? <p style={{ color:G.muted, fontSize:13 }}>Sin citas para hoy</p>
+                : citasHoy.slice(0, 3).map(c => (
+                  <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
+                    <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"6px 10px", textAlign:"center", minWidth:48 }}>
+                      <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.greenL }}>{c.hora}</p>
+                    </div>
+                    <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.clientaNombre}</p><p style={{ margin:0, ...s.sub, fontSize:11 }}>{c.servicio}</p></div>
+                    <span style={s.tag}>{c.estado}</span>
+                  </div>
+                ))
+              }
+              <button style={{ ...s.btnG, marginTop:8 }} onClick={() => setTab("agenda")}>ver agenda completa →</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:19, letterSpacing:"0.5px", color:G.white, margin:"0 0 3px" }}>próximas</p>
+            <p style={{ ...s.sub, marginBottom:12 }}>turnos confirmados</p>
+            {proximas.length === 0
+              ? <p style={{ color:G.muted, fontSize:13 }}>Sin citas agendadas</p>
+              : proximas.map(c => (
+                <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
+                  <div style={{ textAlign:"center", minWidth:40 }}>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{c.fecha?.slice(5).replace("-", "/")}</p>
+                    <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.green }}>{c.hora}</p>
+                  </div>
+                  <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.clientaNombre}</p><p style={{ margin:0, ...s.sub, fontSize:11 }}>{c.servicio}</p></div>
+                </div>
+              ))
+            }
+            <button style={{ ...s.btnG, marginTop:10 }} onClick={() => setTab("agenda")}>ver agenda completa →</button>
+          </>
+        )}
 
         {sinCita.length > 0 && (
           <>
@@ -2340,6 +2388,7 @@ function AdminClientas({ data, push, toast }) {
   const [saving, setSaving]     = useState(false);
   const [form, setForm]         = useState({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
+  const wide = useIsWide();
 
   const opcCurvas = data.getConfig("curvas",   []);
   const opcGrosor = data.getConfig("grosores", []);
@@ -2375,8 +2424,8 @@ function AdminClientas({ data, push, toast }) {
 
   return (
     <div>
-      <div style={s.topBar}><h1 style={s.h1}>Clientas</h1><p style={s.sub}>{data.clientas.length} registradas</p></div>
-      <div style={{ padding:"18px" }}>
+      <div style={{ ...s.topBar, ...(wide && { padding:"16px 28px 14px" }) }}><h1 style={s.h1}>Clientas</h1><p style={s.sub}>{data.clientas.length} registradas</p></div>
+      <div style={{ padding: wide ? "20px 28px" : "18px" }}>
         <div style={{ display:"flex", gap:9, marginBottom:12 }}>
           <input style={{ ...s.input, flex:1, margin:0 }} placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} />
           <button style={{ ...s.btnG, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={() => setSheet(true)}>+ nueva</button>
@@ -2387,6 +2436,7 @@ function AdminClientas({ data, push, toast }) {
           ))}
         </div>
         {filtradas.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin clientas aún</p>}
+        <div style={wide ? { display:"grid", gridTemplateColumns:"1fr 1fr", gap:0 } : {}}>
         {filtradas.map(c => {
           const ult = getUlt(c);
           const hist = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
@@ -2408,6 +2458,7 @@ function AdminClientas({ data, push, toast }) {
             </div>
           );
         })}
+        </div>
       </div>
 
       {sheet && (
@@ -2725,32 +2776,50 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
 function AdminFinanzas({ data, toast }) {
   const [tab, setTab]         = useState("resumen");
   const [periodo, setPeriodo] = useState("mes");
+  const wide = useIsWide();
   const hoy  = hoyISO();
   const mes  = mesISO();
   const anio = hoy.slice(0, 4);
 
   const todoHist = data.clientas.flatMap(c => Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []));
 
+  const tabs = [["resumen","resumen"],["gastos","gastos"],["insumos","insumos"],["calendario","calendario"]];
+
   return (
     <div>
-      <div style={s.topBar}><h1 style={s.h1}>Finanzas</h1><p style={s.sub}>resumen de ingresos</p></div>
-      <div style={{ padding:"18px" }}>
-        <div style={{ display:"flex", gap:7, marginBottom:18 }}>
-          {[["resumen","resumen"],["gastos","gastos"],["insumos","insumos"],["calendario","calendario"]].map(([v, l]) => (
-            <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:12, background:tab === v ? G.greenM : "transparent", borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.muted, fontWeight:tab === v ? 700 : 400 }}>{l}</button>
-          ))}
+      <div style={{ ...s.topBar, ...(wide && { padding:"16px 28px 14px" }) }}><h1 style={s.h1}>Finanzas</h1><p style={s.sub}>resumen de ingresos</p></div>
+      {wide ? (
+        <div style={{ display:"flex", minHeight:"calc(100vh - 80px)" }}>
+          <div style={{ width:180, flexShrink:0, padding:"20px 12px", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", gap:4 }}>
+            {tabs.map(([v, l]) => (
+              <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, width:"100%", textAlign:"left", fontSize:13, background:tab === v ? G.greenM : "transparent", borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.muted, fontWeight:tab === v ? 700 : 400, padding:"10px 14px" }}>{l}</button>
+            ))}
+          </div>
+          <div style={{ flex:1, padding:"24px 32px", overflowY:"auto" }}>
+            {tab === "resumen" && <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} wide={wide} />}
+            {tab === "gastos" && <GastosTab data={data} toast={toast} />}
+            {tab === "insumos" && <InsumosTab data={data} toast={toast} />}
+            {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />}
+          </div>
         </div>
-
-        {tab === "resumen" && <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} />}
-        {tab === "gastos" && <GastosTab data={data} toast={toast} />}
-        {tab === "insumos" && <InsumosTab data={data} toast={toast} />}
-        {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />}
-      </div>
+      ) : (
+        <div style={{ padding:"18px" }}>
+          <div style={{ display:"flex", gap:7, marginBottom:18 }}>
+            {tabs.map(([v, l]) => (
+              <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:12, background:tab === v ? G.greenM : "transparent", borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.muted, fontWeight:tab === v ? 700 : 400 }}>{l}</button>
+            ))}
+          </div>
+          {tab === "resumen" && <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} />}
+          {tab === "gastos" && <GastosTab data={data} toast={toast} />}
+          {tab === "insumos" && <InsumosTab data={data} toast={toast} />}
+          {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />}
+        </div>
+      )}
     </div>
   );
 }
 
-function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }) {
+function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, wide }) {
   const filtrar = (h) => { if (periodo === "hoy") return h.fecha === hoy; if (periodo === "mes") return h.fecha?.startsWith(mes); if (periodo === "año") return h.fecha?.startsWith(anio); return true; };
   const ings   = todoHist.filter(filtrar);
   const total  = ings.reduce((a, h) => a + (h.monto || 0), 0);
@@ -2800,27 +2869,33 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio }
         </div>
       )}
       <div style={s.div} />
-      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>por servicio</p>
-      <p style={{ ...s.sub, marginBottom:12 }}>ingresos del período</p>
-      {Object.entries(porSv).length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin registros</p>}
-      {Object.entries(porSv).sort((a, b) => b[1] - a[1]).map(([nom, tot]) => (
-        <div key={nom} style={{ ...s.card, padding:"11px 13px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p><p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmtPesos(tot)}</p></div>
-          <div style={{ height:3, background:G.border, borderRadius:2 }}><div style={{ height:"100%", width:`${(tot / maxSv) * 100}%`, background:G.green, borderRadius:2 }} /></div>
+      <div style={wide ? { display:"grid", gridTemplateColumns:"1fr 1fr", gap:24 } : {}}>
+        <div>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>por servicio</p>
+          <p style={{ ...s.sub, marginBottom:12 }}>ingresos del período</p>
+          {Object.entries(porSv).length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin registros</p>}
+          {Object.entries(porSv).sort((a, b) => b[1] - a[1]).map(([nom, tot]) => (
+            <div key={nom} style={{ ...s.card, padding:"11px 13px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p><p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmtPesos(tot)}</p></div>
+              <div style={{ height:3, background:G.border, borderRadius:2 }}><div style={{ height:"100%", width:`${(tot / maxSv) * 100}%`, background:G.green, borderRadius:2 }} /></div>
+            </div>
+          ))}
         </div>
-      ))}
-      <div style={s.div} />
-      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>top clientas</p>
-      <p style={{ ...s.sub, marginBottom:12 }}>por gasto en el período</p>
-      {topC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin datos</p>}
-      {topC.map((c, i) => (
-        <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11 }}>
-          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i === 0 ? G.green : G.muted, minWidth:22, margin:0 }}>{i + 1}</p>
-          <Avatar nombre={c.nombre} size={34} />
-          <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p><p style={{ margin:0, ...s.sub, fontSize:10 }}>{c.vis} visita{c.vis !== 1 ? "s" : ""}</p></div>
-          <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(c.total)}</p>
+        <div>
+          {!wide && <div style={s.div} />}
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>top clientas</p>
+          <p style={{ ...s.sub, marginBottom:12 }}>por gasto en el período</p>
+          {topC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin datos</p>}
+          {topC.map((c, i) => (
+            <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11 }}>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i === 0 ? G.green : G.muted, minWidth:22, margin:0 }}>{i + 1}</p>
+              <Avatar nombre={c.nombre} size={34} />
+              <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p><p style={{ margin:0, ...s.sub, fontSize:10 }}>{c.vis} visita{c.vis !== 1 ? "s" : ""}</p></div>
+              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(c.total)}</p>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
@@ -3205,24 +3280,42 @@ function InsumosTab({ data, toast }) {
 // ── Admin Config ───────────────────────────────────────────────────────────────
 function AdminConfig({ data, toast, onLogout }) {
   const [tab, setTab] = useState("servicios");
+  const wide = useIsWide();
+  const configTabs = ["servicios","mensajes","técnico","adicionales","horarios","estudio","notificaciones","apariencia"];
+  const renderContent = () => {
+    if (tab === "servicios")      return <ConfigServicios      data={data} toast={toast} />;
+    if (tab === "mensajes")       return <ConfigMensajes       data={data} toast={toast} />;
+    if (tab === "técnico")        return <ConfigTecnico        data={data} toast={toast} />;
+    if (tab === "adicionales")    return <ConfigAdicionales    data={data} toast={toast} />;
+    if (tab === "horarios")       return <ConfigHorarios       data={data} toast={toast} />;
+    if (tab === "estudio")        return <ConfigEstudio        data={data} toast={toast} onLogout={onLogout} />;
+    if (tab === "notificaciones") return <ConfigNotificaciones data={data} toast={toast} />;
+    if (tab === "apariencia")     return <ConfigApariencia     data={data} toast={toast} />;
+  };
   return (
     <div>
-      <div style={s.topBar}><h1 style={s.h1}>Configuración</h1><p style={s.sub}>Parámetros del estudio</p></div>
-      <div style={{ padding:"18px" }}>
-        <div style={{ display:"flex", gap:7, marginBottom:18, flexWrap:"wrap" }}>
-          {["servicios","mensajes","técnico","adicionales","horarios","estudio","notificaciones","apariencia"].map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : "transparent", borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.muted, padding:"8px 14px", textTransform:"capitalize", fontWeight:tab === t ? 700 : 400 }}>{t}</button>
-          ))}
+      <div style={{ ...s.topBar, ...(wide && { padding:"16px 28px 14px" }) }}><h1 style={s.h1}>Configuración</h1><p style={s.sub}>Parámetros del estudio</p></div>
+      {wide ? (
+        <div style={{ display:"flex", minHeight:"calc(100vh - 80px)" }}>
+          <div style={{ width:180, flexShrink:0, padding:"20px 12px", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", gap:4 }}>
+            {configTabs.map(t => (
+              <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, width:"100%", textAlign:"left", fontSize:13, background:tab === t ? G.greenM : "transparent", borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.muted, padding:"10px 14px", textTransform:"capitalize", fontWeight:tab === t ? 700 : 400 }}>{t}</button>
+            ))}
+          </div>
+          <div style={{ flex:1, padding:"24px 32px", overflowY:"auto" }}>
+            {renderContent()}
+          </div>
         </div>
-        {tab === "servicios"      && <ConfigServicios      data={data} toast={toast} />}
-        {tab === "mensajes"       && <ConfigMensajes       data={data} toast={toast} />}
-        {tab === "técnico"        && <ConfigTecnico        data={data} toast={toast} />}
-        {tab === "adicionales"    && <ConfigAdicionales    data={data} toast={toast} />}
-        {tab === "horarios"       && <ConfigHorarios       data={data} toast={toast} />}
-        {tab === "estudio"        && <ConfigEstudio        data={data} toast={toast} onLogout={onLogout} />}
-        {tab === "notificaciones" && <ConfigNotificaciones data={data} toast={toast} />}
-        {tab === "apariencia"     && <ConfigApariencia     data={data} toast={toast} />}
-      </div>
+      ) : (
+        <div style={{ padding:"18px" }}>
+          <div style={{ display:"flex", gap:7, marginBottom:18, flexWrap:"wrap" }}>
+            {configTabs.map(t => (
+              <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : "transparent", borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.muted, padding:"8px 14px", textTransform:"capitalize", fontWeight:tab === t ? 700 : 400 }}>{t}</button>
+            ))}
+          </div>
+          {renderContent()}
+        </div>
+      )}
     </div>
   );
 }
@@ -4018,11 +4111,12 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
       <div style={{ minHeight:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, display:"flex", flexDirection:"row", overflowX:"hidden" }}>
         <GlobalStyles />
         <AppBg />
-        <nav style={{ width:190, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"24px 10px 20px", gap:3, position:"sticky", top:0, height:"100vh", zIndex:20 }}>
-          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.green, padding:"0 4px 18px", margin:0, letterSpacing:"-0.3px" }}>{clienta.nombre?.split(" ")[0] || "Lash Studio"}</p>
+        <nav style={{ width:220, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"28px 14px 24px", gap:2, position:"sticky", top:0, height:"100vh", zIndex:20 }}>
+          <img src="/logo.svg" alt="Lash Studio" style={{ width:"100%", height:36, objectFit:"contain", objectPosition:"left", marginBottom:8, flexShrink:0 }} />
+          <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, padding:"0 4px 16px", margin:0 }}>{clienta.nombre?.split(" ")[0] || ""}</p>
           {tabs.map(t => (
-            <div key={t.id} style={sideNavItmSty(tab === t.id)} onClick={() => setTab(t.id)}>
-              <Icon name={t.iconName} size={17} color={tab===t.id ? G.green : G.muted} strokeWidth={tab===t.id ? 1.8 : 1.5} />
+            <div key={t.id} style={{ ...sideNavItmSty(tab === t.id), padding:"12px 16px", fontSize:14 }} onClick={() => setTab(t.id)}>
+              <Icon name={t.iconName} size={18} color={tab===t.id ? G.green : G.muted} strokeWidth={tab===t.id ? 1.8 : 1.5} />
               <span>{t.label}</span>
             </div>
           ))}
@@ -4032,8 +4126,10 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
             Consultar
           </button>
         </nav>
-        <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:24 }}>
-          {render()}
+        <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:40 }} className="ls-wide-content">
+          <div style={{ maxWidth:720, margin:"0 auto" }}>
+            {render()}
+          </div>
         </div>
       </div>
     );
