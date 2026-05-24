@@ -3331,6 +3331,62 @@ function InsumosTab({ data, toast }) {
   );
 }
 
+// ── Config Promos ──────────────────────────────────────────────────────────────
+function ConfigPromos({ data, toast }) {
+  const saved = data.getConfig("promos", {});
+  const [cumple, setCumple] = useState({
+    habilitado: saved.cumpleanos?.habilitado ?? false,
+    tipo: saved.cumpleanos?.tipo || "%",
+    monto: saved.cumpleanos?.monto || 10,
+  });
+  const saveCumple = async (upd) => {
+    const next = { ...cumple, ...upd };
+    setCumple(next);
+    await data.saveConfig("promos", { ...saved, cumpleanos: next });
+    toast("✓ guardado");
+  };
+  return (
+    <div>
+      <div style={{ ...s.card, marginBottom:14, borderColor: cumple.habilitado ? "rgba(245,200,66,0.4)" : G.border }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: cumple.habilitado ? 14 : 0 }}>
+          <div>
+            <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white }}>🎂 Descuento de cumpleaños</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Se muestra 14 días antes en el panel de la clienta</p>
+          </div>
+          <button onClick={() => saveCumple({ habilitado: !cumple.habilitado })} style={{ background: cumple.habilitado ? G.greenM : "transparent", border:`1.5px solid ${cumple.habilitado ? G.green : G.border}`, borderRadius:50, width:48, height:26, cursor:"pointer", position:"relative", transition:"all 0.2s", flexShrink:0 }}>
+            <div style={{ position:"absolute", top:3, left: cumple.habilitado ? 25 : 3, width:18, height:18, borderRadius:"50%", background: cumple.habilitado ? G.greenL : G.muted, transition:"left 0.2s" }} />
+          </button>
+        </div>
+        {cumple.habilitado && (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <Field label="tipo de descuento">
+              <div style={{ display:"flex", gap:7 }}>
+                {["%", "$"].map(t => (
+                  <button key={t} onClick={() => saveCumple({ tipo: t })} style={{ ...s.btnGl, flex:1, fontSize:13, background: cumple.tipo===t ? G.greenM : "transparent", borderColor: cumple.tipo===t ? G.green : G.border, color: cumple.tipo===t ? G.greenL : G.muted, fontWeight: cumple.tipo===t ? 700 : 400 }}>{t === "%" ? "Porcentaje (%)" : "Monto fijo ($)"}</button>
+                ))}
+              </div>
+            </Field>
+            <Field label={cumple.tipo === "%" ? "porcentaje de descuento" : "monto de descuento ($)"}>
+              <input style={s.input} type="number" min="1" max={cumple.tipo==="%"?100:99999} value={cumple.monto}
+                onChange={e => setCumple(p => ({...p, monto: Number(e.target.value)}))}
+                onBlur={() => saveCumple({})} />
+            </Field>
+            <div style={{ ...s.card, margin:0, background:"rgba(245,200,66,0.08)", borderColor:"rgba(245,200,66,0.3)" }}>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:"#f5c842", lineHeight:1.5 }}>
+                La clienta verá este regalo en su panel los 14 días previos a su cumpleaños y el día mismo.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={{ ...s.card, opacity:0.5 }}>
+        <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white }}>🎯 Descuento por visitas</p>
+        <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Próximamente — descuento automático al alcanzar X visitas</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Admin Config ───────────────────────────────────────────────────────────────
 function AdminConfig({ data, toast, onLogout }) {
   const [tab, setTab] = useState("servicios");
@@ -3396,66 +3452,6 @@ function ConfigApariencia({ data, toast }) {
             <Icon name={dark ? "moon" : "sun"} size={11} color={dark ? "#0a0a0a" : G.bg} />
           </div>
         </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Config Promos ──────────────────────────────────────────────────────────────
-function ConfigPromos({ data, toast }) {
-  const saved = data.getConfig("promos", {});
-  const [cumple, setCumple] = useState({
-    habilitado: saved.cumpleanos?.habilitado ?? false,
-    tipo: saved.cumpleanos?.tipo || "%",
-    monto: saved.cumpleanos?.monto || 10,
-  });
-  const saveCumple = async (upd) => {
-    const next = { ...cumple, ...upd };
-    setCumple(next);
-    await data.saveConfig("promos", { ...saved, cumpleanos: next });
-    toast("✓ guardado");
-  };
-
-  return (
-    <div>
-      {/* Birthday promo */}
-      <div style={{ ...s.card, marginBottom:14, borderColor: cumple.habilitado ? "rgba(245,200,66,0.4)" : G.border }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: cumple.habilitado ? 14 : 0 }}>
-          <div>
-            <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white }}>🎂 Descuento de cumpleaños</p>
-            <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Se muestra 14 días antes en el panel de la clienta</p>
-          </div>
-          <button onClick={() => saveCumple({ habilitado: !cumple.habilitado })} style={{ background: cumple.habilitado ? G.greenM : "transparent", border:`1.5px solid ${cumple.habilitado ? G.green : G.border}`, borderRadius:50, width:48, height:26, cursor:"pointer", position:"relative", transition:"all 0.2s", flexShrink:0 }}>
-            <div style={{ position:"absolute", top:3, left: cumple.habilitado ? 25 : 3, width:18, height:18, borderRadius:"50%", background: cumple.habilitado ? G.greenL : G.muted, transition:"left 0.2s" }} />
-          </button>
-        </div>
-        {cumple.habilitado && (
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            <Field label="tipo de descuento">
-              <div style={{ display:"flex", gap:7 }}>
-                {["%", "$"].map(t => (
-                  <button key={t} onClick={() => saveCumple({ tipo: t })} style={{ ...s.btnGl, flex:1, fontSize:13, background: cumple.tipo===t ? G.greenM : "transparent", borderColor: cumple.tipo===t ? G.green : G.border, color: cumple.tipo===t ? G.greenL : G.muted, fontWeight: cumple.tipo===t ? 700 : 400 }}>{t === "%" ? "Porcentaje (%)" : "Monto fijo ($)"}</button>
-                ))}
-              </div>
-            </Field>
-            <Field label={cumple.tipo === "%" ? "porcentaje de descuento" : "monto de descuento ($)"}>
-              <input style={s.input} type="number" min="1" max={cumple.tipo==="%"?100:99999} value={cumple.monto}
-                onChange={e => setCumple(p => ({...p, monto: Number(e.target.value)}))}
-                onBlur={() => saveCumple({})} />
-            </Field>
-            <div style={{ ...s.card, margin:0, background:"rgba(245,200,66,0.08)", borderColor:"rgba(245,200,66,0.3)" }}>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:"#f5c842", lineHeight:1.5 }}>
-                La clienta verá este regalo en su panel los 14 días previos a su cumpleaños y el día mismo.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Placeholder for future promos */}
-      <div style={{ ...s.card, opacity:0.5 }}>
-        <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white }}>🎯 Descuento por visitas</p>
-        <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Próximamente — descuento automático al alcanzar X visitas</p>
       </div>
     </div>
   );
