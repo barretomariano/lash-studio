@@ -471,9 +471,7 @@ function Loader({ msg = "Cargando..." }) {
     <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:18, position:"relative" }}>
       <GlobalStyles />
       <AppBg />
-      <div style={{ width:56, height:56, borderRadius:"50%", background:`radial-gradient(circle, rgba(143,189,90,0.22) 0%, rgba(143,189,90,0.06) 100%)`, border:`1.5px solid rgba(143,189,90,0.45)`, display:"flex", alignItems:"center", justifyContent:"center", zIndex:1, animation:"logoPulse 2.5s ease-in-out infinite", boxShadow:"0 0 24px rgba(143,189,90,0.16)" }}>
-        <Icon name="scissors" size={22} color="rgba(143,189,90,0.9)" strokeWidth={1.5} />
-      </div>
+      <img src="/logo.svg" alt="Lash Studio" style={{ width:120, height:120, objectFit:"contain", zIndex:1, animation:"logoPulse 2.5s ease-in-out infinite" }} />
       <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, zIndex:1, letterSpacing:"0.08em" }}>{msg}</p>
     </div>
   );
@@ -635,10 +633,7 @@ function Login({ onLogin }) {
         <Icon name={dark ? "sun" : "moon"} size={16} color={G.muted} />
       </button>
       <div style={{ textAlign:"center", marginBottom:44, zIndex:1, animation:"fadeInUp 0.6s ease both" }}>
-        <div style={{ width:72, height:72, borderRadius:"50%", background:`radial-gradient(circle, rgba(${G.greenRGB},0.22) 0%, rgba(${G.greenRGB},0.08) 100%)`, border:`1.5px solid rgba(${G.greenRGB},0.45)`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite", boxShadow:`0 0 24px rgba(${G.greenRGB},0.18)` }}>
-          <Icon name="scissors" size={28} color={G.greenL} strokeWidth={1.4} />
-        </div>
-        <h1 style={{ ...s.h1, fontSize:34, letterSpacing:"-0.5px", textAlign:"center", marginBottom:4 }}>Lash Studio</h1>
+        <img src="/logo.svg" alt="Lash Studio" style={{ width:140, height:140, objectFit:"contain", display:"block", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite" }} />
         <p style={{ fontFamily:F.serif, fontSize:14, fontStyle:"italic", color:G.green, margin:"0 0 14px", letterSpacing:"0.04em" }}>by chulas</p>
         <div style={{ width:64, height:1.5, background:`linear-gradient(90deg, transparent, ${G.green}, transparent)`, margin:"0 auto 12px" }} />
         <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, letterSpacing:"0.14em", textTransform:"uppercase", textAlign:"center" }}>San Andrés · Buenos Aires</p>
@@ -812,7 +807,7 @@ function AdminApp({ data, onLogout }) {
         <AppBg />
         {/* Sidebar nav */}
         <nav style={{ width:240, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"28px 14px 24px", gap:2, height:"100vh", overflowY:"auto", zIndex:20 }}>
-          <p style={{ fontFamily:F.display, fontSize:22, color:G.greenL, letterSpacing:"1px", margin:"0 0 16px", lineHeight:1 }}>Lash Studio</p>
+          <img src="/logo.svg" alt="Lash Studio" style={{ width:110, height:110, objectFit:"contain", display:"block", marginBottom:16, flexShrink:0 }} />
           {navItems.map(n => (
             <div key={n.id} style={{ ...sideNavItmSty(tab === n.id && !cur), padding:"12px 16px", fontSize:14 }} onClick={() => { setStack([]); setTab(n.id); }}>
               <Icon name={n.iconName} size={18} color={tab===n.id && !cur ? G.green : G.muted} strokeWidth={tab===n.id && !cur ? 1.8 : 1.5} />
@@ -2386,7 +2381,7 @@ function AdminClientas({ data, push, toast }) {
   const [sheet, setSheet]       = useState(false);
   const [creds, setCreds]       = useState(null);
   const [saving, setSaving]     = useState(false);
-  const [form, setForm]         = useState({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
+  const [form, setForm]         = useState({ nombre:"", email:"", telefono:"", fechaNacimiento:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
   const wide = useIsWide();
 
@@ -2417,7 +2412,7 @@ function AdminClientas({ data, push, toast }) {
       setCreds(res.noAccount
         ? { noAccount:true, nombre:form.nombre }
         : { email:res.email, pass:res.pass, nombre:form.nombre, telefono:form.telefono });
-      setForm({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
+      setForm({ nombre:"", email:"", telefono:"", fechaNacimiento:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
     } catch(e) { toast("Error al crear: " + (e?.message || "intentá de nuevo")); }
     finally { setSaving(false); }
   };
@@ -2441,6 +2436,17 @@ function AdminClientas({ data, push, toast }) {
           const ult = getUlt(c);
           const hist = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
           const dias = ult?.fecha ? Math.floor((new Date() - new Date(ult.fecha)) / (1000 * 60 * 60 * 24)) : null;
+          const fnac = c.fechaNacimiento;
+          let diasCumple = null;
+          if (fnac) {
+            const hoyStr = hoyISO();
+            const [, mm, dd] = fnac.split("-");
+            const anio = parseInt(hoyStr.slice(0,4));
+            let bd = `${anio}-${mm}-${dd}`;
+            if (bd < hoyStr) bd = `${anio+1}-${mm}-${dd}`;
+            diasCumple = Math.ceil((new Date(bd+"T12:00:00") - new Date(hoyStr+"T12:00:00")) / (1000*60*60*24));
+          }
+          const cumpleTag = diasCumple !== null && diasCumple <= 14;
           return (
             <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11, cursor:"pointer", opacity:c.estado === "pausada" ? 0.5 : 1 }} onClick={() => push("clienta-detalle", { clienta:c })}>
               <Avatar nombre={c.nombre} />
@@ -2448,6 +2454,7 @@ function AdminClientas({ data, push, toast }) {
                 <div style={{ display:"flex", alignItems:"center", gap:7 }}>
                   <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.nombre}</p>
                   {c.estado === "pausada" && <span style={{ ...s.tag, fontSize:9, background:"rgba(224,112,112,0.12)", borderColor:G.red, color:G.red }}>pausada</span>}
+                  {cumpleTag && <span style={{ ...s.tag, fontSize:9, background:"rgba(245,200,66,0.15)", borderColor:"rgba(245,200,66,0.5)", color:"#f5c842" }}>{diasCumple===0?"🎂 hoy":`🎂 en ${diasCumple}d`}</span>}
                 </div>
                 <p style={{ margin:0, ...s.sub, fontSize:11 }}>{ult ? `última visita: ${fmtFecha(ult.fecha)}` : "Sin visitas aún"}{dias !== null ? ` · hace ${dias}d` : ""}</p>
               </div>
@@ -2467,6 +2474,7 @@ function AdminClientas({ data, push, toast }) {
             <Field label="nombre y apellido *"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="Nombre Apellido" /></Field>
             <Field label="email" hint="Opcional — sin email la clienta no tendrá acceso al panel"><input style={s.input} type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="email@ejemplo.com (opcional)" /></Field>
             <Field label="teléfono"><input style={s.input} type="tel" value={form.telefono} onChange={e => set("telefono", e.target.value)} placeholder="11 XXXX-XXXX" /></Field>
+            <Field label="fecha de nacimiento"><input style={s.input} type="date" value={form.fechaNacimiento} onChange={e => set("fechaNacimiento", e.target.value)} /></Field>
             <div style={s.div} />
             {opcCurvas.length > 0 && <Field label="curva habitual"><Chips options={opcCurvas} value={form.curva} onChange={v => set("curva", v)} /></Field>}
             {opcGrosor.length > 0 && <Field label="grosor"><Chips options={opcGrosor} value={form.grosor} onChange={v => set("grosor", v)} /></Field>}
@@ -2510,7 +2518,7 @@ function AdminClientas({ data, push, toast }) {
 function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
   const [c, setC]         = useState(cInit);
   const [tab, setTab]     = useState("info");
-  const [form, setForm]   = useState({ nombre:cInit.nombre||"", telefono:cInit.telefono||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"", estado:cInit.estado||"activa", mapaTecnico:cInit.mapaTecnico||"" });
+  const [form, setForm]   = useState({ nombre:cInit.nombre||"", telefono:cInit.telefono||"", fechaNacimiento:cInit.fechaNacimiento||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"", estado:cInit.estado||"activa", mapaTecnico:cInit.mapaTecnico||"" });
   const [editing, setEditing] = useState(false);
   const [uploadingMapa, setUploadingMapa] = useState(false);
   const [showPass, setShowPass]     = useState(false);
@@ -2584,6 +2592,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                 <>
                   <Field label="nombre"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} /></Field>
                   <Field label="teléfono"><input style={s.input} value={form.telefono} onChange={e => set("telefono", e.target.value)} /></Field>
+                  <Field label="fecha de nacimiento"><input style={s.input} type="date" value={form.fechaNacimiento} onChange={e => set("fechaNacimiento", e.target.value)} /></Field>
                   <Field label="estado">
                     <div style={{ display:"flex", gap:8 }}>
                       {["activa", "pausada"].map(v => <button key={v} onClick={() => set("estado", v)} style={{ ...s.btnGl, flex:1, background:form.estado === v ? G.greenM : G.glass, borderColor:form.estado === v ? G.green : G.border, color:form.estado === v ? G.greenL : G.sub }}>{v}</button>)}
@@ -2599,6 +2608,14 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                       <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</span>
                     </div>
                   ))}
+                  {c.fechaNacimiento && (
+                    <div style={{ display:"flex", justifyContent:"space-between" }}>
+                      <span style={{ ...s.label, margin:0 }}>fecha de nacimiento</span>
+                      <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>
+                        {fmtFecha(c.fechaNacimiento)}{(() => { const [anio, mm, dd] = c.fechaNacimiento.split("-"); const edad = new Date().getFullYear() - parseInt(anio) - (new Date() < new Date(`${new Date().getFullYear()}-${mm}-${dd}`) ? 1 : 0); return ` · ${edad} años`; })()}
+                      </span>
+                    </div>
+                  )}
                   {c.email && (
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                       <span style={{ ...s.label, margin:0 }}>contraseña app</span>
@@ -3281,7 +3298,7 @@ function InsumosTab({ data, toast }) {
 function AdminConfig({ data, toast, onLogout }) {
   const [tab, setTab] = useState("servicios");
   const wide = useIsWide();
-  const configTabs = ["servicios","mensajes","técnico","adicionales","horarios","estudio","notificaciones","apariencia"];
+  const configTabs = ["servicios","mensajes","técnico","adicionales","horarios","estudio","notificaciones","apariencia","promos"];
   const renderContent = () => {
     if (tab === "servicios")      return <ConfigServicios      data={data} toast={toast} />;
     if (tab === "mensajes")       return <ConfigMensajes       data={data} toast={toast} />;
@@ -3291,6 +3308,7 @@ function AdminConfig({ data, toast, onLogout }) {
     if (tab === "estudio")        return <ConfigEstudio        data={data} toast={toast} onLogout={onLogout} />;
     if (tab === "notificaciones") return <ConfigNotificaciones data={data} toast={toast} />;
     if (tab === "apariencia")     return <ConfigApariencia     data={data} toast={toast} />;
+    if (tab === "promos")         return <ConfigPromos         data={data} toast={toast} />;
   };
   return (
     <div>
@@ -4112,7 +4130,7 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
         <GlobalStyles />
         <AppBg />
         <nav style={{ width:220, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"28px 14px 24px", gap:2, position:"sticky", top:0, height:"100vh", zIndex:20 }}>
-          <p style={{ fontFamily:F.display, fontSize:20, color:G.greenL, letterSpacing:"1px", margin:"0 0 8px", lineHeight:1 }}>Lash Studio</p>
+          <img src="/logo.svg" alt="Lash Studio" style={{ width:100, height:100, objectFit:"contain", display:"block", marginBottom:8, flexShrink:0 }} />
           <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, padding:"0 4px 16px", margin:0 }}>{clienta.nombre?.split(" ")[0] || ""}</p>
           {tabs.map(t => (
             <div key={t.id} style={{ ...sideNavItmSty(tab === t.id), padding:"12px 16px", fontSize:14 }} onClick={() => setTab(t.id)}>
@@ -4734,7 +4752,7 @@ function CPerfil({ clienta, data, onLogout }) {
   const [editando, setEdit]   = useState(false);
   const [foto, setFoto]       = useState(null);
   const [saving, setSaving]   = useState(false);
-  const [formP, setFormP]     = useState({ nombre:clienta.nombre||"", telefono:clienta.telefono||"", emergencia:clienta.emergencia||"" });
+  const [formP, setFormP]     = useState({ nombre:clienta.nombre||"", telefono:clienta.telefono||"", fechaNacimiento:clienta.fechaNacimiento||"", emergencia:clienta.emergencia||"" });
   const setFP = (k, v) => setFormP(f => ({ ...f, [k]:v }));
   const { dark, toggleTheme } = useTheme();
   const { status: pushStatus, subscribe: pushSubscribe } = usePushStatus("clienta", clienta.uid);
@@ -4746,7 +4764,7 @@ function CPerfil({ clienta, data, onLogout }) {
 
   const guardar = async () => {
     setSaving(true);
-    await data.editarClientas(clienta._id, { nombre:formP.nombre, telefono:formP.telefono, emergencia:formP.emergencia });
+    await data.editarClientas(clienta._id, { nombre:formP.nombre, telefono:formP.telefono, fechaNacimiento:formP.fechaNacimiento, emergencia:formP.emergencia });
     setSaving(false); setEdit(false);
   };
   return (
