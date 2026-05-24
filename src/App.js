@@ -471,7 +471,7 @@ function Loader({ msg = "Cargando..." }) {
     <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:22, position:"relative" }}>
       <GlobalStyles />
       <AppBg />
-      <img src="/logo.svg" alt="Lash Studio" style={{ width:148, height:148, objectFit:"contain", zIndex:1, animation:"logoPulse 2.5s ease-in-out infinite" }} />
+      <img src="/icon-192.png" alt="Lash Studio" style={{ width:112, height:112, borderRadius:24, objectFit:"cover", zIndex:1, animation:"logoPulse 2.5s ease-in-out infinite" }} />
       <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, zIndex:1, letterSpacing:"0.08em" }}>{msg}</p>
     </div>
   );
@@ -633,7 +633,7 @@ function Login({ onLogin }) {
         <Icon name={dark ? "sun" : "moon"} size={16} color={G.muted} />
       </button>
       <div style={{ textAlign:"center", marginBottom:44, zIndex:1, animation:"fadeInUp 0.6s ease both" }}>
-        <img src="/logo.svg" alt="Lash Studio" style={{ width:164, height:164, objectFit:"contain", display:"block", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite" }} />
+        <img src="/icon-192.png" alt="Lash Studio" style={{ width:120, height:120, borderRadius:26, objectFit:"cover", display:"block", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite" }} />
         <p style={{ fontFamily:F.serif, fontSize:14, fontStyle:"italic", color:G.green, margin:"0 0 14px", letterSpacing:"0.04em" }}>by chulas</p>
         <div style={{ width:64, height:1.5, background:`linear-gradient(90deg, transparent, ${G.green}, transparent)`, margin:"0 auto 12px" }} />
         <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, letterSpacing:"0.14em", textTransform:"uppercase", textAlign:"center" }}>San Andrés · Buenos Aires</p>
@@ -807,7 +807,7 @@ function AdminApp({ data, onLogout }) {
         <AppBg />
         {/* Sidebar nav */}
         <nav style={{ width:240, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"28px 14px 24px", gap:2, height:"100vh", overflowY:"auto", zIndex:20 }}>
-          <img src="/logo.svg" alt="Lash Studio" style={{ width:120, height:120, objectFit:"contain", display:"block", marginBottom:16, flexShrink:0 }} />
+          <img src="/icon-192.png" alt="Lash Studio" style={{ width:72, height:72, borderRadius:16, objectFit:"cover", display:"block", marginBottom:16, flexShrink:0 }} />
           {navItems.map(n => (
             <div key={n.id} style={{ ...sideNavItmSty(tab === n.id && !cur), padding:"12px 16px", fontSize:14 }} onClick={() => { setStack([]); setTab(n.id); }}>
               <Icon name={n.iconName} size={18} color={tab===n.id && !cur ? G.green : G.muted} strokeWidth={tab===n.id && !cur ? 1.8 : 1.5} />
@@ -4107,7 +4107,7 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
         <GlobalStyles />
         <AppBg />
         <nav style={{ width:220, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"28px 14px 24px", gap:2, position:"sticky", top:0, height:"100vh", zIndex:20 }}>
-          <img src="/logo.svg" alt="Lash Studio" style={{ width:110, height:110, objectFit:"contain", display:"block", marginBottom:8, flexShrink:0 }} />
+          <img src="/icon-192.png" alt="Lash Studio" style={{ width:64, height:64, borderRadius:14, objectFit:"cover", display:"block", marginBottom:8, flexShrink:0 }} />
           <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, padding:"0 4px 16px", margin:0 }}>{clienta.nombre?.split(" ")[0] || ""}</p>
           {tabs.map(t => (
             <div key={t.id} style={{ ...sideNavItmSty(tab === t.id), padding:"12px 16px", fontSize:14 }} onClick={() => setTab(t.id)}>
