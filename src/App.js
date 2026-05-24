@@ -468,10 +468,12 @@ function useData() {
 // ── Componentes UI comunes ─────────────────────────────────────────────────────
 function Loader({ msg = "Cargando..." }) {
   return (
-    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:22, position:"relative" }}>
+    <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:18, position:"relative" }}>
       <GlobalStyles />
       <AppBg />
-      <img src="/logo.svg" alt="Lash Studio" style={{ width:148, height:148, objectFit:"contain", zIndex:1, animation:"logoPulse 2.5s ease-in-out infinite" }} />
+      <div style={{ width:56, height:56, borderRadius:"50%", background:`radial-gradient(circle, rgba(143,189,90,0.22) 0%, rgba(143,189,90,0.06) 100%)`, border:`1.5px solid rgba(143,189,90,0.45)`, display:"flex", alignItems:"center", justifyContent:"center", zIndex:1, animation:"logoPulse 2.5s ease-in-out infinite", boxShadow:"0 0 24px rgba(143,189,90,0.16)" }}>
+        <Icon name="scissors" size={22} color="rgba(143,189,90,0.9)" strokeWidth={1.5} />
+      </div>
       <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, zIndex:1, letterSpacing:"0.08em" }}>{msg}</p>
     </div>
   );
@@ -633,7 +635,10 @@ function Login({ onLogin }) {
         <Icon name={dark ? "sun" : "moon"} size={16} color={G.muted} />
       </button>
       <div style={{ textAlign:"center", marginBottom:44, zIndex:1, animation:"fadeInUp 0.6s ease both" }}>
-        <img src="/logo.svg" alt="Lash Studio" style={{ width:164, height:164, objectFit:"contain", display:"block", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite" }} />
+        <div style={{ width:72, height:72, borderRadius:"50%", background:`radial-gradient(circle, rgba(${G.greenRGB},0.22) 0%, rgba(${G.greenRGB},0.08) 100%)`, border:`1.5px solid rgba(${G.greenRGB},0.45)`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite", boxShadow:`0 0 24px rgba(${G.greenRGB},0.18)` }}>
+          <Icon name="scissors" size={28} color={G.greenL} strokeWidth={1.4} />
+        </div>
+        <h1 style={{ ...s.h1, fontSize:34, letterSpacing:"-0.5px", textAlign:"center", marginBottom:4 }}>Lash Studio</h1>
         <p style={{ fontFamily:F.serif, fontSize:14, fontStyle:"italic", color:G.green, margin:"0 0 14px", letterSpacing:"0.04em" }}>by chulas</p>
         <div style={{ width:64, height:1.5, background:`linear-gradient(90deg, transparent, ${G.green}, transparent)`, margin:"0 auto 12px" }} />
         <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, letterSpacing:"0.14em", textTransform:"uppercase", textAlign:"center" }}>San Andrés · Buenos Aires</p>
@@ -807,7 +812,7 @@ function AdminApp({ data, onLogout }) {
         <AppBg />
         {/* Sidebar nav */}
         <nav style={{ width:240, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"28px 14px 24px", gap:2, height:"100vh", overflowY:"auto", zIndex:20 }}>
-          <img src="/logo.svg" alt="Lash Studio" style={{ width:120, height:120, objectFit:"contain", display:"block", marginBottom:16, flexShrink:0 }} />
+          <p style={{ fontFamily:F.display, fontSize:22, color:G.greenL, letterSpacing:"1px", margin:"0 0 16px", lineHeight:1 }}>Lash Studio</p>
           {navItems.map(n => (
             <div key={n.id} style={{ ...sideNavItmSty(tab === n.id && !cur), padding:"12px 16px", fontSize:14 }} onClick={() => { setStack([]); setTab(n.id); }}>
               <Icon name={n.iconName} size={18} color={tab===n.id && !cur ? G.green : G.muted} strokeWidth={tab===n.id && !cur ? 1.8 : 1.5} />
@@ -4107,7 +4112,7 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
         <GlobalStyles />
         <AppBg />
         <nav style={{ width:220, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"28px 14px 24px", gap:2, position:"sticky", top:0, height:"100vh", zIndex:20 }}>
-          <img src="/logo.svg" alt="Lash Studio" style={{ width:110, height:110, objectFit:"contain", display:"block", marginBottom:8, flexShrink:0 }} />
+          <p style={{ fontFamily:F.display, fontSize:20, color:G.greenL, letterSpacing:"1px", margin:"0 0 8px", lineHeight:1 }}>Lash Studio</p>
           <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, padding:"0 4px 16px", margin:0 }}>{clienta.nombre?.split(" ")[0] || ""}</p>
           {tabs.map(t => (
             <div key={t.id} style={{ ...sideNavItmSty(tab === t.id), padding:"12px 16px", fontSize:14 }} onClick={() => setTab(t.id)}>

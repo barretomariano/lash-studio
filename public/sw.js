@@ -1,4 +1,4 @@
-const CACHE = "lash-studio-v2";
+const CACHE = "lash-studio-v3";
 const ASSETS = ["/", "/index.html", "/manifest.json"];
 
 // ── Install ───────────────────────────────────────────────────────────────────
