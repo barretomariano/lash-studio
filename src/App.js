@@ -980,6 +980,43 @@ function AdminInicio({ data, push, setTab, toast }) {
             </>
           );
         })()}
+        {/* Upcoming birthdays widget */}
+        {(() => {
+          const cumplesSemana = data.clientas.filter(c => {
+            if (!c.fechaNacimiento) return false;
+            const hoyStr = hoyISO();
+            const [, mm, dd] = c.fechaNacimiento.split("-");
+            const anio = parseInt(hoyStr.slice(0,4));
+            let bd = `${anio}-${mm}-${dd}`;
+            if (bd < hoyStr) bd = `${anio+1}-${mm}-${dd}`;
+            const d = Math.ceil((new Date(bd+"T12:00:00") - new Date(hoyStr+"T12:00:00")) / (1000*60*60*24));
+            return d <= 7;
+          }).sort((a, b) => {
+            const hoyStr = hoyISO();
+            const toD = fnac => { const [,mm,dd]=fnac.split("-"); const an=parseInt(hoyStr.slice(0,4)); let bd=`${an}-${mm}-${dd}`; if(bd<hoyStr)bd=`${an+1}-${mm}-${dd}`; return Math.ceil((new Date(bd+"T12:00:00")-new Date(hoyStr+"T12:00:00"))/(1000*60*60*24)); };
+            return toD(a.fechaNacimiento) - toD(b.fechaNacimiento);
+          });
+          if (!cumplesSemana.length) return null;
+          return (
+            <div style={{ ...s.card, marginBottom:14, borderColor:"rgba(245,200,66,0.35)", background:"rgba(245,200,66,0.06)" }}>
+              <p style={{ ...s.eyebrow, color:"#f5c842", marginBottom:8 }}>🎂 cumpleaños próximos</p>
+              {cumplesSemana.map(c => {
+                const hoyStr = hoyISO();
+                const [, mm, dd] = c.fechaNacimiento.split("-");
+                const anio = parseInt(hoyStr.slice(0,4));
+                let bd = `${anio}-${mm}-${dd}`;
+                if (bd < hoyStr) bd = `${anio+1}-${mm}-${dd}`;
+                const d = Math.ceil((new Date(bd+"T12:00:00") - new Date(hoyStr+"T12:00:00")) / (1000*60*60*24));
+                return (
+                  <div key={c._id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingBottom:6, marginBottom:6, borderBottom:`0.5px solid ${G.border}` }}>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.text }}>{c.nombre}</p>
+                    <span style={{ fontFamily:F.sans, fontSize:11, color:"#f5c842" }}>{d===0?"¡hoy! 🎂":`en ${d} día${d!==1?"s":""}`}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
         {/* Pipeline row */}
         {(() => {
           const solicitadas  = data.citas.filter(c => c.fecha === hoy && c.estado === "solicitada").length;
@@ -3364,6 +3401,66 @@ function ConfigApariencia({ data, toast }) {
   );
 }
 
+// ── Config Promos ──────────────────────────────────────────────────────────────
+function ConfigPromos({ data, toast }) {
+  const saved = data.getConfig("promos", {});
+  const [cumple, setCumple] = useState({
+    habilitado: saved.cumpleanos?.habilitado ?? false,
+    tipo: saved.cumpleanos?.tipo || "%",
+    monto: saved.cumpleanos?.monto || 10,
+  });
+  const saveCumple = async (upd) => {
+    const next = { ...cumple, ...upd };
+    setCumple(next);
+    await data.saveConfig("promos", { ...saved, cumpleanos: next });
+    toast("✓ guardado");
+  };
+
+  return (
+    <div>
+      {/* Birthday promo */}
+      <div style={{ ...s.card, marginBottom:14, borderColor: cumple.habilitado ? "rgba(245,200,66,0.4)" : G.border }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: cumple.habilitado ? 14 : 0 }}>
+          <div>
+            <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white }}>🎂 Descuento de cumpleaños</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Se muestra 14 días antes en el panel de la clienta</p>
+          </div>
+          <button onClick={() => saveCumple({ habilitado: !cumple.habilitado })} style={{ background: cumple.habilitado ? G.greenM : "transparent", border:`1.5px solid ${cumple.habilitado ? G.green : G.border}`, borderRadius:50, width:48, height:26, cursor:"pointer", position:"relative", transition:"all 0.2s", flexShrink:0 }}>
+            <div style={{ position:"absolute", top:3, left: cumple.habilitado ? 25 : 3, width:18, height:18, borderRadius:"50%", background: cumple.habilitado ? G.greenL : G.muted, transition:"left 0.2s" }} />
+          </button>
+        </div>
+        {cumple.habilitado && (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <Field label="tipo de descuento">
+              <div style={{ display:"flex", gap:7 }}>
+                {["%", "$"].map(t => (
+                  <button key={t} onClick={() => saveCumple({ tipo: t })} style={{ ...s.btnGl, flex:1, fontSize:13, background: cumple.tipo===t ? G.greenM : "transparent", borderColor: cumple.tipo===t ? G.green : G.border, color: cumple.tipo===t ? G.greenL : G.muted, fontWeight: cumple.tipo===t ? 700 : 400 }}>{t === "%" ? "Porcentaje (%)" : "Monto fijo ($)"}</button>
+                ))}
+              </div>
+            </Field>
+            <Field label={cumple.tipo === "%" ? "porcentaje de descuento" : "monto de descuento ($)"}>
+              <input style={s.input} type="number" min="1" max={cumple.tipo==="%"?100:99999} value={cumple.monto}
+                onChange={e => setCumple(p => ({...p, monto: Number(e.target.value)}))}
+                onBlur={() => saveCumple({})} />
+            </Field>
+            <div style={{ ...s.card, margin:0, background:"rgba(245,200,66,0.08)", borderColor:"rgba(245,200,66,0.3)" }}>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:"#f5c842", lineHeight:1.5 }}>
+                La clienta verá este regalo en su panel los 14 días previos a su cumpleaños y el día mismo.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Placeholder for future promos */}
+      <div style={{ ...s.card, opacity:0.5 }}>
+        <p style={{ margin:"0 0 3px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white }}>🎯 Descuento por visitas</p>
+        <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Próximamente — descuento automático al alcanzar X visitas</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Config Mensajes WA ─────────────────────────────────────────────────────────
 function ConfigMensajes({ data, toast }) {
   const saved = data.getConfig("mensajes", DEFAULT_MENSAJES);
@@ -4199,6 +4296,19 @@ function CInicio({ clienta, data, setTab }) {
 
   const politicas = data.getConfig("politicas", []);
 
+  const fnac = clienta.fechaNacimiento;
+  let diasHastaCumple = null;
+  if (fnac) {
+    const [, mm, dd] = fnac.split("-");
+    const anioHoy = parseInt(hoy.slice(0,4));
+    let bdayThis = `${anioHoy}-${mm}-${dd}`;
+    if (bdayThis < hoy) bdayThis = `${anioHoy+1}-${mm}-${dd}`;
+    diasHastaCumple = Math.ceil((new Date(bdayThis+"T12:00:00") - new Date(hoy+"T12:00:00")) / (1000*60*60*24));
+  }
+  const esCumple = diasHastaCumple === 0;
+  const cumpleEnBreve = diasHastaCumple !== null && diasHastaCumple <= 14;
+  const bdayPromo = data.getConfig("promos", {})?.cumpleanos || {};
+
   return (
     <div>
       <div style={s.topBar}>
@@ -4214,6 +4324,29 @@ function CInicio({ clienta, data, setTab }) {
       </div>
       <div style={{ padding:"18px" }}>
         <PushBanner role="clienta" uid={clienta.uid} />
+
+        {cumpleEnBreve && bdayPromo.habilitado && (
+          <div style={{ background:"linear-gradient(135deg,rgba(255,200,80,0.13),rgba(255,160,60,0.07))", border:`1.5px solid rgba(255,190,60,0.5)`, borderRadius:18, padding:"18px 16px", marginBottom:14 }}>
+            <p style={{ fontFamily:F.display, fontSize:26, color:"#f5c842", letterSpacing:"0.5px", margin:"0 0 4px" }}>
+              {esCumple ? "¡Feliz cumpleaños! 🎂" : `Tu cumpleaños es en ${diasHastaCumple} día${diasHastaCumple!==1?"s":""} 🎁`}
+            </p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 12px", lineHeight:1.5 }}>
+              {esCumple
+                ? "¡Hoy es tu día! Tenés un regalo especial esperándote."
+                : "Preparate — tenés un regalo esperándote para tu próxima visita."}
+            </p>
+            <div style={{ ...s.card, margin:0, display:"flex", alignItems:"center", gap:12, background:"rgba(245,200,66,0.1)", borderColor:"rgba(245,200,66,0.35)" }}>
+              <span style={{ fontSize:28 }}>🎁</span>
+              <div>
+                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:"#f5c842" }}>
+                  {bdayPromo.tipo === "%" ? `${bdayPromo.monto}% de descuento` : `$${bdayPromo.monto} de descuento`}
+                </p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>válido en tu próxima visita · mencionalo al reservar</p>
+              </div>
+            </div>
+            {!esCumple && <button style={{ ...s.btnG, width:"100%", marginTop:12, background:"rgba(245,200,66,0.18)", borderColor:"rgba(245,200,66,0.5)", color:"#f5c842" }} onClick={() => setTab("agendar")}>reservar turno →</button>}
+          </div>
+        )}
 
         {/* ── Próxima cita hero card (top) ── */}
         {proxCita && (
