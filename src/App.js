@@ -532,7 +532,7 @@ function Sheet({ titulo, onClose, children }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", backdropFilter:"blur(10px)", zIndex:100, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background:G.bg, border:`0.5px solid ${G.border}`, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:430, maxHeight:"92vh", overflowY:"auto", WebkitOverflowScrolling:"touch", overscrollBehavior:"contain", padding:"18px 20px 44px", boxShadow:"0 -8px 32px rgba(0,0,0,0.5)", animation:"slideInUp 0.32s cubic-bezier(0.4,0,0.2,1)" }}>
+      <div style={{ background:G.bg, border:`0.5px solid ${G.border}`, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:430, maxHeight:"92vh", overflowY:"auto", WebkitOverflowScrolling:"touch", overscrollBehavior:"contain", padding:"18px 20px 120px", boxShadow:"0 -8px 32px rgba(0,0,0,0.5)", animation:"slideInUp 0.32s cubic-bezier(0.4,0,0.2,1)" }}>
         <div style={{ width:36, height:4, background:G.border, borderRadius:2, margin:"0 auto 18px" }} />
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
           <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:21, color:G.text, margin:0 }}>{titulo}</p>
