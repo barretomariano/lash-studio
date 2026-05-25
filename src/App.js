@@ -159,6 +159,20 @@ const DEFAULT_MENSAJES = {
 };
 const fillMsg = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] !== undefined ? vars[k] : `{${k}}`);
 
+// Returns visits-discount status for a client, or null if feature disabled.
+const calcVisitasDesc = (hist, promosConfig) => {
+  const cfg = promosConfig?.visitasDesc || {};
+  if (!cfg.habilitado || !cfg.cantidad || cfg.cantidad <= 0) return null;
+  const total     = hist.length;
+  const usados    = hist.filter(h => h.descuentoVisitas).length;
+  const ganados   = Math.floor(total / cfg.cantidad);
+  const disponible = ganados > usados;
+  const enCiclo   = total % cfg.cantidad;
+  const progreso  = disponible ? cfg.cantidad : enCiclo;
+  const faltan    = disponible ? 0 : cfg.cantidad - enCiclo;
+  return { disponible, progreso, faltan, total, cfg, ganados, usados };
+};
+
 // ── Push notifications ─────────────────────────────────────────────────────────
 function urlBase64ToUint8Array(b64) {
   const pad = "=".repeat((4 - b64.length % 4) % 4);
@@ -167,12 +181,17 @@ function urlBase64ToUint8Array(b64) {
 }
 
 // Fire-and-forget push send (called from React components)
+// Also persists to Firebase for clienta targets so they don't lose messages
 const sendPush = (targets, title, body, url = "/") => {
   fetch("/api/notify", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ targets, title, body, url }),
   }).catch(() => {});
+  targets.forEach(t => {
+    if (!t.startsWith("clienta:")) return;
+    db.push(`notificaciones/${t.slice(8)}`, { titulo:title, cuerpo:body, url, fecha:new Date().toISOString().slice(0,10), ts:Date.now(), leida:false }).catch(() => {});
+  });
 };
 
 // Save current push subscription to the server for a given role/uid
@@ -311,11 +330,11 @@ const s = {
   get btnRed() { return { background:"rgba(224,112,112,0.1)", border:`0.5px solid rgba(224,112,112,0.35)`, borderRadius:12, padding:"10px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" }; },
   get tag()    { return { background:G.greenM, border:`0.5px solid rgba(${G.greenRGB},0.35)`, borderRadius:20, padding:"3px 11px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3, fontWeight:500 }; },
   get div()    { return { height:"0.5px", background:G.border, margin:"16px 0" }; },
-  get nav() { return { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:G.navBg, backdropFilter:"blur(32px) saturate(200%)", border:`0.5px solid ${G.border}`, borderRadius:28, display:"flex", zIndex:20, padding:`8px 6px calc(8px + env(safe-area-inset-bottom, 0px))`, boxShadow:`0 8px 40px ${G.shadow}, 0 1px 0 rgba(255,255,255,0.06) inset` }; },
-  get fab() { return { position:"fixed", bottom:"calc(90px + env(safe-area-inset-bottom, 0px))", right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(143,189,90,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" }; },
+  get nav() { return { position:"fixed", bottom:"max(20px, env(safe-area-inset-bottom, 0px))", left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:G.navBg, backdropFilter:"blur(32px) saturate(200%)", border:`0.5px solid ${G.border}`, borderRadius:28, display:"flex", zIndex:20, padding:"10px 6px 10px", boxShadow:`0 8px 40px ${G.shadow}, 0 1px 0 rgba(255,255,255,0.06) inset` }; },
+  get fab() { return { position:"fixed", bottom:"calc(max(20px, env(safe-area-inset-bottom, 0px)) + 70px)", right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(143,189,90,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" }; },
 };
 
-const navItmSty     = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", boxShadow:active ? `inset 0 2px 0 rgba(${G.greenRGB},0.55)` : "none" });
+const navItmSty     = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"6px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", boxShadow:active ? `inset 0 2px 0 rgba(${G.greenRGB},0.55)` : "none" });
 const sideNavItmSty = (active) => ({ display:"flex", flexDirection:"row", alignItems:"center", gap:10, padding:"10px 14px", cursor:"pointer", borderRadius:12, color:active ? G.green : G.muted, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", transition:"color 0.18s, background 0.18s", fontFamily:F.sans, fontSize:13, fontWeight:active ? 600 : 400 });
 
 const GlobalStyles = () => (
@@ -471,8 +490,8 @@ function Loader({ msg = "Cargando..." }) {
     <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:18, position:"relative" }}>
       <GlobalStyles />
       <AppBg />
-      <div style={{ width:56, height:56, borderRadius:"50%", background:`radial-gradient(circle, rgba(143,189,90,0.22) 0%, rgba(143,189,90,0.06) 100%)`, border:`1.5px solid rgba(143,189,90,0.45)`, display:"flex", alignItems:"center", justifyContent:"center", zIndex:1, animation:"logoPulse 2.5s ease-in-out infinite", boxShadow:"0 0 24px rgba(143,189,90,0.16)" }}>
-        <img src="/logo.svg" alt="Lash Studio" style={{ width:38, height:38, objectFit:"contain" }} />
+      <div style={{ width:120, height:120, borderRadius:"50%", animation:"logoPulse 2.5s ease-in-out infinite", zIndex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <img src="/logo.svg" alt="Lash Studio" style={{ width:"100%", height:"100%", objectFit:"contain" }} />
       </div>
       <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, zIndex:1, letterSpacing:"0.08em" }}>{msg}</p>
     </div>
@@ -635,12 +654,8 @@ function Login({ onLogin }) {
         <Icon name={dark ? "sun" : "moon"} size={16} color={G.muted} />
       </button>
       <div style={{ textAlign:"center", marginBottom:44, zIndex:1, animation:"fadeInUp 0.6s ease both" }}>
-        <div style={{ width:72, height:72, borderRadius:"50%", background:`radial-gradient(circle, rgba(${G.greenRGB},0.22) 0%, rgba(${G.greenRGB},0.08) 100%)`, border:`1.5px solid rgba(${G.greenRGB},0.45)`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite", boxShadow:`0 0 24px rgba(${G.greenRGB},0.18)` }}>
-          <img src="/logo.svg" alt="" style={{ width:46, height:46, objectFit:"contain" }} />
-        </div>
-        <h1 style={{ ...s.h1, fontSize:34, letterSpacing:"-0.5px", textAlign:"center", marginBottom:4 }}>Lash Studio</h1>
-        <p style={{ fontFamily:F.serif, fontSize:14, fontStyle:"italic", color:G.green, margin:"0 0 14px", letterSpacing:"0.04em" }}>by chulas</p>
-        <div style={{ width:64, height:1.5, background:`linear-gradient(90deg, transparent, ${G.green}, transparent)`, margin:"0 auto 12px" }} />
+        <img src="/logo.svg" alt="Lash Studio" style={{ width:140, height:140, objectFit:"contain", display:"block", margin:"0 auto 16px" }} />
+        <p style={{ fontFamily:F.sans, fontSize:11, color:G.green, margin:"0 0 8px", letterSpacing:"0.12em", textTransform:"uppercase", textAlign:"center" }}>by chulas</p>
         <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, letterSpacing:"0.14em", textTransform:"uppercase", textAlign:"center" }}>San Andrés · Buenos Aires</p>
       </div>
       {!modo ? (
@@ -812,7 +827,7 @@ function AdminApp({ data, onLogout }) {
         <AppBg />
         {/* Sidebar nav */}
         <nav style={{ width:240, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"28px 14px 24px", gap:2, height:"100vh", overflowY:"auto", zIndex:20 }}>
-          <img src="/logo.svg" alt="Lash Studio" style={{ width:"100%", height:40, objectFit:"contain", objectPosition:"left", marginBottom:24, flexShrink:0 }} />
+          <img src="/logo.svg" alt="Lash Studio" style={{ width:110, height:110, objectFit:"contain", display:"block", marginBottom:16, flexShrink:0 }} />
           {navItems.map(n => (
             <div key={n.id} style={{ ...sideNavItmSty(tab === n.id && !cur), padding:"12px 16px", fontSize:14 }} onClick={() => { setStack([]); setTab(n.id); }}>
               <Icon name={n.iconName} size={18} color={tab===n.id && !cur ? G.green : G.muted} strokeWidth={tab===n.id && !cur ? 1.8 : 1.5} />
@@ -983,6 +998,43 @@ function AdminInicio({ data, push, setTab, toast }) {
               {solicitudes.map(c => <SolicitudCard key={c._id} cita={c} data={data} toast={toast} push={push} />)}
               <div style={s.div} />
             </>
+          );
+        })()}
+        {/* Upcoming birthdays widget */}
+        {(() => {
+          const cumplesSemana = data.clientas.filter(c => {
+            if (!c.fechaNacimiento) return false;
+            const hoyStr = hoyISO();
+            const [, mm, dd] = c.fechaNacimiento.split("-");
+            const anio = parseInt(hoyStr.slice(0,4));
+            let bd = `${anio}-${mm}-${dd}`;
+            if (bd < hoyStr) bd = `${anio+1}-${mm}-${dd}`;
+            const d = Math.ceil((new Date(bd+"T12:00:00") - new Date(hoyStr+"T12:00:00")) / (1000*60*60*24));
+            return d <= 7;
+          }).sort((a, b) => {
+            const hoyStr = hoyISO();
+            const toD = fnac => { const [,mm,dd]=fnac.split("-"); const an=parseInt(hoyStr.slice(0,4)); let bd=`${an}-${mm}-${dd}`; if(bd<hoyStr)bd=`${an+1}-${mm}-${dd}`; return Math.ceil((new Date(bd+"T12:00:00")-new Date(hoyStr+"T12:00:00"))/(1000*60*60*24)); };
+            return toD(a.fechaNacimiento) - toD(b.fechaNacimiento);
+          });
+          if (!cumplesSemana.length) return null;
+          return (
+            <div style={{ ...s.card, marginBottom:14, borderColor:"rgba(245,200,66,0.35)", background:"rgba(245,200,66,0.06)" }}>
+              <p style={{ ...s.eyebrow, color:"#f5c842", marginBottom:8 }}>🎂 cumpleaños próximos</p>
+              {cumplesSemana.map(c => {
+                const hoyStr = hoyISO();
+                const [, mm, dd] = c.fechaNacimiento.split("-");
+                const anio = parseInt(hoyStr.slice(0,4));
+                let bd = `${anio}-${mm}-${dd}`;
+                if (bd < hoyStr) bd = `${anio+1}-${mm}-${dd}`;
+                const d = Math.ceil((new Date(bd+"T12:00:00") - new Date(hoyStr+"T12:00:00")) / (1000*60*60*24));
+                return (
+                  <div key={c._id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingBottom:6, marginBottom:6, borderBottom:`0.5px solid ${G.border}` }}>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.text }}>{c.nombre}</p>
+                    <span style={{ fontFamily:F.sans, fontSize:11, color:"#f5c842" }}>{d===0?"¡hoy! 🎂":`en ${d} día${d!==1?"s":""}`}</span>
+                  </div>
+                );
+              })}
+            </div>
           );
         })()}
         {/* Pipeline row */}
@@ -1706,6 +1758,7 @@ function AgendaDia({ data, push, toast, diaInicial }) {
   const [pagoTarget, setPagoTarget] = useState(null);
   const [quickPago, setQuickPago] = useState({ metodo:"efectivo", monto:"", montoEfectivo:"", montoTransf:"" });
   const [savingPago, setSavingPago] = useState(false);
+  const [aplicarDescRapido, setAplicarDescRapido] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours()*60 + n.getMinutes()); }, 30_000);
@@ -1745,24 +1798,35 @@ function AgendaDia({ data, push, toast, diaInicial }) {
     const precio = sv?.precio || 0;
     setQuickPago({ metodo:"efectivo", monto:String(precio), montoEfectivo:String(precio), montoTransf:"" });
     setPagoTarget(cita);
+    setAplicarDescRapido(false);
   };
 
   const completarRapido = async () => {
     if (!pagoTarget) return;
     const metodo = quickPago.metodo;
-    let monto = 0;
+    let montoBase = 0;
     if (metodo === "mixto") {
-      monto = (parseFloat(quickPago.montoEfectivo)||0) + (parseFloat(quickPago.montoTransf)||0);
+      montoBase = (parseFloat(quickPago.montoEfectivo)||0) + (parseFloat(quickPago.montoTransf)||0);
     } else {
-      monto = parseFloat(quickPago.monto)||0;
+      montoBase = parseFloat(quickPago.monto)||0;
     }
-    if (!monto) { toast("ingresá el monto"); return; }
+    if (!montoBase) { toast("ingresá el monto"); return; }
+
+    const clientaRapida = data.clientas.find(c => c._id === pagoTarget.clientaId);
+    const histRapido    = clientaRapida ? (Array.isArray(clientaRapida.historial) ? clientaRapida.historial : Object.values(clientaRapida.historial || {})) : [];
+    const vInfoRapido   = calcVisitasDesc(histRapido, data.getConfig("promos", {}));
+    const descRapido    = (aplicarDescRapido && vInfoRapido?.disponible)
+      ? (vInfoRapido.cfg.tipo === "%" ? Math.round(montoBase * vInfoRapido.cfg.monto / 100) : Math.min(vInfoRapido.cfg.monto, montoBase))
+      : 0;
+    const monto = Math.max(0, montoBase - descRapido);
+
     setSavingPago(true);
     try {
       const registro = {
         fecha:dia, servicio:pagoTarget.servicio,
         monto, pago:metodo,
-        ...(metodo === "mixto" ? { montoEfectivo:parseFloat(quickPago.montoEfectivo)||0, montoTransf:parseFloat(quickPago.montoTransf)||0 } : {})
+        ...(metodo === "mixto" ? { montoEfectivo:parseFloat(quickPago.montoEfectivo)||0, montoTransf:parseFloat(quickPago.montoTransf)||0 } : {}),
+        ...(aplicarDescRapido && descRapido > 0 ? { descuentoVisitas:true, montoOriginal:montoBase, descuentoMonto:descRapido } : {}),
       };
       await data.registrarPago(pagoTarget.clientaId, pagoTarget._id, registro);
       const svObj = data.servicios.find(s => s.nombre === pagoTarget.servicio);
@@ -1788,9 +1852,18 @@ function AgendaDia({ data, push, toast, diaInicial }) {
     toast("✓ turno confirmado");
   };
 
-  const totalPago = quickPago.metodo === "mixto"
+  const totalPagoBase = quickPago.metodo === "mixto"
     ? (parseFloat(quickPago.montoEfectivo)||0) + (parseFloat(quickPago.montoTransf)||0)
     : parseFloat(quickPago.monto)||0;
+  const vInfoDisp = pagoTarget ? (() => {
+    const cliR = data.clientas.find(c => c._id === pagoTarget.clientaId);
+    const hR   = cliR ? (Array.isArray(cliR.historial) ? cliR.historial : Object.values(cliR.historial || {})) : [];
+    return calcVisitasDesc(hR, data.getConfig("promos", {}));
+  })() : null;
+  const descRapidoPreview = (aplicarDescRapido && vInfoDisp?.disponible && totalPagoBase > 0)
+    ? (vInfoDisp.cfg.tipo === "%" ? Math.round(totalPagoBase * vInfoDisp.cfg.monto / 100) : Math.min(vInfoDisp.cfg.monto, totalPagoBase))
+    : 0;
+  const totalPago = Math.max(0, totalPagoBase - descRapidoPreview);
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 130px)" }}>
@@ -1969,8 +2042,27 @@ function AgendaDia({ data, push, toast, diaInicial }) {
                 <input style={s.input} type="number" value={quickPago.monto} onChange={e => setQuickPago(p => ({ ...p, monto:e.target.value }))} placeholder="$0" />
               </div>
             )}
+            {vInfoDisp?.disponible && (
+              <div onClick={() => setAplicarDescRapido(p => !p)} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, border:`1.5px solid ${aplicarDescRapido ? G.green : G.border}`, background:aplicarDescRapido ? G.greenM : "transparent", cursor:"pointer", marginBottom:12 }}>
+                <div style={{ width:16, height:16, borderRadius:4, border:`1.5px solid ${aplicarDescRapido ? G.green : G.border}`, background:aplicarDescRapido ? G.green : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  {aplicarDescRapido && <Icon name="check" size={10} color="#0a0a0a" strokeWidth={2.5} />}
+                </div>
+                <div>
+                  <p style={{ margin:"0 0 1px", fontFamily:F.sans, fontSize:12, color:G.text, fontWeight:600 }}>🎯 Descuento por visitas</p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>
+                    {vInfoDisp.cfg.tipo === "%" ? `−${vInfoDisp.cfg.monto}%` : `−$${vInfoDisp.cfg.monto}`}
+                    {aplicarDescRapido && descRapidoPreview > 0 ? ` = −${fmtPesos(descRapidoPreview)}` : ""}
+                  </p>
+                </div>
+              </div>
+            )}
             {totalPago > 0 && (
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.green, margin:"0 0 14px", textAlign:"center" }}>{fmtPesos(totalPago)}</p>
+              <div style={{ marginBottom:14, textAlign:"center" }}>
+                {aplicarDescRapido && descRapidoPreview > 0 && (
+                  <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 2px", textDecoration:"line-through" }}>{fmtPesos(totalPagoBase)}</p>
+                )}
+                <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.green, margin:0 }}>{fmtPesos(totalPago)}</p>
+              </div>
             )}
             <button style={{ ...s.btnG, width:"100%", opacity:savingPago ? 0.6 : 1 }}
               disabled={savingPago} onClick={completarRapido}>
@@ -2122,18 +2214,32 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
   const [reagendando, setReag] = useState(false);
   const [reagForm, setReagForm] = useState({ fecha:"", hora:"" });
   const [pago, setPago] = useState({ metodo:"efectivo", montoEfectivo:"", montoTransf:"", montoTotal:"" });
+  const [aplicarDescVisitas, setAplicarDescVisitas] = useState(false);
 
   const sv      = data.servicios.find(s => s.nombre === cita.servicio);
   const clienta = data.clientas.find(c => c._id === cita.clientaId);
   const estudio = data.getConfig("estudio", {});
 
+  const clientaHist = clienta ? (Array.isArray(clienta.historial) ? clienta.historial : Object.values(clienta.historial || {})) : [];
+  const promosConfig = data.getConfig("promos", {});
+  const visitasDescInfo = calcVisitasDesc(clientaHist, promosConfig);
+
   // Calcular total según modo
   const modoMixto = pago.metodo === "mixto";
-  const totalCalculado = modoMixto
+  const totalSinDesc = modoMixto
     ? (Number(pago.montoEfectivo)||0) + (Number(pago.montoTransf)||0)
     : Number(pago.montoTotal)||0;
 
+  const calcDescMonto = (base) => {
+    if (!visitasDescInfo?.disponible || !aplicarDescVisitas) return 0;
+    const cfg = visitasDescInfo.cfg;
+    return cfg.tipo === "%" ? Math.round(base * cfg.monto / 100) : Math.min(cfg.monto, base);
+  };
+  const descMonto = calcDescMonto(totalSinDesc);
+  const totalCalculado = Math.max(0, totalSinDesc - descMonto);
+
   const completar = async () => {
+    if (!cita.clientaId) { toast("sin clienta — no se puede cerrar"); return; }
     if (modoMixto && !pago.montoEfectivo && !pago.montoTransf) { toast("ingresá al menos un monto"); return; }
     if (!modoMixto && !pago.montoTotal) { toast("ingresá el monto"); return; }
 
@@ -2145,6 +2251,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
       pago:     pago.metodo,
       monto:    totalCalculado,
       ...(modoMixto ? { montoEfectivo:Number(pago.montoEfectivo)||0, montoTransf:Number(pago.montoTransf)||0 } : {}),
+      ...(aplicarDescVisitas && descMonto > 0 ? { descuentoVisitas:true, montoOriginal:totalSinDesc, descuentoMonto:descMonto } : {}),
     };
 
     await data.registrarPago(cita.clientaId, cita._id, registro);
@@ -2358,7 +2465,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
               <Field label="monto por transferencia">
                 <input style={s.input} type="number" value={pago.montoTransf} onChange={e => setPago(p => ({ ...p, montoTransf:e.target.value }))} placeholder="0" />
               </Field>
-              {totalCalculado > 0 && (
+              {totalSinDesc > 0 && (
                 <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, padding:"10px 14px", marginBottom:4 }}>
                   <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 2px" }}>total a cobrar</p>
                   <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:20, color:G.green, margin:0 }}>{fmtPesos(totalCalculado)}</p>
@@ -2369,6 +2476,38 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
             <Field label="monto cobrado" hint={sv?.precio ? `precio sugerido: ${fmtPesos(sv.precio)}` : ""}>
               <input style={s.input} type="number" value={pago.montoTotal} onChange={e => setPago(p => ({ ...p, montoTotal:e.target.value }))} placeholder={String(sv?.precio || 0)} />
             </Field>
+          )}
+
+          {visitasDescInfo?.disponible && (
+            <div onClick={() => setAplicarDescVisitas(p => !p)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderRadius:12, border:`1.5px solid ${aplicarDescVisitas ? G.green : G.border}`, background:aplicarDescVisitas ? G.greenM : "transparent", cursor:"pointer", marginBottom:4 }}>
+              <div style={{ width:18, height:18, borderRadius:4, border:`1.5px solid ${aplicarDescVisitas ? G.green : G.border}`, background:aplicarDescVisitas ? G.green : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                {aplicarDescVisitas && <Icon name="check" size={11} color="#0a0a0a" strokeWidth={2.5} />}
+              </div>
+              <div>
+                <p style={{ margin:"0 0 1px", fontFamily:F.sans, fontSize:13, color:G.text, fontWeight:600 }}>🎯 Descuento por visitas</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>
+                  {visitasDescInfo.cfg.tipo === "%" ? `−${visitasDescInfo.cfg.monto}%` : `−$${visitasDescInfo.cfg.monto}`}
+                  {aplicarDescVisitas && descMonto > 0 ? ` = −${fmtPesos(descMonto)}` : ""}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {aplicarDescVisitas && descMonto > 0 && totalSinDesc > 0 && (
+            <div style={{ ...s.card, margin:"0 0 4px", background:"rgba(143,189,90,0.06)", borderColor:G.greenD, padding:"10px 14px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>precio original</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtPesos(totalSinDesc)}</p>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.greenL }}>descuento</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.greenL }}>−{fmtPesos(descMonto)}</p>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between" }}>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.green }}>total</p>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.green }}>{fmtPesos(totalCalculado)}</p>
+              </div>
+            </div>
           )}
 
           <button style={s.btnG} onClick={completar}>guardar y cerrar cita →</button>
@@ -2386,7 +2525,7 @@ function AdminClientas({ data, push, toast }) {
   const [sheet, setSheet]       = useState(false);
   const [creds, setCreds]       = useState(null);
   const [saving, setSaving]     = useState(false);
-  const [form, setForm]         = useState({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
+  const [form, setForm]         = useState({ nombre:"", email:"", telefono:"", fechaNacimiento:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
   const wide = useIsWide();
 
@@ -2417,7 +2556,7 @@ function AdminClientas({ data, push, toast }) {
       setCreds(res.noAccount
         ? { noAccount:true, nombre:form.nombre }
         : { email:res.email, pass:res.pass, nombre:form.nombre, telefono:form.telefono });
-      setForm({ nombre:"", email:"", telefono:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
+      setForm({ nombre:"", email:"", telefono:"", fechaNacimiento:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
     } catch(e) { toast("Error al crear: " + (e?.message || "intentá de nuevo")); }
     finally { setSaving(false); }
   };
@@ -2441,6 +2580,17 @@ function AdminClientas({ data, push, toast }) {
           const ult = getUlt(c);
           const hist = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
           const dias = ult?.fecha ? Math.floor((new Date() - new Date(ult.fecha)) / (1000 * 60 * 60 * 24)) : null;
+          const fnac = c.fechaNacimiento;
+          let diasCumple = null;
+          if (fnac) {
+            const hoyStr = hoyISO();
+            const [, mm, dd] = fnac.split("-");
+            const anio = parseInt(hoyStr.slice(0,4));
+            let bd = `${anio}-${mm}-${dd}`;
+            if (bd < hoyStr) bd = `${anio+1}-${mm}-${dd}`;
+            diasCumple = Math.ceil((new Date(bd+"T12:00:00") - new Date(hoyStr+"T12:00:00")) / (1000*60*60*24));
+          }
+          const cumpleTag = diasCumple !== null && diasCumple <= 14;
           return (
             <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11, cursor:"pointer", opacity:c.estado === "pausada" ? 0.5 : 1 }} onClick={() => push("clienta-detalle", { clienta:c })}>
               <Avatar nombre={c.nombre} />
@@ -2448,6 +2598,7 @@ function AdminClientas({ data, push, toast }) {
                 <div style={{ display:"flex", alignItems:"center", gap:7 }}>
                   <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.nombre}</p>
                   {c.estado === "pausada" && <span style={{ ...s.tag, fontSize:9, background:"rgba(224,112,112,0.12)", borderColor:G.red, color:G.red }}>pausada</span>}
+                  {cumpleTag && <span style={{ ...s.tag, fontSize:9, background:"rgba(245,200,66,0.15)", borderColor:"rgba(245,200,66,0.5)", color:"#f5c842" }}>{diasCumple===0?"🎂 hoy":`🎂 en ${diasCumple}d`}</span>}
                 </div>
                 <p style={{ margin:0, ...s.sub, fontSize:11 }}>{ult ? `última visita: ${fmtFecha(ult.fecha)}` : "Sin visitas aún"}{dias !== null ? ` · hace ${dias}d` : ""}</p>
               </div>
@@ -2467,6 +2618,7 @@ function AdminClientas({ data, push, toast }) {
             <Field label="nombre y apellido *"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="Nombre Apellido" /></Field>
             <Field label="email" hint="Opcional — sin email la clienta no tendrá acceso al panel"><input style={s.input} type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="email@ejemplo.com (opcional)" /></Field>
             <Field label="teléfono"><input style={s.input} type="tel" value={form.telefono} onChange={e => set("telefono", e.target.value)} placeholder="11 XXXX-XXXX" /></Field>
+            <Field label="fecha de nacimiento"><input style={s.input} type="date" value={form.fechaNacimiento} onChange={e => set("fechaNacimiento", e.target.value)} /></Field>
             <div style={s.div} />
             {opcCurvas.length > 0 && <Field label="curva habitual"><Chips options={opcCurvas} value={form.curva} onChange={v => set("curva", v)} /></Field>}
             {opcGrosor.length > 0 && <Field label="grosor"><Chips options={opcGrosor} value={form.grosor} onChange={v => set("grosor", v)} /></Field>}
@@ -2510,7 +2662,26 @@ function AdminClientas({ data, push, toast }) {
 function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
   const [c, setC]         = useState(cInit);
   const [tab, setTab]     = useState("info");
-  const [form, setForm]   = useState({ nombre:cInit.nombre||"", telefono:cInit.telefono||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"", estado:cInit.estado||"activa", mapaTecnico:cInit.mapaTecnico||"" });
+  const [form, setForm]   = useState({ nombre:cInit.nombre||"", telefono:cInit.telefono||"", fechaNacimiento:cInit.fechaNacimiento||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"", estado:cInit.estado||"activa", mapaTecnico:cInit.mapaTecnico||"" });
+  const [fichaTab, setFichaTab] = useState("pestañas");
+  const [formLam, setFormLam] = useState({
+    porosidad:       cInit.laminado?.porosidad       || "",
+    estado:          cInit.laminado?.estado          || "",
+    tipoOjo:         cInit.laminado?.tipoOjo         || "",
+    formatoOseo:     cInit.laminado?.formatoOseo     || "",
+    particularidades:cInit.laminado?.particularidades|| "",
+    molde:           cInit.laminado?.molde           || "",
+    tiempos:         cInit.laminado?.tiempos         || "",
+    tecnica:         cInit.laminado?.tecnica         || "",
+  });
+  const setLam = (k, v) => setFormLam(f => ({ ...f, [k]:v }));
+  const [savingLam, setSavingLam] = useState(false);
+  const guardarLaminado = async () => {
+    setSavingLam(true);
+    await data.editarClientas(c._id, { laminado:formLam });
+    setC(prev => ({ ...prev, laminado:formLam }));
+    setSavingLam(false); toast("✓ guardado");
+  };
   const [editing, setEditing] = useState(false);
   const [uploadingMapa, setUploadingMapa] = useState(false);
   const [showPass, setShowPass]     = useState(false);
@@ -2584,6 +2755,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                 <>
                   <Field label="nombre"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} /></Field>
                   <Field label="teléfono"><input style={s.input} value={form.telefono} onChange={e => set("telefono", e.target.value)} /></Field>
+                  <Field label="fecha de nacimiento"><input style={s.input} type="date" value={form.fechaNacimiento} onChange={e => set("fechaNacimiento", e.target.value)} /></Field>
                   <Field label="estado">
                     <div style={{ display:"flex", gap:8 }}>
                       {["activa", "pausada"].map(v => <button key={v} onClick={() => set("estado", v)} style={{ ...s.btnGl, flex:1, background:form.estado === v ? G.greenM : G.glass, borderColor:form.estado === v ? G.green : G.border, color:form.estado === v ? G.greenL : G.sub }}>{v}</button>)}
@@ -2599,6 +2771,14 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                       <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</span>
                     </div>
                   ))}
+                  {c.fechaNacimiento && (
+                    <div style={{ display:"flex", justifyContent:"space-between" }}>
+                      <span style={{ ...s.label, margin:0 }}>fecha de nacimiento</span>
+                      <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>
+                        {fmtFecha(c.fechaNacimiento)}{(() => { const [anio, mm, dd] = c.fechaNacimiento.split("-"); const edad = new Date().getFullYear() - parseInt(anio) - (new Date() < new Date(`${new Date().getFullYear()}-${mm}-${dd}`) ? 1 : 0); return ` · ${edad} años`; })()}
+                      </span>
+                    </div>
+                  )}
                   {c.email && (
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                       <span style={{ ...s.label, margin:0 }}>contraseña app</span>
@@ -2638,40 +2818,83 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
 
         {tab === "ficha" && (
           <div>
-            <div style={s.card}>
-              {opcCurvas.length > 0 && <Field label="curva"><Chips options={opcCurvas} value={form.curva} onChange={v => { set("curva", v); data.editarClientas(c._id, { curva:v }); toast("✓"); }} /></Field>}
-              {opcGrosor.length > 0 && <Field label="grosor"><Chips options={opcGrosor} value={form.grosor} onChange={v => { set("grosor", v); data.editarClientas(c._id, { grosor:v }); toast("✓"); }} /></Field>}
-              {opcLargo.length  > 0 && <Field label="largo"><Chips  options={opcLargo}  value={form.largo}  onChange={v => { set("largo",  v); data.editarClientas(c._id, { largo:v  }); toast("✓"); }} /></Field>}
-              {(opcCurvas.length === 0 && opcGrosor.length === 0 && opcLargo.length === 0) && <p style={{ color:G.muted, fontSize:12 }}>Configurá opciones en Config → Técnico</p>}
+            {/* Sub-tab toggle */}
+            <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+              {["pestañas", "laminado"].map(st => (
+                <button key={st} onClick={() => setFichaTab(st)} style={{ ...s.btnGl, flex:1, fontSize:11, padding:"8px 4px", background:fichaTab === st ? G.greenM : "transparent", borderColor:fichaTab === st ? G.green : G.border, color:fichaTab === st ? G.greenL : G.muted, fontWeight:fichaTab === st ? 700 : 400 }}>{st}</button>
+              ))}
             </div>
-            <div style={s.card}>
-              <Field label="alergias"><input style={s.input} value={form.alergias} onChange={e => set("alergias", e.target.value)} onBlur={() => { data.editarClientas(c._id, { alergias:form.alergias }); toast("✓"); }} /></Field>
-              <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e => set("observaciones", e.target.value)} onBlur={() => { data.editarClientas(c._id, { observaciones:form.observaciones }); toast("✓"); }} /></Field>
-            </div>
-            <div style={s.card}>
-              <p style={{ ...s.eyebrow, marginBottom:10 }}>mapa técnico</p>
-              {form.mapaTecnico ? (
-                <div style={{ position:"relative", marginBottom:10 }}>
-                  <img src={form.mapaTecnico} alt="mapa técnico" loading="lazy" style={{ width:"100%", borderRadius:10, objectFit:"cover", maxHeight:280, display:"block" }} />
-                  <button onClick={async () => { await data.editarClientas(c._id, { mapaTecnico:"" }); set("mapaTecnico", ""); toast("Foto eliminada"); }}
-                    style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:12 }}>✕</button>
+
+            {fichaTab === "pestañas" && (
+              <>
+                <div style={s.card}>
+                  {opcCurvas.length > 0 && <Field label="curva"><Chips options={opcCurvas} value={form.curva} onChange={v => { set("curva", v); data.editarClientas(c._id, { curva:v }); toast("✓"); }} /></Field>}
+                  {opcGrosor.length > 0 && <Field label="grosor"><Chips options={opcGrosor} value={form.grosor} onChange={v => { set("grosor", v); data.editarClientas(c._id, { grosor:v }); toast("✓"); }} /></Field>}
+                  {opcLargo.length  > 0 && <Field label="largo"><Chips  options={opcLargo}  value={form.largo}  onChange={v => { set("largo",  v); data.editarClientas(c._id, { largo:v  }); toast("✓"); }} /></Field>}
+                  {(opcCurvas.length === 0 && opcGrosor.length === 0 && opcLargo.length === 0) && <p style={{ color:G.muted, fontSize:12 }}>Configurá opciones en Config → Técnico</p>}
                 </div>
-              ) : (
-                <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:10 }}>Sin foto de mapa técnico aún</p>
-              )}
-              <label style={{ ...s.btnGl, display:"flex", alignItems:"center", gap:8, cursor:"pointer", opacity:uploadingMapa?0.6:1, justifyContent:"center" }}>
-                <Icon name="camera" size={14} color={G.sub} />
-                {uploadingMapa ? "Subiendo..." : form.mapaTecnico ? "Cambiar foto" : "Subir mapa técnico"}
-                <input type="file" accept="image/*" style={{ display:"none" }} disabled={uploadingMapa}
-                  onChange={async (e) => {
-                    const file = e.target.files[0]; if (!file) return;
-                    setUploadingMapa(true);
-                    try { const url = await subirFoto(file); await data.editarClientas(c._id, { mapaTecnico:url }); set("mapaTecnico", url); toast("Foto guardada"); }
-                    catch { toast("Error al subir foto"); }
-                    setUploadingMapa(false); e.target.value="";
-                  }} />
-              </label>
-            </div>
+                <div style={s.card}>
+                  <Field label="alergias"><input style={s.input} value={form.alergias} onChange={e => set("alergias", e.target.value)} onBlur={() => { data.editarClientas(c._id, { alergias:form.alergias }); toast("✓"); }} /></Field>
+                  <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e => set("observaciones", e.target.value)} onBlur={() => { data.editarClientas(c._id, { observaciones:form.observaciones }); toast("✓"); }} /></Field>
+                </div>
+                <div style={s.card}>
+                  <p style={{ ...s.eyebrow, marginBottom:10 }}>mapa técnico</p>
+                  {form.mapaTecnico ? (
+                    <div style={{ position:"relative", marginBottom:10 }}>
+                      <img src={form.mapaTecnico} alt="mapa técnico" loading="lazy" style={{ width:"100%", borderRadius:10, objectFit:"cover", maxHeight:280, display:"block" }} />
+                      <button onClick={async () => { await data.editarClientas(c._id, { mapaTecnico:"" }); set("mapaTecnico", ""); toast("Foto eliminada"); }}
+                        style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:12 }}>✕</button>
+                    </div>
+                  ) : (
+                    <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:10 }}>Sin foto de mapa técnico aún</p>
+                  )}
+                  <label style={{ ...s.btnGl, display:"flex", alignItems:"center", gap:8, cursor:"pointer", opacity:uploadingMapa?0.6:1, justifyContent:"center" }}>
+                    <Icon name="camera" size={14} color={G.sub} />
+                    {uploadingMapa ? "Subiendo..." : form.mapaTecnico ? "Cambiar foto" : "Subir mapa técnico"}
+                    <input type="file" accept="image/*" style={{ display:"none" }} disabled={uploadingMapa}
+                      onChange={async (e) => {
+                        const file = e.target.files[0]; if (!file) return;
+                        setUploadingMapa(true);
+                        try { const url = await subirFoto(file); await data.editarClientas(c._id, { mapaTecnico:url }); set("mapaTecnico", url); toast("Foto guardada"); }
+                        catch { toast("Error al subir foto"); }
+                        setUploadingMapa(false); e.target.value="";
+                      }} />
+                  </label>
+                </div>
+              </>
+            )}
+
+            {fichaTab === "laminado" && (
+              <div style={s.card}>
+                <Field label="porosidad">
+                  <Chips options={["baja","media","alta"]} value={formLam.porosidad} onChange={v => setLam("porosidad", v)} />
+                </Field>
+                <Field label="estado / tricología">
+                  <textarea style={{ ...s.input, height:60, resize:"none" }} value={formLam.estado} onChange={e => setLam("estado", e.target.value)} placeholder="Observaciones del estado del cabello..." />
+                </Field>
+                <Field label="tipo de ojo">
+                  <Chips options={["pequeño","almendra","grande","prominente","caído"]} value={formLam.tipoOjo} onChange={v => setLam("tipoOjo", v)} />
+                </Field>
+                <Field label="formato óseo">
+                  <input style={s.input} value={formLam.formatoOseo} onChange={e => setLam("formatoOseo", e.target.value)} placeholder="ej: frente angosta, pómulos pronunciados..." />
+                </Field>
+                <Field label="particularidades">
+                  <textarea style={{ ...s.input, height:60, resize:"none" }} value={formLam.particularidades} onChange={e => setLam("particularidades", e.target.value)} placeholder="Notas especiales de la clienta..." />
+                </Field>
+                <Field label="molde">
+                  <Chips options={["U","C","M","L"]} value={formLam.molde} onChange={v => setLam("molde", v)} />
+                </Field>
+                <Field label="tiempos de acción">
+                  <input style={s.input} value={formLam.tiempos} onChange={e => setLam("tiempos", e.target.value)} placeholder="ej: P1: 8min · P2: 6min" />
+                </Field>
+                <Field label="técnica">
+                  <input style={s.input} value={formLam.tecnica} onChange={e => setLam("tecnica", e.target.value)} placeholder="ej: lifting + tinte" />
+                </Field>
+                <button style={{ ...s.btnG, opacity:savingLam?0.6:1 }} onClick={guardarLaminado} disabled={savingLam}>
+                  {savingLam ? "Guardando..." : "Guardar laminado →"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -2682,9 +2905,17 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
               <div key={i} style={s.card}>
                 <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
                   <div><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p><p style={{ margin:0, ...s.sub, fontSize:11 }}>{fmtFecha(h.fecha)}{h.curva ? ` · curva ${h.curva}` : ""}</p></div>
-                  <div style={{ textAlign:"right" }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(h.monto)}</p><span style={s.tag}>{h.pago}</span></div>
+                  <div style={{ textAlign:"right" }}>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(h.monto)}</p>
+                    {h.descuentoVisitas && <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.muted, textDecoration:"line-through" }}>{fmtPesos(h.montoOriginal)}</p>}
+                    <span style={s.tag}>{h.pago}</span>
+                    {h.descuentoVisitas && <span style={{ ...s.tag, marginLeft:4, background:`rgba(${G.greenRGB},0.18)`, color:G.greenL }}>🎯 desc.</span>}
+                  </div>
                 </div>
                 {h.notas && <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{h.notas}</p>}
+                {h.descuentoVisitas && (
+                  <p style={{ margin:"4px 0 0", fontFamily:F.sans, fontSize:10, color:G.greenL }}>descuento por visitas aplicado · −{fmtPesos(h.descuentoMonto)}</p>
+                )}
               </div>
             ))}
           </div>
@@ -2716,6 +2947,27 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
                 </div>
               ))}
             </div>
+            {(() => {
+              const vInfo = calcVisitasDesc(hist, data.getConfig("promos", {}));
+              if (!vInfo) return null;
+              return (
+                <div style={{ ...s.card, marginBottom:14 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, fontWeight:600 }}>🎯 Descuento por visitas</p>
+                    <span style={{ ...s.tag, ...(vInfo.disponible ? { background:`rgba(${G.greenRGB},0.18)`, color:G.greenL } : {}) }}>
+                      {vInfo.disponible ? "¡disponible!" : `${vInfo.progreso}/${vInfo.cfg.cantidad}`}
+                    </span>
+                  </div>
+                  <div style={{ height:6, borderRadius:3, background:`rgba(${G.greenRGB},0.12)`, overflow:"hidden", marginBottom:6 }}>
+                    <div style={{ height:"100%", borderRadius:3, background:G.green, width:`${Math.round(vInfo.progreso / vInfo.cfg.cantidad * 100)}%` }} />
+                  </div>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>
+                    {vInfo.disponible ? "Clienta tiene un descuento listo para aplicar" : `Faltan ${vInfo.faltan} visita${vInfo.faltan !== 1 ? "s" : ""} para el próximo descuento`}
+                    {" · "}{vInfo.cfg.tipo === "%" ? `${vInfo.cfg.monto}%` : `$${vInfo.cfg.monto}`}
+                  </p>
+                </div>
+              );
+            })()}
             {(() => {
               const cnt = {}; hist.forEach(h => { cnt[h.servicio] = (cnt[h.servicio] || 0) + 1; });
               const sorted = Object.entries(cnt).sort((a, b) => b[1] - a[1]);
@@ -3277,11 +3529,118 @@ function InsumosTab({ data, toast }) {
   );
 }
 
+// ── Config Promos ──────────────────────────────────────────────────────────────
+function ConfigPromos({ data, toast }) {
+  const saved = data.getConfig("promos", {});
+  const [cumple, setCumple] = useState({
+    habilitado: saved.cumpleanos?.habilitado ?? false,
+    tipo: saved.cumpleanos?.tipo || "%",
+    monto: saved.cumpleanos?.monto || 10,
+  });
+  const saveCumple = async (upd) => {
+    const next = { ...cumple, ...upd };
+    setCumple(next);
+    await data.saveConfig("promos", { ...saved, cumpleanos: next });
+    toast("✓ guardado");
+  };
+  return (
+    <div>
+      <div style={{ ...s.card, marginBottom:14, borderColor: cumple.habilitado ? "rgba(245,200,66,0.4)" : G.border }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: cumple.habilitado ? 14 : 0 }}>
+          <div>
+            <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white }}>🎂 Descuento de cumpleaños</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Se muestra 14 días antes en el panel de la clienta</p>
+          </div>
+          <button onClick={() => saveCumple({ habilitado: !cumple.habilitado })} style={{ background: cumple.habilitado ? G.greenM : "transparent", border:`1.5px solid ${cumple.habilitado ? G.green : G.border}`, borderRadius:50, width:48, height:26, cursor:"pointer", position:"relative", transition:"all 0.2s", flexShrink:0 }}>
+            <div style={{ position:"absolute", top:3, left: cumple.habilitado ? 25 : 3, width:18, height:18, borderRadius:"50%", background: cumple.habilitado ? G.greenL : G.muted, transition:"left 0.2s" }} />
+          </button>
+        </div>
+        {cumple.habilitado && (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <Field label="tipo de descuento">
+              <div style={{ display:"flex", gap:7 }}>
+                {["%", "$"].map(t => (
+                  <button key={t} onClick={() => saveCumple({ tipo: t })} style={{ ...s.btnGl, flex:1, fontSize:13, background: cumple.tipo===t ? G.greenM : "transparent", borderColor: cumple.tipo===t ? G.green : G.border, color: cumple.tipo===t ? G.greenL : G.muted, fontWeight: cumple.tipo===t ? 700 : 400 }}>{t === "%" ? "Porcentaje (%)" : "Monto fijo ($)"}</button>
+                ))}
+              </div>
+            </Field>
+            <Field label={cumple.tipo === "%" ? "porcentaje de descuento" : "monto de descuento ($)"}>
+              <input style={s.input} type="number" min="1" max={cumple.tipo==="%"?100:99999} value={cumple.monto}
+                onChange={e => setCumple(p => ({...p, monto: Number(e.target.value)}))}
+                onBlur={() => saveCumple({})} />
+            </Field>
+            <div style={{ ...s.card, margin:0, background:"rgba(245,200,66,0.08)", borderColor:"rgba(245,200,66,0.3)" }}>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:"#f5c842", lineHeight:1.5 }}>
+                La clienta verá este regalo en su panel los 14 días previos a su cumpleaños y el día mismo.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+      <VisitasDescCard data={data} toast={toast} saved={saved} />
+    </div>
+  );
+}
+
+function VisitasDescCard({ data, toast, saved }) {
+  const [vis, setVis] = useState({
+    habilitado: saved.visitasDesc?.habilitado ?? false,
+    tipo:       saved.visitasDesc?.tipo       || "%",
+    monto:      saved.visitasDesc?.monto      || 10,
+    cantidad:   saved.visitasDesc?.cantidad   || 5,
+  });
+  const saveVis = async (upd) => {
+    const next = { ...vis, ...upd };
+    setVis(next);
+    await data.saveConfig("promos", { ...saved, visitasDesc: next });
+    toast("✓ guardado");
+  };
+  return (
+    <div style={{ ...s.card, borderColor: vis.habilitado ? "rgba(143,189,90,0.4)" : G.border }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: vis.habilitado ? 14 : 0 }}>
+        <div>
+          <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white }}>🎯 Descuento por visitas</p>
+          <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Se activa automáticamente al llegar a X visitas</p>
+        </div>
+        <button onClick={() => saveVis({ habilitado: !vis.habilitado })} style={{ background: vis.habilitado ? G.greenM : "transparent", border:`1.5px solid ${vis.habilitado ? G.green : G.border}`, borderRadius:50, width:48, height:26, cursor:"pointer", position:"relative", transition:"all 0.2s", flexShrink:0 }}>
+          <div style={{ position:"absolute", top:3, left: vis.habilitado ? 25 : 3, width:18, height:18, borderRadius:"50%", background: vis.habilitado ? G.greenL : G.muted, transition:"left 0.2s" }} />
+        </button>
+      </div>
+      {vis.habilitado && (
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          <Field label="visitas necesarias para el descuento">
+            <input style={s.input} type="number" min="1" max="50" value={vis.cantidad}
+              onChange={e => setVis(p => ({ ...p, cantidad: Number(e.target.value) }))}
+              onBlur={() => saveVis({})} />
+          </Field>
+          <Field label="tipo de descuento">
+            <div style={{ display:"flex", gap:7 }}>
+              {["%", "$"].map(t => (
+                <button key={t} onClick={() => saveVis({ tipo: t })} style={{ ...s.btnGl, flex:1, fontSize:13, background: vis.tipo===t ? G.greenM : "transparent", borderColor: vis.tipo===t ? G.green : G.border, color: vis.tipo===t ? G.greenL : G.muted, fontWeight: vis.tipo===t ? 700 : 400 }}>{t === "%" ? "Porcentaje (%)" : "Monto fijo ($)"}</button>
+              ))}
+            </div>
+          </Field>
+          <Field label={vis.tipo === "%" ? "porcentaje de descuento" : "monto de descuento ($)"}>
+            <input style={s.input} type="number" min="1" max={vis.tipo==="%"?100:99999} value={vis.monto}
+              onChange={e => setVis(p => ({ ...p, monto: Number(e.target.value) }))}
+              onBlur={() => saveVis({})} />
+          </Field>
+          <div style={{ ...s.card, margin:0, background:"rgba(143,189,90,0.06)", borderColor:"rgba(143,189,90,0.3)" }}>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.greenL, lineHeight:1.5 }}>
+              Cada {vis.cantidad} visitas la clienta recibe {vis.tipo === "%" ? `${vis.monto}% de descuento` : `$${vis.monto} de descuento`} en su próximo turno.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Admin Config ───────────────────────────────────────────────────────────────
 function AdminConfig({ data, toast, onLogout }) {
   const [tab, setTab] = useState("servicios");
   const wide = useIsWide();
-  const configTabs = ["servicios","mensajes","técnico","adicionales","horarios","estudio","notificaciones","apariencia"];
+  const configTabs = ["servicios","mensajes","técnico","adicionales","horarios","estudio","notificaciones","apariencia","promos"];
   const renderContent = () => {
     if (tab === "servicios")      return <ConfigServicios      data={data} toast={toast} />;
     if (tab === "mensajes")       return <ConfigMensajes       data={data} toast={toast} />;
@@ -3291,6 +3650,7 @@ function AdminConfig({ data, toast, onLogout }) {
     if (tab === "estudio")        return <ConfigEstudio        data={data} toast={toast} onLogout={onLogout} />;
     if (tab === "notificaciones") return <ConfigNotificaciones data={data} toast={toast} />;
     if (tab === "apariencia")     return <ConfigApariencia     data={data} toast={toast} />;
+    if (tab === "promos")         return <ConfigPromos         data={data} toast={toast} />;
   };
   return (
     <div>
@@ -3958,6 +4318,16 @@ function ConfigNotificaciones({ data, toast }) {
     toast("✓ guardado");
   };
 
+  const defaultSchedule = { recordatorio24h: true, recordatorio24hTexto:"Recordatorio de tu turno mañana 🌿", recall: false, recallDias:30, recallTexto:"¡Te extrañamos! ¿Reagendamos tu servicio?", service: false, serviceDias:14, serviceTexto:"¡Es momento del service! Agendá tu turno 🌿", horaEnvio:"09:00" };
+  const [schedule, setSchedule] = useState(() => ({ ...defaultSchedule, ...data.getConfig("notifSchedule", {}) }));
+  const setSch = (k, v) => setSchedule(s => ({ ...s, [k]:v }));
+  const saveSchedule = async (upd) => {
+    const next = { ...schedule, ...upd };
+    setSchedule(next);
+    await data.saveConfig("notifSchedule", next);
+    toast("✓ guardado");
+  };
+
   const sendTest = async () => {
     setSending(true);
     try {
@@ -4016,20 +4386,73 @@ function ConfigNotificaciones({ data, toast }) {
         {sending ? "Enviando..." : "Enviar notificación de prueba"}
       </button>
 
-      {/* Cron schedule info */}
+      {/* Configurable reminders */}
       <div style={{ ...s.card, marginBottom:14 }}>
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text, margin:"0 0 10px" }}>Recordatorios automáticos</p>
-        {[
-          ["Horario de envío", "9:00 am (Buenos Aires)"],
-          ["Frecuencia",       "Cada día"],
-          ["Qué recibís",      "Resumen de citas del día siguiente"],
-          ["Clientas",         "Reciben su recordatorio 24h antes"],
-        ].map(([l, v]) => (
-          <div key={l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-            <span style={{ fontFamily:F.sans, fontSize:12, color:G.sub }}>{l}</span>
-            <span style={s.tag}>{v}</span>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text, margin:"0 0 14px" }}>Recordatorios automáticos</p>
+
+        {/* Hora de envío */}
+        <Field label="hora de envío diario">
+          <input style={{ ...s.input, width:"auto", maxWidth:140 }} type="time" value={schedule.horaEnvio} onChange={e => saveSchedule({ horaEnvio: e.target.value })} />
+        </Field>
+
+        {/* Recordatorio 24h */}
+        <div style={{ ...s.cardSub, marginBottom:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:schedule.recordatorio24h ? 10 : 0 }}>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontWeight:600, fontSize:13, color:G.text }}>Recordatorio 24h antes</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Avisa a la clienta el día anterior al turno</p>
+            </div>
+            <div style={{ width:36, height:20, borderRadius:10, background:schedule.recordatorio24h ? G.green : G.border, cursor:"pointer", position:"relative", transition:"background 0.2s", flexShrink:0 }}
+              onClick={() => saveSchedule({ recordatorio24h: !schedule.recordatorio24h })}>
+              <div style={{ position:"absolute", top:3, left:schedule.recordatorio24h ? 18 : 3, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+            </div>
           </div>
-        ))}
+          {schedule.recordatorio24h && (
+            <Field label="texto del recordatorio">
+              <input style={s.input} defaultValue={schedule.recordatorio24hTexto} onBlur={e => saveSchedule({ recordatorio24hTexto: e.target.value || defaultSchedule.recordatorio24hTexto })} />
+            </Field>
+          )}
+        </div>
+
+        {/* Recall por inactividad */}
+        <div style={{ ...s.cardSub, marginBottom:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:schedule.recall ? 10 : 0 }}>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontWeight:600, fontSize:13, color:G.text }}>Recall por inactividad</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Avisa a clientas que llevan N días sin turno</p>
+            </div>
+            <div style={{ width:36, height:20, borderRadius:10, background:schedule.recall ? G.green : G.border, cursor:"pointer", position:"relative", transition:"background 0.2s", flexShrink:0 }}
+              onClick={() => saveSchedule({ recall: !schedule.recall })}>
+              <div style={{ position:"absolute", top:3, left:schedule.recall ? 18 : 3, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+            </div>
+          </div>
+          {schedule.recall && (
+            <>
+              <Field label="días de inactividad"><input style={{ ...s.input, width:"auto", maxWidth:100 }} type="number" min="1" value={schedule.recallDias} onChange={e => setSch("recallDias", parseInt(e.target.value)||30)} onBlur={() => saveSchedule({ recallDias: schedule.recallDias })} /></Field>
+              <Field label="texto del mensaje"><input style={s.input} defaultValue={schedule.recallTexto} onBlur={e => saveSchedule({ recallTexto: e.target.value || defaultSchedule.recallTexto })} /></Field>
+            </>
+          )}
+        </div>
+
+        {/* Recordatorio de service */}
+        <div style={{ ...s.cardSub }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:schedule.service ? 10 : 0 }}>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontWeight:600, fontSize:13, color:G.text }}>Recordatorio de service</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Avisa cuando es momento del service (N días)</p>
+            </div>
+            <div style={{ width:36, height:20, borderRadius:10, background:schedule.service ? G.green : G.border, cursor:"pointer", position:"relative", transition:"background 0.2s", flexShrink:0 }}
+              onClick={() => saveSchedule({ service: !schedule.service })}>
+              <div style={{ position:"absolute", top:3, left:schedule.service ? 18 : 3, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+            </div>
+          </div>
+          {schedule.service && (
+            <>
+              <Field label="días entre servicios"><input style={{ ...s.input, width:"auto", maxWidth:100 }} type="number" min="1" value={schedule.serviceDias} onChange={e => setSch("serviceDias", parseInt(e.target.value)||14)} onBlur={() => saveSchedule({ serviceDias: schedule.serviceDias })} /></Field>
+              <Field label="texto del mensaje"><input style={s.input} defaultValue={schedule.serviceTexto} onBlur={e => saveSchedule({ serviceTexto: e.target.value || defaultSchedule.serviceTexto })} /></Field>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Push notification text editor */}
@@ -4071,38 +4494,130 @@ function ConfigNotificaciones({ data, toast }) {
   );
 }
 
+function CNotificaciones({ clienta, notifs, setNotifs }) {
+  useEffect(() => {
+    if (!clienta.uid || !notifs.some(n => !n.leida)) return;
+    // Mark all as read in Firebase and local state
+    notifs.filter(n => !n.leida && n._id).forEach(n => {
+      db.update(`notificaciones/${clienta.uid}/${n._id}`, { leida:true }).catch(() => {});
+    });
+    setNotifs(p => p.map(n => ({ ...n, leida:true })));
+    if (typeof navigator.clearAppBadge === "function") navigator.clearAppBadge();
+  }, []);
+
+  const borrarTodo = async () => {
+    if (!clienta.uid) return;
+    await db.del(`notificaciones/${clienta.uid}`);
+    setNotifs([]);
+    if (typeof navigator.clearAppBadge === "function") navigator.clearAppBadge();
+  };
+
+  if (!clienta.uid) {
+    return (
+      <div>
+        <div style={s.topBar}><h1 style={s.h1}>Avisos</h1></div>
+        <div style={{ padding:24 }}><p style={{ fontFamily:F.sans, fontSize:13, color:G.muted }}>Necesitás una cuenta para recibir avisos.</p></div>
+      </div>
+    );
+  }
+
+  const sorted = [...notifs].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+  return (
+    <div>
+      <div style={s.topBar}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div><h1 style={s.h1}>Avisos</h1><p style={s.sub}>{notifs.length === 0 ? "sin mensajes" : `${notifs.length} mensaje${notifs.length !== 1 ? "s" : ""}`}</p></div>
+          {notifs.length > 0 && (
+            <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px" }} onClick={borrarTodo}>Borrar todo</button>
+          )}
+        </div>
+      </div>
+      <div style={{ padding:"18px" }}>
+        {sorted.length === 0 && (
+          <div style={{ textAlign:"center", paddingTop:40 }}>
+            <Icon name="bell" size={36} color={G.border} />
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, marginTop:12 }}>No tenés avisos por ahora</p>
+          </div>
+        )}
+        {sorted.map((n, i) => (
+          <div key={n._id || i} style={{ ...s.card, borderLeft:`3px solid ${n.leida ? G.border : G.green}`, marginBottom:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+              <div style={{ flex:1 }}>
+                <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text }}>{n.titulo}</p>
+                <p style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:13, color:G.sub, lineHeight:1.5 }}>{n.cuerpo}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{n.fecha}</p>
+              </div>
+              {!n.leida && <div style={{ width:8, height:8, borderRadius:"50%", background:G.green, flexShrink:0, marginTop:4 }} />}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PANEL CLIENTA
 // ═══════════════════════════════════════════════════════════════════════════════
 function ClientaApp({ clienta: clientaSession, data, onLogout }) {
   const [tab, setTab] = useState("inicio");
   const wide = useIsWide();
+  const [notifs, setNotifs] = useState([]);
+  const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches || !!window.navigator.standalone;
+  const [deferredInstall, setDeferredInstall] = useState(null);
+  const [installDismissed, setInstallDismissed] = useState(() => localStorage.getItem("lash-install-dismissed") === "1");
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  useEffect(() => {
+    const h = (e) => { e.preventDefault(); setDeferredInstall(e); };
+    window.addEventListener("beforeinstallprompt", h);
+    return () => window.removeEventListener("beforeinstallprompt", h);
+  }, []);
+
   // Derive live clienta from shared data (refreshed every 15s + on mutations)
-  // so historial and profile updates appear without re-login
   const clienta = (() => {
     const fresh = data.clientas.find(c => c._id === clientaSession._id);
     if (!fresh) return clientaSession;
     const h = Array.isArray(fresh.historial) ? fresh.historial : Object.values(fresh.historial || {});
     return { ...clientaSession, ...fresh, historial: h };
   })();
+
+  // Load notifications from Firebase
+  useEffect(() => {
+    if (!clienta.uid) return;
+    db.get(`notificaciones/${clienta.uid}`).then(list => setNotifs(list || []));
+  }, [clienta.uid]);
+
+  const unreadCount = notifs.filter(n => !n.leida).length;
+
+  // Update PWA badge icon
+  useEffect(() => {
+    if (!("setAppBadge" in navigator)) return;
+    if (unreadCount > 0) navigator.setAppBadge(unreadCount);
+    else if (typeof navigator.clearAppBadge === "function") navigator.clearAppBadge();
+  }, [unreadCount]);
+
   useEffect(() => {
     const onPop = () => setTab("inicio");
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+
   const tabs = [
-    { id:"inicio",    iconName:"home",        label:"Inicio"    },
-    { id:"agendar",   iconName:"calendarPlus", label:"Agendar"   },
-    { id:"historial", iconName:"history",      label:"Historial" },
-    { id:"perfil",    iconName:"user",         label:"Perfil"    },
+    { id:"inicio",         iconName:"home",        label:"Inicio"  },
+    { id:"agendar",        iconName:"calendarPlus", label:"Agendar" },
+    { id:"notificaciones", iconName:"bell",         label:"Avisos"  },
+    { id:"perfil",         iconName:"user",         label:"Perfil"  },
   ];
+
+  const installProps = { isStandalone, deferredInstall, isIOS, installDismissed, setInstallDismissed };
   const render = () => {
     switch (tab) {
-      case "inicio":    return <CInicio    clienta={clienta} data={data} setTab={setTab} />;
-      case "agendar":   return <CAgendar   clienta={clienta} data={data} />;
-      case "historial": return <CHistorial clienta={clienta} />;
-      case "perfil":    return <CPerfil    clienta={clienta} data={data} onLogout={onLogout} />;
-      default:          return <CInicio    clienta={clienta} data={data} setTab={setTab} />;
+      case "inicio":         return <CInicio         clienta={clienta} data={data} setTab={setTab} installProps={installProps} />;
+      case "agendar":        return <CAgendar        clienta={clienta} data={data} />;
+      case "notificaciones": return <CNotificaciones clienta={clienta} notifs={notifs} setNotifs={setNotifs} />;
+      case "perfil":         return <CPerfil         clienta={clienta} data={data} onLogout={onLogout} />;
+      default:               return <CInicio         clienta={clienta} data={data} setTab={setTab} installProps={installProps} />;
     }
   };
 
@@ -4112,18 +4627,23 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
         <GlobalStyles />
         <AppBg />
         <nav style={{ width:220, flexShrink:0, background:G.navBg, backdropFilter:"blur(32px)", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", padding:"28px 14px 24px", gap:2, position:"sticky", top:0, height:"100vh", zIndex:20 }}>
-          <img src="/logo.svg" alt="Lash Studio" style={{ width:"100%", height:36, objectFit:"contain", objectPosition:"left", marginBottom:8, flexShrink:0 }} />
+          <img src="/logo.svg" alt="Lash Studio" style={{ width:100, height:100, objectFit:"contain", display:"block", marginBottom:8, flexShrink:0 }} />
           <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, padding:"0 4px 16px", margin:0 }}>{clienta.nombre?.split(" ")[0] || ""}</p>
           {tabs.map(t => (
-            <div key={t.id} style={{ ...sideNavItmSty(tab === t.id), padding:"12px 16px", fontSize:14 }} onClick={() => setTab(t.id)}>
+            <div key={t.id} style={{ ...sideNavItmSty(tab === t.id), padding:"12px 16px", fontSize:14, position:"relative" }} onClick={() => setTab(t.id)}>
               <Icon name={t.iconName} size={18} color={tab===t.id ? G.green : G.muted} strokeWidth={tab===t.id ? 1.8 : 1.5} />
               <span>{t.label}</span>
+              {t.id === "notificaciones" && unreadCount > 0 && (
+                <div style={{ minWidth:16, height:16, borderRadius:8, background:G.red, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px", marginLeft:"auto" }}>
+                  <span style={{ fontFamily:F.sans, fontSize:9, color:"#fff", fontWeight:700 }}>{unreadCount > 9 ? "9+" : unreadCount}</span>
+                </div>
+              )}
             </div>
           ))}
           <div style={{ flex:1 }} />
-          <button style={{ ...s.btnGl, margin:"0 4px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={() => openWA("Hola! Tengo una consulta")}>
-            <Icon name="messageCircle" size={15} color={G.sub} />
-            Consultar
+          <button style={{ ...s.btnGl, margin:"0 4px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={() => setTab("agendar")}>
+            <Icon name="calendarPlus" size={15} color={G.sub} />
+            Agendar
           </button>
         </nav>
         <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:40 }} className="ls-wide-content">
@@ -4145,18 +4665,23 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
           <div key={t.id} style={{ ...navItmSty(tab === t.id), position:"relative" }} onClick={() => setTab(t.id)}>
             {tab === t.id && <div style={{ position:"absolute", top:6, width:16, height:3, borderRadius:2, background:G.green, opacity:0.8 }} />}
             <Icon name={t.iconName} size={20} color={tab === t.id ? G.green : G.muted} strokeWidth={tab === t.id ? 1.8 : 1.5} />
+            {t.id === "notificaciones" && unreadCount > 0 && (
+              <div style={{ position:"absolute", top:5, right:"calc(50% - 18px)", minWidth:15, height:15, borderRadius:8, background:G.red, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>
+                <span style={{ fontFamily:F.sans, fontSize:8, color:"#fff", fontWeight:700 }}>{unreadCount > 9 ? "9+" : unreadCount}</span>
+              </div>
+            )}
             <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.06em", fontWeight:tab === t.id ? 600 : 400 }}>{t.label}</span>
           </div>
         ))}
       </nav>
-      <button style={s.fab} onClick={() => openWA("Hola! Tengo una consulta")} title="Consultar a Male">
-        <Icon name="messageCircle" size={22} color="#0a0a0a" strokeWidth={1.8} />
+      <button style={s.fab} onClick={() => setTab("agendar")} title="Agendar">
+        <Icon name="calendarPlus" size={22} color="#0a0a0a" strokeWidth={1.9} />
       </button>
     </div>
   );
 }
 
-function CInicio({ clienta, data, setTab }) {
+function CInicio({ clienta, data, setTab, installProps = {} }) {
   const hoy   = hoyISO();
   const hist  = Array.isArray(clienta.historial) ? clienta.historial : Object.values(clienta.historial || {});
   const ultima = [...hist].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0];
@@ -4181,6 +4706,20 @@ function CInicio({ clienta, data, setTab }) {
 
   const politicas = data.getConfig("politicas", []);
 
+  const fnac = clienta.fechaNacimiento;
+  let diasHastaCumple = null;
+  if (fnac) {
+    const [, mm, dd] = fnac.split("-");
+    const anioHoy = parseInt(hoy.slice(0,4));
+    let bdayThis = `${anioHoy}-${mm}-${dd}`;
+    if (bdayThis < hoy) bdayThis = `${anioHoy+1}-${mm}-${dd}`;
+    diasHastaCumple = Math.ceil((new Date(bdayThis+"T12:00:00") - new Date(hoy+"T12:00:00")) / (1000*60*60*24));
+  }
+  const esCumple = diasHastaCumple === 0;
+  const cumpleEnBreve = diasHastaCumple !== null && diasHastaCumple <= 14;
+  const bdayPromo = data.getConfig("promos", {})?.cumpleanos || {};
+  const visitasDescInfo = calcVisitasDesc(hist, data.getConfig("promos", {}));
+
   return (
     <div>
       <div style={s.topBar}>
@@ -4196,6 +4735,87 @@ function CInicio({ clienta, data, setTab }) {
       </div>
       <div style={{ padding:"18px" }}>
         <PushBanner role="clienta" uid={clienta.uid} />
+
+        {/* PWA install banner */}
+        {!installProps.isStandalone && !installProps.installDismissed && (installProps.deferredInstall || installProps.isIOS) && (
+          <div style={{ ...s.card, marginBottom:14, background:`rgba(${G.greenRGB},0.06)`, borderColor:`rgba(${G.greenRGB},0.28)` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text }}>Instalá la app</p>
+              <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.muted, fontSize:16, lineHeight:1, padding:"0 2px" }}
+                onClick={() => { installProps.setInstallDismissed(true); localStorage.setItem("lash-install-dismissed", "1"); }}>✕</button>
+            </div>
+            {installProps.isIOS ? (
+              <p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.7 }}>
+                En Safari: tocá <strong>Compartir</strong> (□↑) → <strong>Agregar a pantalla de inicio</strong>. Así podés recibir avisos y acceder más rápido.
+              </p>
+            ) : (
+              <>
+                <p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.6 }}>
+                  Guardá la app en tu teléfono para recibir notificaciones y acceder sin abrir el navegador.
+                </p>
+                <button style={{ ...s.btnG, padding:"10px 16px", fontSize:12, width:"auto" }}
+                  onClick={() => { installProps.deferredInstall.prompt(); installProps.deferredInstall.userChoice.then(() => installProps.setInstallDismissed(true)); }}>
+                  Instalar →
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {cumpleEnBreve && bdayPromo.habilitado && (
+          <div style={{ background:"linear-gradient(135deg,rgba(255,200,80,0.13),rgba(255,160,60,0.07))", border:`1.5px solid rgba(255,190,60,0.5)`, borderRadius:18, padding:"18px 16px", marginBottom:14 }}>
+            <p style={{ fontFamily:F.display, fontSize:26, color:"#f5c842", letterSpacing:"0.5px", margin:"0 0 4px" }}>
+              {esCumple ? "¡Feliz cumpleaños! 🎂" : `Tu cumpleaños es en ${diasHastaCumple} día${diasHastaCumple!==1?"s":""} 🎁`}
+            </p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 12px", lineHeight:1.5 }}>
+              {esCumple
+                ? "¡Hoy es tu día! Tenés un regalo especial esperándote."
+                : "Preparate — tenés un regalo esperándote para tu próxima visita."}
+            </p>
+            <div style={{ ...s.card, margin:0, display:"flex", alignItems:"center", gap:12, background:"rgba(245,200,66,0.1)", borderColor:"rgba(245,200,66,0.35)" }}>
+              <span style={{ fontSize:28 }}>🎁</span>
+              <div>
+                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:16, color:"#f5c842" }}>
+                  {bdayPromo.tipo === "%" ? `${bdayPromo.monto}% de descuento` : `$${bdayPromo.monto} de descuento`}
+                </p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>válido en tu próxima visita · mencionalo al reservar</p>
+              </div>
+            </div>
+            {!esCumple && <button style={{ ...s.btnG, width:"100%", marginTop:12, background:"rgba(245,200,66,0.18)", borderColor:"rgba(245,200,66,0.5)", color:"#f5c842" }} onClick={() => setTab("agendar")}>reservar turno →</button>}
+          </div>
+        )}
+
+        {/* ── Descuento por visitas ── */}
+        {visitasDescInfo && (
+          visitasDescInfo.disponible ? (
+            <div style={{ background:"linear-gradient(135deg,rgba(143,189,90,0.18),rgba(143,189,90,0.05))", border:`1.5px solid ${G.green}`, borderRadius:18, padding:"18px 16px", marginBottom:14 }}>
+              <p style={{ fontFamily:F.display, fontSize:26, color:G.greenL, letterSpacing:"0.5px", margin:"0 0 4px" }}>¡Descuento disponible! 🎯</p>
+              <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 12px", lineHeight:1.5 }}>
+                Llegaste a {visitasDescInfo.total} visitas. Tenés un regalo en tu próxima reserva — mencionalo al admin.
+              </p>
+              <div style={{ ...s.card, margin:0, display:"flex", alignItems:"center", gap:12, background:`rgba(${G.greenRGB},0.1)`, borderColor:`rgba(${G.greenRGB},0.4)` }}>
+                <span style={{ fontSize:24 }}>✨</span>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.greenL }}>
+                  {visitasDescInfo.cfg.tipo === "%" ? `${visitasDescInfo.cfg.monto}% de descuento` : `$${visitasDescInfo.cfg.monto} de descuento`}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...s.card, marginBottom:14 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, fontWeight:600 }}>🎯 Programa de visitas</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{visitasDescInfo.progreso}/{visitasDescInfo.cfg.cantidad}</p>
+              </div>
+              <div style={{ height:6, borderRadius:3, background:`rgba(${G.greenRGB},0.12)`, overflow:"hidden", marginBottom:6 }}>
+                <div style={{ height:"100%", borderRadius:3, background:G.green, width:`${Math.round(visitasDescInfo.progreso / visitasDescInfo.cfg.cantidad * 100)}%`, transition:"width 0.5s ease" }} />
+              </div>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>
+                {visitasDescInfo.faltan === 1 ? "¡1 visita más y desbloqueás tu descuento!" : `${visitasDescInfo.faltan} visitas más para tu próximo descuento`}
+                {" · "}{visitasDescInfo.cfg.tipo === "%" ? `${visitasDescInfo.cfg.monto}%` : `$${visitasDescInfo.cfg.monto}`} de descuento
+              </p>
+            </div>
+          )
+        )}
 
         {/* ── Próxima cita hero card (top) ── */}
         {proxCita && (
@@ -4734,19 +5354,20 @@ function CPerfil({ clienta, data, onLogout }) {
   const [editando, setEdit]   = useState(false);
   const [foto, setFoto]       = useState(null);
   const [saving, setSaving]   = useState(false);
-  const [formP, setFormP]     = useState({ nombre:clienta.nombre||"", telefono:clienta.telefono||"", emergencia:clienta.emergencia||"" });
+  const [formP, setFormP]     = useState({ nombre:clienta.nombre||"", telefono:clienta.telefono||"", fechaNacimiento:clienta.fechaNacimiento||"", emergencia:clienta.emergencia||"" });
   const setFP = (k, v) => setFormP(f => ({ ...f, [k]:v }));
   const { dark, toggleTheme } = useTheme();
   const { status: pushStatus, subscribe: pushSubscribe } = usePushStatus("clienta", clienta.uid);
 
   const politicas = data.getConfig("politicas", []);
   const estudio   = data.getConfig("estudio",   {});
+  const hist      = Array.isArray(clienta.historial) ? clienta.historial : Object.values(clienta.historial || {});
 
   const onFoto = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = ev => setFoto(ev.target.result); r.readAsDataURL(f); };
 
   const guardar = async () => {
     setSaving(true);
-    await data.editarClientas(clienta._id, { nombre:formP.nombre, telefono:formP.telefono, emergencia:formP.emergencia });
+    await data.editarClientas(clienta._id, { nombre:formP.nombre, telefono:formP.telefono, fechaNacimiento:formP.fechaNacimiento, emergencia:formP.emergencia });
     setSaving(false); setEdit(false);
   };
   return (
@@ -4809,6 +5430,60 @@ function CPerfil({ clienta, data, onLogout }) {
           </div>
         )}
         {editando && <button style={{ ...s.btnG, marginTop:12, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"Guardando...":"Guardar cambios →"}</button>}
+
+        {clienta.laminado && (clienta.laminado.porosidad || clienta.laminado.molde || clienta.laminado.tecnica || clienta.laminado.tipoOjo) && (
+          <div style={{ marginTop:16 }}>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>ficha laminado</p>
+            <div style={s.card}>
+              {[
+                ["porosidad", clienta.laminado.porosidad],
+                ["tipo de ojo", clienta.laminado.tipoOjo],
+                ["formato óseo", clienta.laminado.formatoOseo],
+                ["molde", clienta.laminado.molde],
+                ["tiempos", clienta.laminado.tiempos],
+                ["técnica", clienta.laminado.tecnica],
+              ].filter(([, v]) => v).map(([l, v]) => (
+                <div key={l} style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                  <span style={{ ...s.label, margin:0 }}>{l}</span>
+                  <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</span>
+                </div>
+              ))}
+              {clienta.laminado.estado && (
+                <div style={{ marginTop:4 }}>
+                  <label style={s.label}>estado / tricología</label>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.5 }}>{clienta.laminado.estado}</p>
+                </div>
+              )}
+              {clienta.laminado.particularidades && (
+                <div style={{ marginTop:8 }}>
+                  <label style={s.label}>particularidades</label>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.5 }}>{clienta.laminado.particularidades}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {hist.length > 0 && (
+          <div style={{ marginTop:16 }}>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>mis visitas</p>
+            {[...hist].reverse().map((h, i) => (
+              <div key={i} style={s.card}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                  <div>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtFecha(h.fecha)}{h.curva ? ` · curva ${h.curva}` : ""}</p>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    {h.descuentoVisitas && <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.muted, textDecoration:"line-through" }}>{fmtPesos(h.montoOriginal)}</p>}
+                    <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:13 }}>{fmtPesos(h.monto)}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button style={{ ...s.btnRed, marginTop:18, width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={onLogout}>
           <Icon name="logOut" size={15} color={G.red} />
           Cerrar sesión
