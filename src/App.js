@@ -181,12 +181,17 @@ function urlBase64ToUint8Array(b64) {
 }
 
 // Fire-and-forget push send (called from React components)
+// Also persists to Firebase for clienta targets so they don't lose messages
 const sendPush = (targets, title, body, url = "/") => {
   fetch("/api/notify", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ targets, title, body, url }),
   }).catch(() => {});
+  targets.forEach(t => {
+    if (!t.startsWith("clienta:")) return;
+    db.push(`notificaciones/${t.slice(8)}`, { titulo:title, cuerpo:body, url, fecha:new Date().toISOString().slice(0,10), ts:Date.now(), leida:false }).catch(() => {});
+  });
 };
 
 // Save current push subscription to the server for a given role/uid
@@ -325,11 +330,11 @@ const s = {
   get btnRed() { return { background:"rgba(224,112,112,0.1)", border:`0.5px solid rgba(224,112,112,0.35)`, borderRadius:12, padding:"10px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" }; },
   get tag()    { return { background:G.greenM, border:`0.5px solid rgba(${G.greenRGB},0.35)`, borderRadius:20, padding:"3px 11px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3, fontWeight:500 }; },
   get div()    { return { height:"0.5px", background:G.border, margin:"16px 0" }; },
-  get nav() { return { position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:G.navBg, backdropFilter:"blur(32px) saturate(200%)", border:`0.5px solid ${G.border}`, borderRadius:28, display:"flex", zIndex:20, padding:`8px 6px calc(8px + env(safe-area-inset-bottom, 0px))`, boxShadow:`0 8px 40px ${G.shadow}, 0 1px 0 rgba(255,255,255,0.06) inset` }; },
-  get fab() { return { position:"fixed", bottom:"calc(90px + env(safe-area-inset-bottom, 0px))", right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(143,189,90,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" }; },
+  get nav() { return { position:"fixed", bottom:"max(20px, env(safe-area-inset-bottom, 0px))", left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:G.navBg, backdropFilter:"blur(32px) saturate(200%)", border:`0.5px solid ${G.border}`, borderRadius:28, display:"flex", zIndex:20, padding:"10px 6px 10px", boxShadow:`0 8px 40px ${G.shadow}, 0 1px 0 rgba(255,255,255,0.06) inset` }; },
+  get fab() { return { position:"fixed", bottom:"calc(max(20px, env(safe-area-inset-bottom, 0px)) + 70px)", right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(143,189,90,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" }; },
 };
 
-const navItmSty     = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"7px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", boxShadow:active ? `inset 0 2px 0 rgba(${G.greenRGB},0.55)` : "none" });
+const navItmSty     = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"6px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", boxShadow:active ? `inset 0 2px 0 rgba(${G.greenRGB},0.55)` : "none" });
 const sideNavItmSty = (active) => ({ display:"flex", flexDirection:"row", alignItems:"center", gap:10, padding:"10px 14px", cursor:"pointer", borderRadius:12, color:active ? G.green : G.muted, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", transition:"color 0.18s, background 0.18s", fontFamily:F.sans, fontSize:13, fontWeight:active ? 600 : 400 });
 
 const GlobalStyles = () => (
@@ -485,7 +490,9 @@ function Loader({ msg = "Cargando..." }) {
     <div style={{ minHeight:"100vh", background:G.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:18, position:"relative" }}>
       <GlobalStyles />
       <AppBg />
-      <img src="/logo.svg" alt="Lash Studio" style={{ width:120, height:120, objectFit:"contain", zIndex:1, animation:"logoPulse 2.5s ease-in-out infinite" }} />
+      <div style={{ width:120, height:120, borderRadius:"50%", animation:"logoPulse 2.5s ease-in-out infinite", zIndex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <img src="/logo.svg" alt="Lash Studio" style={{ width:"100%", height:"100%", objectFit:"contain" }} />
+      </div>
       <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, zIndex:1, letterSpacing:"0.08em" }}>{msg}</p>
     </div>
   );
@@ -647,9 +654,8 @@ function Login({ onLogin }) {
         <Icon name={dark ? "sun" : "moon"} size={16} color={G.muted} />
       </button>
       <div style={{ textAlign:"center", marginBottom:44, zIndex:1, animation:"fadeInUp 0.6s ease both" }}>
-        <img src="/logo.svg" alt="Lash Studio" style={{ width:140, height:140, objectFit:"contain", display:"block", margin:"0 auto 20px", animation:"logoPulse 3.5s ease-in-out infinite" }} />
-        <p style={{ fontFamily:F.serif, fontSize:14, fontStyle:"italic", color:G.green, margin:"0 0 14px", letterSpacing:"0.04em" }}>by chulas</p>
-        <div style={{ width:64, height:1.5, background:`linear-gradient(90deg, transparent, ${G.green}, transparent)`, margin:"0 auto 12px" }} />
+        <img src="/logo.svg" alt="Lash Studio" style={{ width:140, height:140, objectFit:"contain", display:"block", margin:"0 auto 16px" }} />
+        <p style={{ fontFamily:F.sans, fontSize:11, color:G.green, margin:"0 0 8px", letterSpacing:"0.12em", textTransform:"uppercase", textAlign:"center" }}>by chulas</p>
         <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, letterSpacing:"0.14em", textTransform:"uppercase", textAlign:"center" }}>San Andrés · Buenos Aires</p>
       </div>
       {!modo ? (
@@ -2233,6 +2239,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
   const totalCalculado = Math.max(0, totalSinDesc - descMonto);
 
   const completar = async () => {
+    if (!cita.clientaId) { toast("sin clienta — no se puede cerrar"); return; }
     if (modoMixto && !pago.montoEfectivo && !pago.montoTransf) { toast("ingresá al menos un monto"); return; }
     if (!modoMixto && !pago.montoTotal) { toast("ingresá el monto"); return; }
 
@@ -2656,6 +2663,25 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
   const [c, setC]         = useState(cInit);
   const [tab, setTab]     = useState("info");
   const [form, setForm]   = useState({ nombre:cInit.nombre||"", telefono:cInit.telefono||"", fechaNacimiento:cInit.fechaNacimiento||"", curva:cInit.curva||"", grosor:cInit.grosor||"", largo:cInit.largo||"", alergias:cInit.alergias||"", observaciones:cInit.observaciones||"", estado:cInit.estado||"activa", mapaTecnico:cInit.mapaTecnico||"" });
+  const [fichaTab, setFichaTab] = useState("pestañas");
+  const [formLam, setFormLam] = useState({
+    porosidad:       cInit.laminado?.porosidad       || "",
+    estado:          cInit.laminado?.estado          || "",
+    tipoOjo:         cInit.laminado?.tipoOjo         || "",
+    formatoOseo:     cInit.laminado?.formatoOseo     || "",
+    particularidades:cInit.laminado?.particularidades|| "",
+    molde:           cInit.laminado?.molde           || "",
+    tiempos:         cInit.laminado?.tiempos         || "",
+    tecnica:         cInit.laminado?.tecnica         || "",
+  });
+  const setLam = (k, v) => setFormLam(f => ({ ...f, [k]:v }));
+  const [savingLam, setSavingLam] = useState(false);
+  const guardarLaminado = async () => {
+    setSavingLam(true);
+    await data.editarClientas(c._id, { laminado:formLam });
+    setC(prev => ({ ...prev, laminado:formLam }));
+    setSavingLam(false); toast("✓ guardado");
+  };
   const [editing, setEditing] = useState(false);
   const [uploadingMapa, setUploadingMapa] = useState(false);
   const [showPass, setShowPass]     = useState(false);
@@ -2792,40 +2818,83 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
 
         {tab === "ficha" && (
           <div>
-            <div style={s.card}>
-              {opcCurvas.length > 0 && <Field label="curva"><Chips options={opcCurvas} value={form.curva} onChange={v => { set("curva", v); data.editarClientas(c._id, { curva:v }); toast("✓"); }} /></Field>}
-              {opcGrosor.length > 0 && <Field label="grosor"><Chips options={opcGrosor} value={form.grosor} onChange={v => { set("grosor", v); data.editarClientas(c._id, { grosor:v }); toast("✓"); }} /></Field>}
-              {opcLargo.length  > 0 && <Field label="largo"><Chips  options={opcLargo}  value={form.largo}  onChange={v => { set("largo",  v); data.editarClientas(c._id, { largo:v  }); toast("✓"); }} /></Field>}
-              {(opcCurvas.length === 0 && opcGrosor.length === 0 && opcLargo.length === 0) && <p style={{ color:G.muted, fontSize:12 }}>Configurá opciones en Config → Técnico</p>}
+            {/* Sub-tab toggle */}
+            <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+              {["pestañas", "laminado"].map(st => (
+                <button key={st} onClick={() => setFichaTab(st)} style={{ ...s.btnGl, flex:1, fontSize:11, padding:"8px 4px", background:fichaTab === st ? G.greenM : "transparent", borderColor:fichaTab === st ? G.green : G.border, color:fichaTab === st ? G.greenL : G.muted, fontWeight:fichaTab === st ? 700 : 400 }}>{st}</button>
+              ))}
             </div>
-            <div style={s.card}>
-              <Field label="alergias"><input style={s.input} value={form.alergias} onChange={e => set("alergias", e.target.value)} onBlur={() => { data.editarClientas(c._id, { alergias:form.alergias }); toast("✓"); }} /></Field>
-              <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e => set("observaciones", e.target.value)} onBlur={() => { data.editarClientas(c._id, { observaciones:form.observaciones }); toast("✓"); }} /></Field>
-            </div>
-            <div style={s.card}>
-              <p style={{ ...s.eyebrow, marginBottom:10 }}>mapa técnico</p>
-              {form.mapaTecnico ? (
-                <div style={{ position:"relative", marginBottom:10 }}>
-                  <img src={form.mapaTecnico} alt="mapa técnico" loading="lazy" style={{ width:"100%", borderRadius:10, objectFit:"cover", maxHeight:280, display:"block" }} />
-                  <button onClick={async () => { await data.editarClientas(c._id, { mapaTecnico:"" }); set("mapaTecnico", ""); toast("Foto eliminada"); }}
-                    style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:12 }}>✕</button>
+
+            {fichaTab === "pestañas" && (
+              <>
+                <div style={s.card}>
+                  {opcCurvas.length > 0 && <Field label="curva"><Chips options={opcCurvas} value={form.curva} onChange={v => { set("curva", v); data.editarClientas(c._id, { curva:v }); toast("✓"); }} /></Field>}
+                  {opcGrosor.length > 0 && <Field label="grosor"><Chips options={opcGrosor} value={form.grosor} onChange={v => { set("grosor", v); data.editarClientas(c._id, { grosor:v }); toast("✓"); }} /></Field>}
+                  {opcLargo.length  > 0 && <Field label="largo"><Chips  options={opcLargo}  value={form.largo}  onChange={v => { set("largo",  v); data.editarClientas(c._id, { largo:v  }); toast("✓"); }} /></Field>}
+                  {(opcCurvas.length === 0 && opcGrosor.length === 0 && opcLargo.length === 0) && <p style={{ color:G.muted, fontSize:12 }}>Configurá opciones en Config → Técnico</p>}
                 </div>
-              ) : (
-                <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:10 }}>Sin foto de mapa técnico aún</p>
-              )}
-              <label style={{ ...s.btnGl, display:"flex", alignItems:"center", gap:8, cursor:"pointer", opacity:uploadingMapa?0.6:1, justifyContent:"center" }}>
-                <Icon name="camera" size={14} color={G.sub} />
-                {uploadingMapa ? "Subiendo..." : form.mapaTecnico ? "Cambiar foto" : "Subir mapa técnico"}
-                <input type="file" accept="image/*" style={{ display:"none" }} disabled={uploadingMapa}
-                  onChange={async (e) => {
-                    const file = e.target.files[0]; if (!file) return;
-                    setUploadingMapa(true);
-                    try { const url = await subirFoto(file); await data.editarClientas(c._id, { mapaTecnico:url }); set("mapaTecnico", url); toast("Foto guardada"); }
-                    catch { toast("Error al subir foto"); }
-                    setUploadingMapa(false); e.target.value="";
-                  }} />
-              </label>
-            </div>
+                <div style={s.card}>
+                  <Field label="alergias"><input style={s.input} value={form.alergias} onChange={e => set("alergias", e.target.value)} onBlur={() => { data.editarClientas(c._id, { alergias:form.alergias }); toast("✓"); }} /></Field>
+                  <Field label="observaciones"><textarea style={{ ...s.input, height:60, resize:"none" }} value={form.observaciones} onChange={e => set("observaciones", e.target.value)} onBlur={() => { data.editarClientas(c._id, { observaciones:form.observaciones }); toast("✓"); }} /></Field>
+                </div>
+                <div style={s.card}>
+                  <p style={{ ...s.eyebrow, marginBottom:10 }}>mapa técnico</p>
+                  {form.mapaTecnico ? (
+                    <div style={{ position:"relative", marginBottom:10 }}>
+                      <img src={form.mapaTecnico} alt="mapa técnico" loading="lazy" style={{ width:"100%", borderRadius:10, objectFit:"cover", maxHeight:280, display:"block" }} />
+                      <button onClick={async () => { await data.editarClientas(c._id, { mapaTecnico:"" }); set("mapaTecnico", ""); toast("Foto eliminada"); }}
+                        style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", border:"none", color:"#fff", borderRadius:8, padding:"5px 9px", cursor:"pointer", fontSize:12 }}>✕</button>
+                    </div>
+                  ) : (
+                    <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:10 }}>Sin foto de mapa técnico aún</p>
+                  )}
+                  <label style={{ ...s.btnGl, display:"flex", alignItems:"center", gap:8, cursor:"pointer", opacity:uploadingMapa?0.6:1, justifyContent:"center" }}>
+                    <Icon name="camera" size={14} color={G.sub} />
+                    {uploadingMapa ? "Subiendo..." : form.mapaTecnico ? "Cambiar foto" : "Subir mapa técnico"}
+                    <input type="file" accept="image/*" style={{ display:"none" }} disabled={uploadingMapa}
+                      onChange={async (e) => {
+                        const file = e.target.files[0]; if (!file) return;
+                        setUploadingMapa(true);
+                        try { const url = await subirFoto(file); await data.editarClientas(c._id, { mapaTecnico:url }); set("mapaTecnico", url); toast("Foto guardada"); }
+                        catch { toast("Error al subir foto"); }
+                        setUploadingMapa(false); e.target.value="";
+                      }} />
+                  </label>
+                </div>
+              </>
+            )}
+
+            {fichaTab === "laminado" && (
+              <div style={s.card}>
+                <Field label="porosidad">
+                  <Chips options={["baja","media","alta"]} value={formLam.porosidad} onChange={v => setLam("porosidad", v)} />
+                </Field>
+                <Field label="estado / tricología">
+                  <textarea style={{ ...s.input, height:60, resize:"none" }} value={formLam.estado} onChange={e => setLam("estado", e.target.value)} placeholder="Observaciones del estado del cabello..." />
+                </Field>
+                <Field label="tipo de ojo">
+                  <Chips options={["pequeño","almendra","grande","prominente","caído"]} value={formLam.tipoOjo} onChange={v => setLam("tipoOjo", v)} />
+                </Field>
+                <Field label="formato óseo">
+                  <input style={s.input} value={formLam.formatoOseo} onChange={e => setLam("formatoOseo", e.target.value)} placeholder="ej: frente angosta, pómulos pronunciados..." />
+                </Field>
+                <Field label="particularidades">
+                  <textarea style={{ ...s.input, height:60, resize:"none" }} value={formLam.particularidades} onChange={e => setLam("particularidades", e.target.value)} placeholder="Notas especiales de la clienta..." />
+                </Field>
+                <Field label="molde">
+                  <Chips options={["U","C","M","L"]} value={formLam.molde} onChange={v => setLam("molde", v)} />
+                </Field>
+                <Field label="tiempos de acción">
+                  <input style={s.input} value={formLam.tiempos} onChange={e => setLam("tiempos", e.target.value)} placeholder="ej: P1: 8min · P2: 6min" />
+                </Field>
+                <Field label="técnica">
+                  <input style={s.input} value={formLam.tecnica} onChange={e => setLam("tecnica", e.target.value)} placeholder="ej: lifting + tinte" />
+                </Field>
+                <button style={{ ...s.btnG, opacity:savingLam?0.6:1 }} onClick={guardarLaminado} disabled={savingLam}>
+                  {savingLam ? "Guardando..." : "Guardar laminado →"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -4249,6 +4318,16 @@ function ConfigNotificaciones({ data, toast }) {
     toast("✓ guardado");
   };
 
+  const defaultSchedule = { recordatorio24h: true, recordatorio24hTexto:"Recordatorio de tu turno mañana 🌿", recall: false, recallDias:30, recallTexto:"¡Te extrañamos! ¿Reagendamos tu servicio?", service: false, serviceDias:14, serviceTexto:"¡Es momento del service! Agendá tu turno 🌿", horaEnvio:"09:00" };
+  const [schedule, setSchedule] = useState(() => ({ ...defaultSchedule, ...data.getConfig("notifSchedule", {}) }));
+  const setSch = (k, v) => setSchedule(s => ({ ...s, [k]:v }));
+  const saveSchedule = async (upd) => {
+    const next = { ...schedule, ...upd };
+    setSchedule(next);
+    await data.saveConfig("notifSchedule", next);
+    toast("✓ guardado");
+  };
+
   const sendTest = async () => {
     setSending(true);
     try {
@@ -4307,20 +4386,73 @@ function ConfigNotificaciones({ data, toast }) {
         {sending ? "Enviando..." : "Enviar notificación de prueba"}
       </button>
 
-      {/* Cron schedule info */}
+      {/* Configurable reminders */}
       <div style={{ ...s.card, marginBottom:14 }}>
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text, margin:"0 0 10px" }}>Recordatorios automáticos</p>
-        {[
-          ["Horario de envío", "9:00 am (Buenos Aires)"],
-          ["Frecuencia",       "Cada día"],
-          ["Qué recibís",      "Resumen de citas del día siguiente"],
-          ["Clientas",         "Reciben su recordatorio 24h antes"],
-        ].map(([l, v]) => (
-          <div key={l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-            <span style={{ fontFamily:F.sans, fontSize:12, color:G.sub }}>{l}</span>
-            <span style={s.tag}>{v}</span>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text, margin:"0 0 14px" }}>Recordatorios automáticos</p>
+
+        {/* Hora de envío */}
+        <Field label="hora de envío diario">
+          <input style={{ ...s.input, width:"auto", maxWidth:140 }} type="time" value={schedule.horaEnvio} onChange={e => saveSchedule({ horaEnvio: e.target.value })} />
+        </Field>
+
+        {/* Recordatorio 24h */}
+        <div style={{ ...s.cardSub, marginBottom:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:schedule.recordatorio24h ? 10 : 0 }}>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontWeight:600, fontSize:13, color:G.text }}>Recordatorio 24h antes</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Avisa a la clienta el día anterior al turno</p>
+            </div>
+            <div style={{ width:36, height:20, borderRadius:10, background:schedule.recordatorio24h ? G.green : G.border, cursor:"pointer", position:"relative", transition:"background 0.2s", flexShrink:0 }}
+              onClick={() => saveSchedule({ recordatorio24h: !schedule.recordatorio24h })}>
+              <div style={{ position:"absolute", top:3, left:schedule.recordatorio24h ? 18 : 3, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+            </div>
           </div>
-        ))}
+          {schedule.recordatorio24h && (
+            <Field label="texto del recordatorio">
+              <input style={s.input} defaultValue={schedule.recordatorio24hTexto} onBlur={e => saveSchedule({ recordatorio24hTexto: e.target.value || defaultSchedule.recordatorio24hTexto })} />
+            </Field>
+          )}
+        </div>
+
+        {/* Recall por inactividad */}
+        <div style={{ ...s.cardSub, marginBottom:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:schedule.recall ? 10 : 0 }}>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontWeight:600, fontSize:13, color:G.text }}>Recall por inactividad</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Avisa a clientas que llevan N días sin turno</p>
+            </div>
+            <div style={{ width:36, height:20, borderRadius:10, background:schedule.recall ? G.green : G.border, cursor:"pointer", position:"relative", transition:"background 0.2s", flexShrink:0 }}
+              onClick={() => saveSchedule({ recall: !schedule.recall })}>
+              <div style={{ position:"absolute", top:3, left:schedule.recall ? 18 : 3, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+            </div>
+          </div>
+          {schedule.recall && (
+            <>
+              <Field label="días de inactividad"><input style={{ ...s.input, width:"auto", maxWidth:100 }} type="number" min="1" value={schedule.recallDias} onChange={e => setSch("recallDias", parseInt(e.target.value)||30)} onBlur={() => saveSchedule({ recallDias: schedule.recallDias })} /></Field>
+              <Field label="texto del mensaje"><input style={s.input} defaultValue={schedule.recallTexto} onBlur={e => saveSchedule({ recallTexto: e.target.value || defaultSchedule.recallTexto })} /></Field>
+            </>
+          )}
+        </div>
+
+        {/* Recordatorio de service */}
+        <div style={{ ...s.cardSub }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:schedule.service ? 10 : 0 }}>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontWeight:600, fontSize:13, color:G.text }}>Recordatorio de service</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Avisa cuando es momento del service (N días)</p>
+            </div>
+            <div style={{ width:36, height:20, borderRadius:10, background:schedule.service ? G.green : G.border, cursor:"pointer", position:"relative", transition:"background 0.2s", flexShrink:0 }}
+              onClick={() => saveSchedule({ service: !schedule.service })}>
+              <div style={{ position:"absolute", top:3, left:schedule.service ? 18 : 3, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+            </div>
+          </div>
+          {schedule.service && (
+            <>
+              <Field label="días entre servicios"><input style={{ ...s.input, width:"auto", maxWidth:100 }} type="number" min="1" value={schedule.serviceDias} onChange={e => setSch("serviceDias", parseInt(e.target.value)||14)} onBlur={() => saveSchedule({ serviceDias: schedule.serviceDias })} /></Field>
+              <Field label="texto del mensaje"><input style={s.input} defaultValue={schedule.serviceTexto} onBlur={e => saveSchedule({ serviceTexto: e.target.value || defaultSchedule.serviceTexto })} /></Field>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Push notification text editor */}
@@ -4362,38 +4494,130 @@ function ConfigNotificaciones({ data, toast }) {
   );
 }
 
+function CNotificaciones({ clienta, notifs, setNotifs }) {
+  useEffect(() => {
+    if (!clienta.uid || !notifs.some(n => !n.leida)) return;
+    // Mark all as read in Firebase and local state
+    notifs.filter(n => !n.leida && n._id).forEach(n => {
+      db.update(`notificaciones/${clienta.uid}/${n._id}`, { leida:true }).catch(() => {});
+    });
+    setNotifs(p => p.map(n => ({ ...n, leida:true })));
+    if (typeof navigator.clearAppBadge === "function") navigator.clearAppBadge();
+  }, []);
+
+  const borrarTodo = async () => {
+    if (!clienta.uid) return;
+    await db.del(`notificaciones/${clienta.uid}`);
+    setNotifs([]);
+    if (typeof navigator.clearAppBadge === "function") navigator.clearAppBadge();
+  };
+
+  if (!clienta.uid) {
+    return (
+      <div>
+        <div style={s.topBar}><h1 style={s.h1}>Avisos</h1></div>
+        <div style={{ padding:24 }}><p style={{ fontFamily:F.sans, fontSize:13, color:G.muted }}>Necesitás una cuenta para recibir avisos.</p></div>
+      </div>
+    );
+  }
+
+  const sorted = [...notifs].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+  return (
+    <div>
+      <div style={s.topBar}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div><h1 style={s.h1}>Avisos</h1><p style={s.sub}>{notifs.length === 0 ? "sin mensajes" : `${notifs.length} mensaje${notifs.length !== 1 ? "s" : ""}`}</p></div>
+          {notifs.length > 0 && (
+            <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px" }} onClick={borrarTodo}>Borrar todo</button>
+          )}
+        </div>
+      </div>
+      <div style={{ padding:"18px" }}>
+        {sorted.length === 0 && (
+          <div style={{ textAlign:"center", paddingTop:40 }}>
+            <Icon name="bell" size={36} color={G.border} />
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, marginTop:12 }}>No tenés avisos por ahora</p>
+          </div>
+        )}
+        {sorted.map((n, i) => (
+          <div key={n._id || i} style={{ ...s.card, borderLeft:`3px solid ${n.leida ? G.border : G.green}`, marginBottom:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+              <div style={{ flex:1 }}>
+                <p style={{ margin:"0 0 4px", fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text }}>{n.titulo}</p>
+                <p style={{ margin:"0 0 6px", fontFamily:F.sans, fontSize:13, color:G.sub, lineHeight:1.5 }}>{n.cuerpo}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{n.fecha}</p>
+              </div>
+              {!n.leida && <div style={{ width:8, height:8, borderRadius:"50%", background:G.green, flexShrink:0, marginTop:4 }} />}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PANEL CLIENTA
 // ═══════════════════════════════════════════════════════════════════════════════
 function ClientaApp({ clienta: clientaSession, data, onLogout }) {
   const [tab, setTab] = useState("inicio");
   const wide = useIsWide();
+  const [notifs, setNotifs] = useState([]);
+  const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches || !!window.navigator.standalone;
+  const [deferredInstall, setDeferredInstall] = useState(null);
+  const [installDismissed, setInstallDismissed] = useState(() => localStorage.getItem("lash-install-dismissed") === "1");
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  useEffect(() => {
+    const h = (e) => { e.preventDefault(); setDeferredInstall(e); };
+    window.addEventListener("beforeinstallprompt", h);
+    return () => window.removeEventListener("beforeinstallprompt", h);
+  }, []);
+
   // Derive live clienta from shared data (refreshed every 15s + on mutations)
-  // so historial and profile updates appear without re-login
   const clienta = (() => {
     const fresh = data.clientas.find(c => c._id === clientaSession._id);
     if (!fresh) return clientaSession;
     const h = Array.isArray(fresh.historial) ? fresh.historial : Object.values(fresh.historial || {});
     return { ...clientaSession, ...fresh, historial: h };
   })();
+
+  // Load notifications from Firebase
+  useEffect(() => {
+    if (!clienta.uid) return;
+    db.get(`notificaciones/${clienta.uid}`).then(list => setNotifs(list || []));
+  }, [clienta.uid]);
+
+  const unreadCount = notifs.filter(n => !n.leida).length;
+
+  // Update PWA badge icon
+  useEffect(() => {
+    if (!("setAppBadge" in navigator)) return;
+    if (unreadCount > 0) navigator.setAppBadge(unreadCount);
+    else if (typeof navigator.clearAppBadge === "function") navigator.clearAppBadge();
+  }, [unreadCount]);
+
   useEffect(() => {
     const onPop = () => setTab("inicio");
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+
   const tabs = [
-    { id:"inicio",    iconName:"home",        label:"Inicio"    },
-    { id:"agendar",   iconName:"calendarPlus", label:"Agendar"   },
-    { id:"historial", iconName:"history",      label:"Historial" },
-    { id:"perfil",    iconName:"user",         label:"Perfil"    },
+    { id:"inicio",         iconName:"home",        label:"Inicio"  },
+    { id:"agendar",        iconName:"calendarPlus", label:"Agendar" },
+    { id:"notificaciones", iconName:"bell",         label:"Avisos"  },
+    { id:"perfil",         iconName:"user",         label:"Perfil"  },
   ];
+
+  const installProps = { isStandalone, deferredInstall, isIOS, installDismissed, setInstallDismissed };
   const render = () => {
     switch (tab) {
-      case "inicio":    return <CInicio    clienta={clienta} data={data} setTab={setTab} />;
-      case "agendar":   return <CAgendar   clienta={clienta} data={data} />;
-      case "historial": return <CHistorial clienta={clienta} />;
-      case "perfil":    return <CPerfil    clienta={clienta} data={data} onLogout={onLogout} />;
-      default:          return <CInicio    clienta={clienta} data={data} setTab={setTab} />;
+      case "inicio":         return <CInicio         clienta={clienta} data={data} setTab={setTab} installProps={installProps} />;
+      case "agendar":        return <CAgendar        clienta={clienta} data={data} />;
+      case "notificaciones": return <CNotificaciones clienta={clienta} notifs={notifs} setNotifs={setNotifs} />;
+      case "perfil":         return <CPerfil         clienta={clienta} data={data} onLogout={onLogout} />;
+      default:               return <CInicio         clienta={clienta} data={data} setTab={setTab} installProps={installProps} />;
     }
   };
 
@@ -4406,15 +4630,20 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
           <img src="/logo.svg" alt="Lash Studio" style={{ width:100, height:100, objectFit:"contain", display:"block", marginBottom:8, flexShrink:0 }} />
           <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, padding:"0 4px 16px", margin:0 }}>{clienta.nombre?.split(" ")[0] || ""}</p>
           {tabs.map(t => (
-            <div key={t.id} style={{ ...sideNavItmSty(tab === t.id), padding:"12px 16px", fontSize:14 }} onClick={() => setTab(t.id)}>
+            <div key={t.id} style={{ ...sideNavItmSty(tab === t.id), padding:"12px 16px", fontSize:14, position:"relative" }} onClick={() => setTab(t.id)}>
               <Icon name={t.iconName} size={18} color={tab===t.id ? G.green : G.muted} strokeWidth={tab===t.id ? 1.8 : 1.5} />
               <span>{t.label}</span>
+              {t.id === "notificaciones" && unreadCount > 0 && (
+                <div style={{ minWidth:16, height:16, borderRadius:8, background:G.red, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px", marginLeft:"auto" }}>
+                  <span style={{ fontFamily:F.sans, fontSize:9, color:"#fff", fontWeight:700 }}>{unreadCount > 9 ? "9+" : unreadCount}</span>
+                </div>
+              )}
             </div>
           ))}
           <div style={{ flex:1 }} />
-          <button style={{ ...s.btnGl, margin:"0 4px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={() => openWA("Hola! Tengo una consulta")}>
-            <Icon name="messageCircle" size={15} color={G.sub} />
-            Consultar
+          <button style={{ ...s.btnGl, margin:"0 4px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={() => setTab("agendar")}>
+            <Icon name="calendarPlus" size={15} color={G.sub} />
+            Agendar
           </button>
         </nav>
         <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:40 }} className="ls-wide-content">
@@ -4436,18 +4665,23 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
           <div key={t.id} style={{ ...navItmSty(tab === t.id), position:"relative" }} onClick={() => setTab(t.id)}>
             {tab === t.id && <div style={{ position:"absolute", top:6, width:16, height:3, borderRadius:2, background:G.green, opacity:0.8 }} />}
             <Icon name={t.iconName} size={20} color={tab === t.id ? G.green : G.muted} strokeWidth={tab === t.id ? 1.8 : 1.5} />
+            {t.id === "notificaciones" && unreadCount > 0 && (
+              <div style={{ position:"absolute", top:5, right:"calc(50% - 18px)", minWidth:15, height:15, borderRadius:8, background:G.red, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>
+                <span style={{ fontFamily:F.sans, fontSize:8, color:"#fff", fontWeight:700 }}>{unreadCount > 9 ? "9+" : unreadCount}</span>
+              </div>
+            )}
             <span style={{ fontFamily:F.sans, fontSize:9, letterSpacing:"0.06em", fontWeight:tab === t.id ? 600 : 400 }}>{t.label}</span>
           </div>
         ))}
       </nav>
-      <button style={s.fab} onClick={() => openWA("Hola! Tengo una consulta")} title="Consultar a Male">
-        <Icon name="messageCircle" size={22} color="#0a0a0a" strokeWidth={1.8} />
+      <button style={s.fab} onClick={() => setTab("agendar")} title="Agendar">
+        <Icon name="calendarPlus" size={22} color="#0a0a0a" strokeWidth={1.9} />
       </button>
     </div>
   );
 }
 
-function CInicio({ clienta, data, setTab }) {
+function CInicio({ clienta, data, setTab, installProps = {} }) {
   const hoy   = hoyISO();
   const hist  = Array.isArray(clienta.historial) ? clienta.historial : Object.values(clienta.historial || {});
   const ultima = [...hist].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0];
@@ -4501,6 +4735,33 @@ function CInicio({ clienta, data, setTab }) {
       </div>
       <div style={{ padding:"18px" }}>
         <PushBanner role="clienta" uid={clienta.uid} />
+
+        {/* PWA install banner */}
+        {!installProps.isStandalone && !installProps.installDismissed && (installProps.deferredInstall || installProps.isIOS) && (
+          <div style={{ ...s.card, marginBottom:14, background:`rgba(${G.greenRGB},0.06)`, borderColor:`rgba(${G.greenRGB},0.28)` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.text }}>Instalá la app</p>
+              <button style={{ background:"transparent", border:"none", cursor:"pointer", color:G.muted, fontSize:16, lineHeight:1, padding:"0 2px" }}
+                onClick={() => { installProps.setInstallDismissed(true); localStorage.setItem("lash-install-dismissed", "1"); }}>✕</button>
+            </div>
+            {installProps.isIOS ? (
+              <p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.7 }}>
+                En Safari: tocá <strong>Compartir</strong> (□↑) → <strong>Agregar a pantalla de inicio</strong>. Así podés recibir avisos y acceder más rápido.
+              </p>
+            ) : (
+              <>
+                <p style={{ margin:"0 0 10px", fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.6 }}>
+                  Guardá la app en tu teléfono para recibir notificaciones y acceder sin abrir el navegador.
+                </p>
+                <button style={{ ...s.btnG, padding:"10px 16px", fontSize:12, width:"auto" }}
+                  onClick={() => { installProps.deferredInstall.prompt(); installProps.deferredInstall.userChoice.then(() => installProps.setInstallDismissed(true)); }}>
+                  Instalar →
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
 
         {cumpleEnBreve && bdayPromo.habilitado && (
           <div style={{ background:"linear-gradient(135deg,rgba(255,200,80,0.13),rgba(255,160,60,0.07))", border:`1.5px solid rgba(255,190,60,0.5)`, borderRadius:18, padding:"18px 16px", marginBottom:14 }}>
@@ -5101,6 +5362,7 @@ function CPerfil({ clienta, data, onLogout }) {
 
   const politicas = data.getConfig("politicas", []);
   const estudio   = data.getConfig("estudio",   {});
+  const hist      = Array.isArray(clienta.historial) ? clienta.historial : Object.values(clienta.historial || {});
 
   const onFoto = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = ev => setFoto(ev.target.result); r.readAsDataURL(f); };
 
@@ -5169,6 +5431,60 @@ function CPerfil({ clienta, data, onLogout }) {
           </div>
         )}
         {editando && <button style={{ ...s.btnG, marginTop:12, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving?"Guardando...":"Guardar cambios →"}</button>}
+
+        {clienta.laminado && (clienta.laminado.porosidad || clienta.laminado.molde || clienta.laminado.tecnica || clienta.laminado.tipoOjo) && (
+          <div style={{ marginTop:16 }}>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>ficha laminado</p>
+            <div style={s.card}>
+              {[
+                ["porosidad", clienta.laminado.porosidad],
+                ["tipo de ojo", clienta.laminado.tipoOjo],
+                ["formato óseo", clienta.laminado.formatoOseo],
+                ["molde", clienta.laminado.molde],
+                ["tiempos", clienta.laminado.tiempos],
+                ["técnica", clienta.laminado.tecnica],
+              ].filter(([, v]) => v).map(([l, v]) => (
+                <div key={l} style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                  <span style={{ ...s.label, margin:0 }}>{l}</span>
+                  <span style={{ fontFamily:F.sans, fontSize:13, color:G.sub }}>{v}</span>
+                </div>
+              ))}
+              {clienta.laminado.estado && (
+                <div style={{ marginTop:4 }}>
+                  <label style={s.label}>estado / tricología</label>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.5 }}>{clienta.laminado.estado}</p>
+                </div>
+              )}
+              {clienta.laminado.particularidades && (
+                <div style={{ marginTop:8 }}>
+                  <label style={s.label}>particularidades</label>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub, lineHeight:1.5 }}>{clienta.laminado.particularidades}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {hist.length > 0 && (
+          <div style={{ marginTop:16 }}>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 10px" }}>mis visitas</p>
+            {[...hist].reverse().map((h, i) => (
+              <div key={i} style={s.card}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                  <div>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtFecha(h.fecha)}{h.curva ? ` · curva ${h.curva}` : ""}</p>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    {h.descuentoVisitas && <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.muted, textDecoration:"line-through" }}>{fmtPesos(h.montoOriginal)}</p>}
+                    <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:13 }}>{fmtPesos(h.monto)}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button style={{ ...s.btnRed, marginTop:18, width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={onLogout}>
           <Icon name="logOut" size={15} color={G.red} />
           Cerrar sesión
