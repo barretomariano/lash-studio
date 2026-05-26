@@ -457,11 +457,10 @@ function useData() {
         if (yaExiste) {
           return { error: `Ya existe una clienta con ese email: "${yaExiste.nombre}". Buscala en el listado.` };
         }
-        // Email is in Firebase Auth but not in our CRM — generate a password and send reset email
+        // Email is in Firebase Auth but not in our CRM — will need admin endpoint to reset
         const resetPass = genPass();
         const id = await db.push("clientas", { ...datos, appPass:resetPass, creadaEn:hoyISO() });
         setClientas(p => [...p, { ...datos, appPass:resetPass, creadaEn:hoyISO(), _id:id, historial:[] }]);
-        await fbAuth.resetPw(datos.email).catch(() => {});
         return { ok:true, emailExists:true, nombre:datos.nombre, pass:resetPass, email:datos.email };
       }
       return { error: res.error.message };
@@ -476,18 +475,24 @@ function useData() {
     if (c?.email) {
       try {
         let idToken = null;
-        // Prefer refresh token — works even after password changes
         if (c.authRefreshToken) {
           const ref = await fbAuth.refresh(c.authRefreshToken);
           if (ref.idToken) idToken = ref.idToken;
         }
-        // Fallback: sign in with stored password
         if (!idToken && c.appPass) {
           const si = await fbAuth.signIn(c.email, c.appPass);
           if (si.idToken) idToken = si.idToken;
         }
-        if (idToken) await fbAuth.deleteUser(idToken);
-      } catch { /* ignore auth cleanup failures */ }
+        if (idToken) {
+          await fbAuth.deleteUser(idToken);
+        } else {
+          // Fallback: server-side admin deletion (needs FIREBASE_SERVICE_ACCOUNT env var)
+          await fetch("/api/delete-auth-user", {
+            method:"POST", headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({ email:c.email }),
+          }).catch(() => {});
+        }
+      } catch { /* ignore */ }
     }
     await db.del(`clientas/${id}`);
     setClientas(p => p.filter(x => x._id !== id));
@@ -2684,7 +2689,7 @@ function AdminClientas({ data, push, toast }) {
           {creds.emailExists ? (
             <>
               <p style={{ fontFamily:F.sans, fontSize:12, color:G.amber, margin:"0 0 12px", lineHeight:1.6 }}>
-                Este email ya tenía cuenta en Firebase. Se generó una contraseña y se envió un link de restablecimiento al email de <b>{creds.nombre}</b>. Compartile la contraseña por WhatsApp y pedile que use el link del email para ingresar con ella.
+                Este email ya tenía cuenta. Abrí la ficha de <b>{creds.nombre}</b> → "Nueva contraseña" para sincronizar el acceso, luego enviásela por WhatsApp.
               </p>
               <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
                 <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"0 0 8px" }}>accesos para {creds.nombre}:</p>
@@ -2769,28 +2774,39 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
       let firebaseUpdated = false;
       if (c.email) {
         let idToken = null;
-        // Prefer refresh token to get a valid idToken
         if (c.authRefreshToken) {
           const ref = await fbAuth.refresh(c.authRefreshToken).catch(() => ({}));
           if (ref.idToken) idToken = ref.idToken;
         }
-        // Fallback: sign in with stored password
         if (!idToken && c.appPass) {
           const si = await fbAuth.signIn(c.email, c.appPass);
           if (si.idToken) idToken = si.idToken;
         }
         if (idToken) {
           const upd = await fbAuth.updatePass(idToken, newPass);
-          if (upd.idToken) {
-            // Save new refresh token so future deletions/updates still work
+          if (upd.refreshToken) {
             await data.editarClientas(c._id, { appPass:newPass, authRefreshToken:upd.refreshToken });
             setC(p => ({ ...p, appPass:newPass, authRefreshToken:upd.refreshToken }));
             firebaseUpdated = true;
           }
         }
         if (!firebaseUpdated) {
-          await fbAuth.resetPw(c.email).catch(() => {});
-          setResetErr(`No pudimos actualizar automáticamente. Se envió un link de restablecimiento al email de ${c.nombre?.split(" ")[0]}. Compartile la contraseña de abajo por WhatsApp y pedile que la use cuando el email le pida una nueva clave.`);
+          // Delete old Firebase Auth account + recreate with new password
+          try {
+            await fetch("/api/delete-auth-user", {
+              method:"POST", headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({ email:c.email }),
+            });
+            const rec = await fbAuth.create(c.email, newPass);
+            if (rec.refreshToken) {
+              await data.editarClientas(c._id, { appPass:newPass, authRefreshToken:rec.refreshToken, uid:rec.localId });
+              setC(p => ({ ...p, appPass:newPass, authRefreshToken:rec.refreshToken, uid:rec.localId }));
+              firebaseUpdated = true;
+            }
+          } catch { /* ignore */ }
+        }
+        if (!firebaseUpdated) {
+          setResetErr("No se pudo actualizar la contraseña de Firebase. Configurá FIREBASE_SERVICE_ACCOUNT en Vercel para activar la actualización automática.");
         }
       }
       if (!firebaseUpdated) {
