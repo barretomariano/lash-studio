@@ -47,10 +47,22 @@ module.exports = async function handler(req, res) {
   if (!email) return res.status(400).json({ error:"email required" });
 
   const saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!saJson) return res.json({ ok:false, reason:"service_account_not_configured" });
+  if (!saJson) {
+    console.error("delete-auth-user: FIREBASE_SERVICE_ACCOUNT env var not set");
+    return res.json({ ok:false, reason:"service_account_not_configured" });
+  }
 
   try {
-    const sa    = JSON.parse(saJson);
+    let sa;
+    try {
+      sa = JSON.parse(saJson);
+    } catch (parseErr) {
+      console.error("delete-auth-user: JSON.parse failed —", parseErr.message, "— first 80 chars:", saJson.slice(0, 80));
+      return res.status(500).json({ error:"invalid FIREBASE_SERVICE_ACCOUNT JSON: " + parseErr.message });
+    }
+    // Normalize private_key in case env var was stored with literal \n instead of real newlines
+    if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, "\n");
+    console.log("delete-auth-user: called for", email, "— sa.client_email:", sa.client_email);
     const token = await getGoogleAccessToken(sa);
     const BASE  = `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}`;
 
