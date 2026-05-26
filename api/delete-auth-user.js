@@ -65,11 +65,15 @@ module.exports = async function handler(req, res) {
     if (!uid) return res.json({ ok:true, notFound:true });
 
     // Delete
-    await fetch(`${BASE}/accounts:delete`, {
+    const deleteRes = await fetch(`${BASE}/accounts:delete`, {
       method: "POST",
       headers: { "Authorization":`Bearer ${token}`, "Content-Type":"application/json" },
       body: JSON.stringify({ localId:uid }),
     });
+    if (!deleteRes.ok) {
+      const errBody = await deleteRes.json().catch(() => ({}));
+      throw new Error(`Firebase delete failed: ${deleteRes.status} ${JSON.stringify(errBody)}`);
+    }
 
     return res.json({ ok:true });
   } catch (e) {
