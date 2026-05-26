@@ -2752,7 +2752,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
         {tab === "info" && (
           <div>
             <div style={{ display:"flex", gap:9, marginBottom:14 }}>
-              <button style={{ ...s.btnG, flex:1 }} onClick={() => openWA(`Hola ${c.nombre?.split(" ")[0]}! 🌿`)}>WhatsApp</button>
+              <button style={{ ...s.btnG, flex:1 }} onClick={() => openWAClienta(c, `Hola ${c.nombre?.split(" ")[0]}! 🌿`)}>WhatsApp</button>
               <button style={{ ...s.btnGl, flex:1 }} onClick={() => setEditing(e => !e)}>{editing ? "cancelar" : "Editar"}</button>
             </div>
             <div style={{ ...s.card, display:"flex", flexDirection:"column", gap:12 }}>
