@@ -841,6 +841,9 @@ function AdminApp({ data, onLogout }) {
           ))}
           <div style={{ flex:1 }} />
           <button style={{ ...s.btnG, maxWidth:"100%", fontSize:13 }} onClick={() => push("nueva-cita")}>+ Nuevo turno</button>
+          <button style={{ ...s.btnRed, maxWidth:"100%", fontSize:12, marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", gap:7 }} onClick={onLogout}>
+            <Icon name="logOut" size={14} color={G.red} /> Cerrar sesión
+          </button>
         </nav>
         {/* Content */}
         <div style={{ flex:1, overflowY:"auto", position:"relative", minWidth:0, paddingBottom:40 }} className="ls-wide-content">
@@ -3673,11 +3676,14 @@ function AdminConfig({ data, toast, onLogout }) {
         </div>
       ) : (
         <div style={{ padding:"18px" }}>
-          <div style={{ display:"flex", gap:7, marginBottom:18, flexWrap:"wrap" }}>
+          <div style={{ display:"flex", gap:7, marginBottom:14, flexWrap:"wrap" }}>
             {configTabs.map(t => (
               <button key={t} onClick={() => setTab(t)} style={{ ...s.btnGl, fontSize:11, background:tab === t ? G.greenM : "transparent", borderColor:tab === t ? G.green : G.border, color:tab === t ? G.greenL : G.muted, padding:"8px 14px", textTransform:"capitalize", fontWeight:tab === t ? 700 : 400 }}>{t}</button>
             ))}
           </div>
+          <button style={{ ...s.btnRed, width:"100%", marginBottom:18, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={onLogout}>
+            <Icon name="logOut" size={14} color={G.red} /> Cerrar sesión
+          </button>
           {renderContent()}
         </div>
       )}
