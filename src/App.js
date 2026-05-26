@@ -457,11 +457,24 @@ function useData() {
         if (yaExiste) {
           return { error: `Ya existe una clienta con ese email: "${yaExiste.nombre}". Buscala en el listado.` };
         }
-        // Email is in Firebase Auth but not in our CRM — will need admin endpoint to reset
+        // Firebase Auth account exists but not in our CRM.
+        // Delete old Firebase Auth account via admin endpoint, then recreate with a known password.
         const resetPass = genPass();
-        const id = await db.push("clientas", { ...datos, appPass:resetPass, creadaEn:hoyISO() });
-        setClientas(p => [...p, { ...datos, appPass:resetPass, creadaEn:hoyISO(), _id:id, historial:[] }]);
-        return { ok:true, emailExists:true, nombre:datos.nombre, pass:resetPass, email:datos.email };
+        let authEntry = {};
+        try {
+          const delRes = await fetch("/api/delete-auth-user", {
+            method:"POST", headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({ email:datos.email }),
+          }).then(r => r.json()).catch(() => ({}));
+          if (delRes.ok) {
+            const rec = await fbAuth.create(datos.email, resetPass);
+            if (rec.localId) authEntry = { uid:rec.localId, authRefreshToken:rec.refreshToken };
+          }
+        } catch { /* FIREBASE_SERVICE_ACCOUNT might not be configured */ }
+        const entry = { ...datos, appPass:resetPass, ...authEntry, creadaEn:hoyISO() };
+        const id = await db.push("clientas", entry);
+        setClientas(p => [...p, { ...entry, _id:id, historial:[] }]);
+        return { ok:true, emailExists:!authEntry.uid, nombre:datos.nombre, pass:resetPass, email:datos.email };
       }
       return { error: res.error.message };
     }
