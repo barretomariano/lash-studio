@@ -19,7 +19,7 @@ async function getGoogleAccessToken(sa) {
   const payload = b64url(JSON.stringify({
     iss: sa.client_email, sub: sa.client_email,
     aud: "https://oauth2.googleapis.com/token",
-    scope: "https://www.googleapis.com/auth/firebase",
+    scope: "https://www.googleapis.com/auth/firebase https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/identitytoolkit",
     iat: now, exp: now + 3600,
   }));
   const toSign = `${header}.${payload}`;
@@ -72,9 +72,13 @@ module.exports = async function handler(req, res) {
       headers: { "Authorization":`Bearer ${token}`, "Content-Type":"application/json" },
       body: JSON.stringify({ email:[email] }),
     });
-    const lookup = await lookupRes.json();
-    const uid    = lookup.users?.[0]?.localId;
-    if (!uid) return res.json({ ok:true, notFound:true });
+    const lookupBody = await lookupRes.json();
+    if (!lookupRes.ok) throw new Error(`Lookup failed ${lookupRes.status}: ${JSON.stringify(lookupBody)}`);
+    const uid = lookupBody.users?.[0]?.localId;
+    if (!uid) {
+      console.log("delete-auth-user: user not found in Firebase Auth —", email);
+      return res.json({ ok:true, notFound:true });
+    }
 
     // Delete
     const deleteRes = await fetch(`${BASE}/accounts:delete`, {
