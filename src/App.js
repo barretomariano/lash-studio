@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 
 const FB        = "https://lash-studio-c9cd7-default-rtdb.firebaseio.com";
 const API_KEY   = "AIzaSyDq8japdXOWaAAOjBLhESJB1h2qITdnhvk";
@@ -10,20 +10,25 @@ const VAPID_PUBLIC_KEY = "BBsJiZsDUVmNPVoNNvzhlKiJG25M27n7IEKJmf9gCO1CDiAM7D-8pF
 const CLOUDINARY_CLOUD  = "dd178jnmm";
 const CLOUDINARY_PRESET = "lash_studio";
 
-async function subirFoto(file) {
-  const dataUrl = await new Promise((resolve) => {
-    const canvas = document.createElement("canvas");
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 900;
-      let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) { if (w > h) { h = h*MAX/w; w=MAX; } else { w=w*MAX/h; h=MAX; } }
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", 0.82));
-    };
-    img.src = URL.createObjectURL(file);
-  });
+async function subirFoto(fileOrDataUrl) {
+  let dataUrl;
+  if (typeof fileOrDataUrl === "string") {
+    dataUrl = fileOrDataUrl; // canvas dataURL from cropper — use as-is
+  } else {
+    dataUrl = await new Promise((resolve) => {
+      const canvas = document.createElement("canvas");
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 900;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) { if (w > h) { h = h*MAX/w; w=MAX; } else { w=w*MAX/h; h=MAX; } }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.src = URL.createObjectURL(fileOrDataUrl);
+    });
+  }
   if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET) return dataUrl;
   const fd = new FormData();
   fd.append("file", dataUrl);
@@ -3762,6 +3767,116 @@ function ConfigMensajes({ data, toast }) {
   );
 }
 
+// ── Image Cropper ─────────────────────────────────────────────────────────────
+function ImageCropper({ src, onSave, onCancel }) {
+  const ASPECT = 16 / 9;
+  const PREV_W = Math.min(300, (typeof window !== "undefined" ? window.innerWidth : 400) - 40);
+  const PREV_H = Math.round(PREV_W / ASPECT);
+  const [scale, setScale]       = useState(1);
+  const [rotate, setRotate]     = useState(0);
+  const [pos, setPos]           = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const [dragStart, setDragStart] = useState(null);
+  const [pinchStart, setPinchStart] = useState(null);
+  const [natSize, setNatSize]   = useState({ w: 0, h: 0 });
+  const imgRef = useRef(null);
+
+  const fitScale = (r, nw, nh) => {
+    if (!nw) return 1;
+    const isRot = r % 180 !== 0;
+    const fw = isRot ? nh : nw, fh = isRot ? nw : nh;
+    return Math.max(PREV_W / fw, PREV_H / fh);
+  };
+
+  const onImgLoad = (e) => {
+    const nw = e.target.naturalWidth, nh = e.target.naturalHeight;
+    setNatSize({ w: nw, h: nh });
+    setScale(fitScale(0, nw, nh));
+    setPos({ x: 0, y: 0 });
+  };
+
+  const rotateDir = (dir) => {
+    const r = (rotate + dir + 360) % 360;
+    setRotate(r);
+    setScale(fitScale(r, natSize.w, natSize.h));
+    setPos({ x: 0, y: 0 });
+  };
+
+  const onMouseDown = (e) => { e.preventDefault(); setDragging(true); setDragStart({ x: e.clientX - pos.x, y: e.clientY - pos.y }); };
+  const onMouseMove = (e) => { if (!dragging || !dragStart) return; setPos({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }); };
+  const onMouseUp   = () => { setDragging(false); setDragStart(null); };
+
+  const onTouchStart = (e) => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      setDragging(true);
+      setDragStart({ x: e.touches[0].clientX - pos.x, y: e.touches[0].clientY - pos.y });
+    } else if (e.touches.length === 2) {
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      setPinchStart({ dist: d, scale });
+      setDragging(false);
+    }
+  };
+  const onTouchMove = (e) => {
+    e.preventDefault();
+    if (e.touches.length === 1 && dragging && dragStart) {
+      setPos({ x: e.touches[0].clientX - dragStart.x, y: e.touches[0].clientY - dragStart.y });
+    } else if (e.touches.length === 2 && pinchStart) {
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      setScale(Math.max(0.05, Math.min(12, pinchStart.scale * (d / pinchStart.dist))));
+    }
+  };
+  const onTouchEnd = () => { setDragging(false); setDragStart(null); setPinchStart(null); };
+
+  const apply = () => {
+    const OUT_W = 800, OUT_H = Math.round(OUT_W / ASPECT);
+    const canvas = document.createElement("canvas");
+    canvas.width = OUT_W; canvas.height = OUT_H;
+    const ctx = canvas.getContext("2d");
+    const img = imgRef.current;
+    if (!img) return;
+    const outScale = OUT_W / PREV_W;
+    ctx.save();
+    ctx.translate(OUT_W / 2 + pos.x * outScale, OUT_H / 2 + pos.y * outScale);
+    ctx.rotate(rotate * Math.PI / 180);
+    ctx.scale(scale * outScale, scale * outScale);
+    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2, img.naturalWidth, img.naturalHeight);
+    ctx.restore();
+    onSave(canvas.toDataURL("image/jpeg", 0.88));
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14 }}>
+      <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, textAlign:"center", margin:0 }}>
+        Arrastrá para posicionar · Pellizcá para escalar
+      </p>
+      <div
+        style={{ width:PREV_W, height:PREV_H, borderRadius:14, overflow:"hidden", background:"#111", cursor:dragging?"grabbing":"grab", position:"relative", userSelect:"none", flexShrink:0, touchAction:"none" }}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      >
+        <img
+          ref={imgRef} src={src} alt="" onLoad={onImgLoad} draggable={false}
+          style={{ position:"absolute", left:"50%", top:"50%", transform:`translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px)) rotate(${rotate}deg) scale(${scale})`, transformOrigin:"center", maxWidth:"none", pointerEvents:"none", userSelect:"none" }}
+        />
+      </div>
+      <div style={{ width:PREV_W, display:"flex", alignItems:"center", gap:10 }}>
+        <span style={{ fontFamily:F.sans, fontSize:13, color:G.muted, lineHeight:1 }}>−</span>
+        <input type="range" min={0.05} max={10} step={0.01} value={scale} onChange={e => setScale(Number(e.target.value))} style={{ flex:1, accentColor:G.green }} />
+        <span style={{ fontFamily:F.sans, fontSize:13, color:G.muted, lineHeight:1 }}>+</span>
+      </div>
+      <div style={{ display:"flex", gap:10 }}>
+        <button style={{ ...s.btnGl, padding:"9px 18px" }} onClick={() => rotateDir(-90)}>↺ −90°</button>
+        <button style={{ ...s.btnGl, padding:"9px 18px" }} onClick={() => rotateDir(90)}>+90° ↻</button>
+      </div>
+      <div style={{ display:"flex", gap:10, width:PREV_W }}>
+        <button style={{ ...s.btnGl, flex:1 }} onClick={onCancel}>cancelar</button>
+        <button style={{ ...s.btnG, flex:1 }} onClick={apply}>aplicar →</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Config Servicios ───────────────────────────────────────────────────────────
 function ConfigServicios({ data, toast }) {
   const [sheet, setSheet]     = useState(false);
@@ -3770,17 +3885,24 @@ function ConfigServicios({ data, toast }) {
   const [saving, setSaving]   = useState(false);
   const [confirm, setConfirm]   = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [cropSrc, setCropSrc]   = useState(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
   const abrirNuevo  = () => { setEditSv(null); setForm({ nombre:"", precio:"", duracion:"", descripcion:"", cuidados:"", intervaloService:"14", fotos:[] }); setSheet(true); };
   const abrirEditar = (sv) => { setEditSv(sv); setForm({ nombre:sv.nombre, precio:String(sv.precio||""), duracion:String(sv.duracion||""), descripcion:sv.descripcion||"", cuidados:sv.cuidados||"", intervaloService:String(sv.intervaloService||14), fotos:sv.fotos||[] }); setSheet(true); };
 
-  const onFotoFile = async (e) => {
+  const onFotoFile = (e) => {
     const file = e.target.files?.[0]; if (!file) return;
-    setUploading(true);
-    try { const url = await subirFoto(file); set("fotos", [...(form.fotos||[]), url]); } catch { toast("Error al subir foto"); }
-    setUploading(false); e.target.value = "";
+    setCropSrc(URL.createObjectURL(file));
+    e.target.value = "";
   };
+  const onCropSave = async (dataUrl) => {
+    URL.revokeObjectURL(cropSrc); setCropSrc(null);
+    setUploading(true);
+    try { const url = await subirFoto(dataUrl); set("fotos", [...(form.fotos||[]), url]); } catch { toast("Error al subir foto"); }
+    setUploading(false);
+  };
+  const onCropCancel = () => { URL.revokeObjectURL(cropSrc); setCropSrc(null); };
   const removeFoto = (i) => set("fotos", form.fotos.filter((_, j) => j !== i));
 
   const guardar = async () => {
@@ -3853,6 +3975,12 @@ function ConfigServicios({ data, toast }) {
         </Sheet>
       )}
       {confirm && <Modal titulo="Eliminar servicio" msg={`¿Eliminar "${confirm.nombre}"?`} onOk={async () => { await data.borrarServicio(confirm._id); setConfirm(null); toast("servicio eliminado"); }} onCancel={() => setConfirm(null)} okLabel="eliminar" danger />}
+      {cropSrc && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.97)", zIndex:200, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.text, marginBottom:18 }}>Ajustar foto</p>
+          <ImageCropper src={cropSrc} onSave={onCropSave} onCancel={onCropCancel} />
+        </div>
+      )}
     </div>
   );
 }
@@ -4610,14 +4738,17 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
     { id:"perfil",         iconName:"user",         label:"Perfil"  },
   ];
 
+  const [servicioPresel, setServicioPresel] = useState(null);
+  const goToAgendar = (sv) => { setServicioPresel(sv); setTab("agendar"); };
+
   const installProps = { isStandalone, deferredInstall, isIOS, installDismissed, setInstallDismissed };
   const render = () => {
     switch (tab) {
-      case "inicio":         return <CInicio         clienta={clienta} data={data} setTab={setTab} installProps={installProps} />;
-      case "agendar":        return <CAgendar        clienta={clienta} data={data} />;
+      case "inicio":         return <CInicio         clienta={clienta} data={data} setTab={setTab} goToAgendar={goToAgendar} installProps={installProps} />;
+      case "agendar":        return <CAgendar        clienta={clienta} data={data} servicioPresel={servicioPresel} clearServicioPresel={() => setServicioPresel(null)} />;
       case "notificaciones": return <CNotificaciones clienta={clienta} notifs={notifs} setNotifs={setNotifs} />;
       case "perfil":         return <CPerfil         clienta={clienta} data={data} onLogout={onLogout} />;
-      default:               return <CInicio         clienta={clienta} data={data} setTab={setTab} installProps={installProps} />;
+      default:               return <CInicio         clienta={clienta} data={data} setTab={setTab} goToAgendar={goToAgendar} installProps={installProps} />;
     }
   };
 
@@ -4681,7 +4812,8 @@ function ClientaApp({ clienta: clientaSession, data, onLogout }) {
   );
 }
 
-function CInicio({ clienta, data, setTab, installProps = {} }) {
+function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
+  const _goToAgendar = goToAgendar || ((sv) => setTab("agendar"));
   const hoy   = hoyISO();
   const hist  = Array.isArray(clienta.historial) ? clienta.historial : Object.values(clienta.historial || {});
   const ultima = [...hist].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0];
@@ -4937,7 +5069,8 @@ function CInicio({ clienta, data, setTab, installProps = {} }) {
             <p style={{ ...s.eyebrow, marginBottom:9 }}>servicios</p>
             <div style={{ display:"flex", gap:9, overflowX:"auto", paddingBottom:4, scrollSnapType:"x mandatory", WebkitOverflowScrolling:"touch" }}>
               {data.servicios.map(sv => (
-                <div key={sv._id} style={{ flexShrink:0, width:160, ...s.card, margin:0, padding:0, overflow:"hidden", scrollSnapAlign:"start" }}>
+                <div key={sv._id} style={{ flexShrink:0, width:160, ...s.card, margin:0, padding:0, overflow:"hidden", scrollSnapAlign:"start", cursor:"pointer" }}
+                  onClick={() => _goToAgendar(sv)}>
                   {sv.fotos?.[0]
                     ? <img src={sv.fotos[0]} alt={sv.nombre} style={{ width:"100%", height:90, objectFit:"cover" }} loading="lazy" />
                     : <div style={{ height:70, background:"rgba(143,189,90,0.12)", display:"flex", alignItems:"center", justifyContent:"center" }}><Icon name="scissors" size={22} color={G.greenL} /></div>
@@ -4945,7 +5078,7 @@ function CInicio({ clienta, data, setTab, installProps = {} }) {
                   <div style={{ padding:"8px 10px 10px" }}>
                     <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{sv.nombre}</p>
                     <p style={{ margin:"0 0 8px", fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.green }}>{fmtPesos(sv.precio)}</p>
-                    <button style={{ ...s.btnG, padding:"7px 10px", fontSize:11, width:"100%" }} onClick={() => setTab("agendar")}>agendar →</button>
+                    <button style={{ ...s.btnG, padding:"7px 10px", fontSize:11, width:"100%" }} onClick={e => { e.stopPropagation(); _goToAgendar(sv); }}>agendar →</button>
                   </div>
                 </div>
               ))}
@@ -5044,7 +5177,7 @@ function CInicio({ clienta, data, setTab, installProps = {} }) {
   );
 }
 
-function CAgendar({ clienta, data }) {
+function CAgendar({ clienta, data, servicioPresel, clearServicioPresel }) {
   const [paso, setPaso]       = useState(1);
   const [modo, setModo]       = useState("individual");
   const [form, setForm]       = useState({ servicio:null, fecha:"", hora:"", notas:"", adicionales:[] });
@@ -5061,6 +5194,15 @@ function CAgendar({ clienta, data }) {
 
   const slots         = data.getConfig("slots", []);
   const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
+  // Pre-select service when navigating from carousel (tieneAdicionales resolved below at first render)
+  useEffect(() => {
+    if (servicioPresel) {
+      const adics = data.getConfig("adicionales", []);
+      setForm(f => ({ ...f, servicio: servicioPresel }));
+      setPaso(adics.length > 0 ? 2 : 3);
+      clearServicioPresel?.();
+    }
+  }, []);
   const ocupadas      = data.citas.filter(c => c.fecha === form.fecha && c.estado !== "completada").map(c => c.hora);
   const fechasBloq    = new Set(data.excepciones.map(e => e.fecha));
 
