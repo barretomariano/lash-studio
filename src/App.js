@@ -445,10 +445,17 @@ function useData() {
     if (res.error) {
       const code = res.error.message || "";
       if (code.includes("EMAIL_EXISTS")) {
-        // Email already has a Firebase Auth account — save as CRM entry without re-creating auth
-        const id = await db.push("clientas", { ...datos, creadaEn:hoyISO() });
-        setClientas(p => [...p, { ...datos, creadaEn:hoyISO(), _id:id, historial:[] }]);
-        return { ok:true, emailExists:true, nombre:datos.nombre };
+        // Check if we already have a RTDB entry for this email — avoid orphan duplicates
+        const yaExiste = clientas.find(c => c.email?.toLowerCase() === datos.email.toLowerCase());
+        if (yaExiste) {
+          return { error: `Ya existe una clienta con ese email: "${yaExiste.nombre}". Buscala en el listado.` };
+        }
+        // Email is in Firebase Auth but not in our CRM — generate a password and send reset email
+        const resetPass = genPass();
+        const id = await db.push("clientas", { ...datos, appPass:resetPass, creadaEn:hoyISO() });
+        setClientas(p => [...p, { ...datos, appPass:resetPass, creadaEn:hoyISO(), _id:id, historial:[] }]);
+        await fbAuth.resetPw(datos.email).catch(() => {});
+        return { ok:true, emailExists:true, nombre:datos.nombre, pass:resetPass, email:datos.email };
       }
       return { error: res.error.message };
     }
@@ -2572,8 +2579,10 @@ function AdminClientas({ data, push, toast }) {
       const res = await data.crearClientas(form);
       if (res.error) { toast("error: " + res.error); return; }
       setSheet(false);
-      setCreds(res.noAccount || res.emailExists
-        ? { noAccount:true, nombre:form.nombre, emailExists:res.emailExists }
+      setCreds(res.emailExists
+        ? { emailExists:true, nombre:form.nombre, telefono:form.telefono, email:res.email, pass:res.pass }
+        : res.noAccount
+        ? { noAccount:true, nombre:form.nombre }
         : { email:res.email, pass:res.pass, nombre:form.nombre, telefono:form.telefono });
       setForm({ nombre:"", email:"", telefono:"", fechaNacimiento:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
     } catch(e) { toast("Error al crear: " + (e?.message || "intentá de nuevo")); }
@@ -2654,17 +2663,23 @@ function AdminClientas({ data, push, toast }) {
       )}
 
       {creds && (
-        <Sheet titulo={creds.noAccount ? "✓ Contacto guardado" : "✓ Clienta creada"} onClose={() => setCreds(null)}>
-          {creds.noAccount ? (
+        <Sheet titulo={creds.emailExists ? "⚠ Email ya registrado" : creds.noAccount ? "✓ Contacto guardado" : "✓ Clienta creada"} onClose={() => setCreds(null)}>
+          {creds.emailExists ? (
             <>
+              <p style={{ fontFamily:F.sans, fontSize:12, color:G.amber, margin:"0 0 12px", lineHeight:1.6 }}>
+                Este email ya tenía cuenta en Firebase. Se generó una contraseña y se envió un link de restablecimiento al email de <b>{creds.nombre}</b>. Compartile la contraseña por WhatsApp y pedile que use el link del email para ingresar con ella.
+              </p>
               <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
-                <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}><b style={{ color:G.white }}>{creds.nombre}</b> fue guardada como contacto CRM.</p>
+                <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"0 0 8px" }}>accesos para {creds.nombre}:</p>
+                <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 4px" }}><b style={{ color:G.white }}>{creds.email}</b></p>
+                <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}>Contraseña: <b style={{ color:G.white, letterSpacing:"0.1em" }}>{creds.pass}</b></p>
               </div>
-              {creds.emailExists
-                ? <p style={{ fontFamily:F.sans, fontSize:12, color:G.amber, marginBottom:14 }}>El email ya tenía una cuenta existente — la clienta puede ingresar con su contraseña anterior.</p>
-                : <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14 }}>Sin email, la clienta no puede acceder al panel de la app. Podés agregar su email desde la ficha para crear su cuenta cuando quiera.</p>
-              }
+              <button style={s.btnG} onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const estudio = data.getConfig("estudio", {}); openWAClienta({ telefono:creds.telefono }, fillMsg(tpl.bienvenida || DEFAULT_MENSAJES.bienvenida, { nombre:creds.nombre?.split(" ")[0], estudio:estudio.nombre || "Lash Studio", email:creds.email, pass:creds.pass, url:DEPLOY_URL })); setCreds(null); }}>Enviar por WhatsApp →</button>
             </>
+          ) : creds.noAccount ? (
+            <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
+              <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}><b style={{ color:G.white }}>{creds.nombre}</b> fue guardada como contacto CRM sin acceso al panel.</p>
+            </div>
           ) : (
             <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
               <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"0 0 8px" }}>accesos para {creds.nombre}:</p>
@@ -2672,7 +2687,7 @@ function AdminClientas({ data, push, toast }) {
               <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}>Contraseña: <b style={{ color:G.white, letterSpacing:"0.1em" }}>{creds.pass}</b></p>
             </div>
           )}
-          {!creds.noAccount && <button style={s.btnG} onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const estudio = data.getConfig("estudio", {}); openWAClienta({ telefono:creds.telefono }, fillMsg(tpl.bienvenida || DEFAULT_MENSAJES.bienvenida, { nombre:creds.nombre?.split(" ")[0], estudio:estudio.nombre || "Lash Studio", email:creds.email, pass:creds.pass, url:DEPLOY_URL })); setCreds(null); }}>Enviar por WhatsApp →</button>}
+          {!creds.emailExists && !creds.noAccount && <button style={s.btnG} onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const estudio = data.getConfig("estudio", {}); openWAClienta({ telefono:creds.telefono }, fillMsg(tpl.bienvenida || DEFAULT_MENSAJES.bienvenida, { nombre:creds.nombre?.split(" ")[0], estudio:estudio.nombre || "Lash Studio", email:creds.email, pass:creds.pass, url:DEPLOY_URL })); setCreds(null); }}>Enviar por WhatsApp →</button>}
           <button style={{ ...s.btnGl, marginTop:9, width:"100%" }} onClick={() => setCreds(null)}>cerrar</button>
         </Sheet>
       )}
@@ -2734,18 +2749,25 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
     setResetErr("");
     try {
       const newPass = genPass();
-      if (c.appPass) {
-        const signIn = await fbAuth.signIn(c.email, c.appPass);
-        if (signIn.error) {
-          setResetErr("No se pudo verificar la contraseña anterior (Firebase). La nueva clave se guarda igual — la clienta deberá restablecerla si no puede ingresar.");
-        } else {
-          await fbAuth.updatePass(signIn.idToken, newPass);
+      let firebaseUpdated = false;
+      if (c.email) {
+        if (c.appPass) {
+          const signIn = await fbAuth.signIn(c.email, c.appPass);
+          if (signIn.idToken) {
+            await fbAuth.updatePass(signIn.idToken, newPass);
+            firebaseUpdated = true;
+          }
+        }
+        if (!firebaseUpdated) {
+          // Can't update Firebase Auth directly — send reset email so client can set this password
+          await fbAuth.resetPw(c.email).catch(() => {});
+          setResetErr(`No pudimos actualizar automáticamente. Se envió un link de restablecimiento al email de ${c.nombre?.split(" ")[0]}. Compartile la contraseña de abajo por WhatsApp y pedile que la use cuando el email le pida una nueva clave.`);
         }
       }
       await data.editarClientas(c._id, { appPass:newPass });
       setC(p => ({ ...p, appPass:newPass }));
       setNewPassGen(newPass);
-      toast("✓ contraseña guardada");
+      if (firebaseUpdated) toast("✓ contraseña actualizada");
     } catch { setResetErr("Error inesperado. Intentá de nuevo."); }
     setResetting(false);
   };
