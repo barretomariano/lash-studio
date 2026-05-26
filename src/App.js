@@ -2806,28 +2806,27 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
         if (!firebaseUpdated) {
           // Delete old Firebase Auth account + recreate with new password
           try {
-            await fetch("/api/delete-auth-user", {
+            const delRes = await fetch("/api/delete-auth-user", {
               method:"POST", headers:{"Content-Type":"application/json"},
               body:JSON.stringify({ email:c.email }),
-            });
-            const rec = await fbAuth.create(c.email, newPass);
-            if (rec.refreshToken) {
-              await data.editarClientas(c._id, { appPass:newPass, authRefreshToken:rec.refreshToken, uid:rec.localId });
-              setC(p => ({ ...p, appPass:newPass, authRefreshToken:rec.refreshToken, uid:rec.localId }));
-              firebaseUpdated = true;
+            }).then(r => r.json()).catch(() => ({}));
+            if (delRes.ok) {
+              const rec = await fbAuth.create(c.email, newPass);
+              if (rec.refreshToken) {
+                await data.editarClientas(c._id, { appPass:newPass, authRefreshToken:rec.refreshToken, uid:rec.localId });
+                setC(p => ({ ...p, appPass:newPass, authRefreshToken:rec.refreshToken, uid:rec.localId }));
+                firebaseUpdated = true;
+              }
             }
           } catch { /* ignore */ }
         }
-        if (!firebaseUpdated) {
-          setResetErr("No se pudo actualizar la contraseña de Firebase. Configurá FIREBASE_SERVICE_ACCOUNT en Vercel para activar la actualización automática.");
-        }
       }
       if (!firebaseUpdated) {
-        await data.editarClientas(c._id, { appPass:newPass });
-        setC(p => ({ ...p, appPass:newPass }));
+        setResetErr("No se pudo actualizar la contraseña de Firebase. Verificá que FIREBASE_SERVICE_ACCOUNT esté configurado en Vercel y que el deploy esté actualizado.");
+      } else {
+        setNewPassGen(newPass);
+        toast("✓ contraseña actualizada");
       }
-      setNewPassGen(newPass);
-      if (firebaseUpdated) toast("✓ contraseña actualizada");
     } catch { setResetErr("Error inesperado. Intentá de nuevo."); }
     setResetting(false);
   };
