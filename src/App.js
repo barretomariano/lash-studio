@@ -1820,6 +1820,7 @@ function AgendaDia({ data, push, toast, diaInicial }) {
 
   const completarRapido = async () => {
     if (!pagoTarget) return;
+    if (pagoTarget.fecha > hoyISO()) { toast("⚠️ La fecha del turno es futura"); return; }
     const metodo = quickPago.metodo;
     let montoBase = 0;
     if (metodo === "mixto") {
@@ -2257,6 +2258,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
 
   const completar = async () => {
     if (!cita.clientaId) { toast("sin clienta — no se puede cerrar"); return; }
+    if (cita.fecha > hoyISO()) { toast("⚠️ La fecha del turno es futura — no se puede cerrar antes de que ocurra"); return; }
     if (modoMixto && !pago.montoEfectivo && !pago.montoTransf) { toast("ingresá al menos un monto"); return; }
     if (!modoMixto && !pago.montoTotal) { toast("ingresá el monto"); return; }
 
@@ -4834,13 +4836,15 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
   const _goToAgendar = goToAgendar || ((sv) => setTab("agendar"));
   const hoy   = hoyISO();
   const hist  = Array.isArray(clienta.historial) ? clienta.historial : Object.values(clienta.historial || {});
-  const ultima = [...hist].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0];
+  // Solo entradas pasadas (fecha <= hoy) para métricas — evita que una cita futura completada de forma anticipada distorsione todo
+  const histPasado = hist.filter(h => h.fecha && h.fecha <= hoy);
+  const ultima = [...histPasado].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0];
   const diasDesde = ultima?.fecha ? Math.floor((new Date() - new Date(ultima.fecha)) / (1000 * 60 * 60 * 24)) : null;
   const proxCita  = data.citas.filter(c => c.clientaId === clienta._id && c.fecha >= hoy && c.estado !== "completada" && c.estado !== "solicitada").sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
   const citasSolicitadas = data.citas.filter(c => c.clientaId === clienta._id && c.estado === "solicitada");
   const diasHasta = proxCita ? Math.floor((new Date(proxCita.fecha) - new Date()) / (1000 * 60 * 60 * 24)) : null;
   const estudio   = data.getConfig("estudio", {});
-  const curvaFav  = (() => { const cnt = {}; hist.forEach(h => { if(h.curva) cnt[h.curva]=(cnt[h.curva]||0)+1; }); return Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0]?.[0] || clienta.curva || "—"; })();
+  const curvaFav  = (() => { const cnt = {}; histPasado.forEach(h => { if(h.curva) cnt[h.curva]=(cnt[h.curva]||0)+1; }); return Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0]?.[0] || clienta.curva || "—"; })();
 
   // Días hasta cumplir 14 días del service (para el countdown motivacional)
   const diasParaService = diasDesde !== null ? Math.max(0, 14 - diasDesde) : null;
@@ -4875,9 +4879,9 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
       <div style={s.topBar}>
         <p style={{ fontFamily:F.display, fontWeight:400, fontSize:36, letterSpacing:"1px", color:G.greenL, margin:"0 0 2px", lineHeight:1 }}>Hola, {clienta.nombre?.split(" ")[0]}</p>
         <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0" }}>{estudio.nombre || "Lash Studio"} · {new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
-        {hist.length > 0 && (
+        {histPasado.length > 0 && (
           <div style={{ display:"flex", gap:10, marginTop:8, flexWrap:"wrap" }}>
-            <span style={{ ...s.tag, fontSize:10 }}>{hist.length} visita{hist.length !== 1 ? "s" : ""}</span>
+            <span style={{ ...s.tag, fontSize:10 }}>{histPasado.length} visita{histPasado.length !== 1 ? "s" : ""}</span>
             {curvaFav !== "—" && <span style={{ ...s.tag, fontSize:10 }}>curva fav: {curvaFav}</span>}
             {clienta.creadaEn && <span style={{ ...s.tag, fontSize:10 }}>desde {clienta.creadaEn?.slice(0,4)}</span>}
           </div>
@@ -5106,13 +5110,13 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
 
         {/* ── Per-service countdowns ── */}
         {(() => {
-          const svsConHistorial = data.servicios.filter(sv => hist.some(h => h.servicio === sv.nombre));
+          const svsConHistorial = data.servicios.filter(sv => histPasado.some(h => h.servicio === sv.nombre));
           if (svsConHistorial.length === 0) return null;
           return (
             <div style={{ marginBottom:16 }}>
               <p style={{ ...s.eyebrow, marginBottom:9 }}>seguimiento de servicios</p>
               {svsConHistorial.map(sv => {
-                const ultSvHist = [...hist].filter(h => h.servicio === sv.nombre).sort((a, b) => (b.fecha||"").localeCompare(a.fecha||""))[0];
+                const ultSvHist = [...histPasado].filter(h => h.servicio === sv.nombre).sort((a, b) => (b.fecha||"").localeCompare(a.fecha||""))[0];
                 if (!ultSvHist) return null;
                 const diasDesdeSv = Math.floor((new Date() - new Date(ultSvHist.fecha)) / (1000*60*60*24));
                 const intervalo = sv.intervaloService || 14;
