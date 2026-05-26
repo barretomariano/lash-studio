@@ -442,7 +442,16 @@ function useData() {
     }
     const pass = genPass();
     const res  = await fbAuth.create(datos.email, pass);
-    if (res.error) return { error: res.error.message };
+    if (res.error) {
+      const code = res.error.message || "";
+      if (code.includes("EMAIL_EXISTS")) {
+        // Email already has a Firebase Auth account — save as CRM entry without re-creating auth
+        const id = await db.push("clientas", { ...datos, creadaEn:hoyISO() });
+        setClientas(p => [...p, { ...datos, creadaEn:hoyISO(), _id:id, historial:[] }]);
+        return { ok:true, emailExists:true, nombre:datos.nombre };
+      }
+      return { error: res.error.message };
+    }
     const id = await db.push("clientas", { ...datos, uid:res.localId, appPass:pass, creadaEn:hoyISO() });
     setClientas(p => [...p, { ...datos, uid:res.localId, appPass:pass, creadaEn:hoyISO(), _id:id, historial:[] }]);
     return { ok:true, pass, email:datos.email };
@@ -2561,8 +2570,8 @@ function AdminClientas({ data, push, toast }) {
       const res = await data.crearClientas(form);
       if (res.error) { toast("error: " + res.error); return; }
       setSheet(false);
-      setCreds(res.noAccount
-        ? { noAccount:true, nombre:form.nombre }
+      setCreds(res.noAccount || res.emailExists
+        ? { noAccount:true, nombre:form.nombre, emailExists:res.emailExists }
         : { email:res.email, pass:res.pass, nombre:form.nombre, telefono:form.telefono });
       setForm({ nombre:"", email:"", telefono:"", fechaNacimiento:"", curva:"", grosor:"", largo:"", alergias:"", observaciones:"", emergencia:"" });
     } catch(e) { toast("Error al crear: " + (e?.message || "intentá de nuevo")); }
@@ -2649,7 +2658,10 @@ function AdminClientas({ data, push, toast }) {
               <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
                 <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:0 }}><b style={{ color:G.white }}>{creds.nombre}</b> fue guardada como contacto CRM.</p>
               </div>
-              <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14 }}>Sin email, la clienta no puede acceder al panel de la app. Podés agregar su email desde la ficha para crear su cuenta cuando quiera.</p>
+              {creds.emailExists
+                ? <p style={{ fontFamily:F.sans, fontSize:12, color:G.amber, marginBottom:14 }}>El email ya tenía una cuenta existente — la clienta puede ingresar con su contraseña anterior.</p>
+                : <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:14 }}>Sin email, la clienta no puede acceder al panel de la app. Podés agregar su email desde la ficha para crear su cuenta cuando quiera.</p>
+              }
             </>
           ) : (
             <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:14 }}>
