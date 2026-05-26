@@ -52,12 +52,19 @@ const db = {
   del:    async (path)       => { await fetch(`${FB}/${path}.json`, { method:"DELETE" }); },
 };
 
+const SECURETOKEN_URL = "https://securetoken.googleapis.com/v1/token";
 const fbAuth = {
   signIn:  async (email, pass) => (await fetch(`${AUTH_URL}:signInWithPassword?key=${API_KEY}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email, password:pass, returnSecureToken:true }) })).json(),
   create:  async (email, pass) => (await fetch(`${AUTH_URL}:signUp?key=${API_KEY}`,             { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email, password:pass, returnSecureToken:true }) })).json(),
   resetPw: async (email)       => (await fetch(`${AUTH_URL}:sendOobCode?key=${API_KEY}`,        { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ requestType:"PASSWORD_RESET", email }) })).json(),
   updatePass: async (idToken, newPass) => (await fetch(`${AUTH_URL}:update?key=${API_KEY}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ idToken, password:newPass, returnSecureToken:true }) })).json(),
   deleteUser: async (idToken) => (await fetch(`${AUTH_URL}:delete?key=${API_KEY}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ idToken }) })).json(),
+  // Exchange a long-lived refresh token for a fresh idToken (tokens expire in 1h; refresh tokens survive password changes unless explicitly revoked)
+  refresh: async (refreshToken) => {
+    const r = await fetch(`${SECURETOKEN_URL}?key=${API_KEY}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ grant_type:"refresh_token", refresh_token:refreshToken }) });
+    const j = await r.json();
+    return j.id_token ? { idToken:j.id_token, refreshToken:j.refresh_token } : { error:j.error };
+  },
 };
 
 // helper: construir link WA con el teléfono de una clienta (o el de Male como fallback)
@@ -459,18 +466,28 @@ function useData() {
       }
       return { error: res.error.message };
     }
-    const id = await db.push("clientas", { ...datos, uid:res.localId, appPass:pass, creadaEn:hoyISO() });
-    setClientas(p => [...p, { ...datos, uid:res.localId, appPass:pass, creadaEn:hoyISO(), _id:id, historial:[] }]);
+    const id = await db.push("clientas", { ...datos, uid:res.localId, appPass:pass, authRefreshToken:res.refreshToken, creadaEn:hoyISO() });
+    setClientas(p => [...p, { ...datos, uid:res.localId, appPass:pass, authRefreshToken:res.refreshToken, creadaEn:hoyISO(), _id:id, historial:[] }]);
     return { ok:true, pass, email:datos.email };
   };
   const editarClientas        = async (id, d) => { await db.update(`clientas/${id}`, d); setClientas(p => p.map(x => x._id === id ? { ...x, ...d } : x)); };
   const borrarClientas = async (id) => {
     const c = clientas.find(x => x._id === id);
-    if (c?.email && c?.appPass) {
+    if (c?.email) {
       try {
-        const signIn = await fbAuth.signIn(c.email, c.appPass);
-        if (signIn.idToken) await fbAuth.deleteUser(signIn.idToken);
-      } catch { /* ignore auth cleanup failure */ }
+        let idToken = null;
+        // Prefer refresh token — works even after password changes
+        if (c.authRefreshToken) {
+          const ref = await fbAuth.refresh(c.authRefreshToken);
+          if (ref.idToken) idToken = ref.idToken;
+        }
+        // Fallback: sign in with stored password
+        if (!idToken && c.appPass) {
+          const si = await fbAuth.signIn(c.email, c.appPass);
+          if (si.idToken) idToken = si.idToken;
+        }
+        if (idToken) await fbAuth.deleteUser(idToken);
+      } catch { /* ignore auth cleanup failures */ }
     }
     await db.del(`clientas/${id}`);
     setClientas(p => p.filter(x => x._id !== id));
@@ -2751,21 +2768,35 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
       const newPass = genPass();
       let firebaseUpdated = false;
       if (c.email) {
-        if (c.appPass) {
-          const signIn = await fbAuth.signIn(c.email, c.appPass);
-          if (signIn.idToken) {
-            await fbAuth.updatePass(signIn.idToken, newPass);
+        let idToken = null;
+        // Prefer refresh token to get a valid idToken
+        if (c.authRefreshToken) {
+          const ref = await fbAuth.refresh(c.authRefreshToken).catch(() => ({}));
+          if (ref.idToken) idToken = ref.idToken;
+        }
+        // Fallback: sign in with stored password
+        if (!idToken && c.appPass) {
+          const si = await fbAuth.signIn(c.email, c.appPass);
+          if (si.idToken) idToken = si.idToken;
+        }
+        if (idToken) {
+          const upd = await fbAuth.updatePass(idToken, newPass);
+          if (upd.idToken) {
+            // Save new refresh token so future deletions/updates still work
+            await data.editarClientas(c._id, { appPass:newPass, authRefreshToken:upd.refreshToken });
+            setC(p => ({ ...p, appPass:newPass, authRefreshToken:upd.refreshToken }));
             firebaseUpdated = true;
           }
         }
         if (!firebaseUpdated) {
-          // Can't update Firebase Auth directly — send reset email so client can set this password
           await fbAuth.resetPw(c.email).catch(() => {});
           setResetErr(`No pudimos actualizar automáticamente. Se envió un link de restablecimiento al email de ${c.nombre?.split(" ")[0]}. Compartile la contraseña de abajo por WhatsApp y pedile que la use cuando el email le pida una nueva clave.`);
         }
       }
-      await data.editarClientas(c._id, { appPass:newPass });
-      setC(p => ({ ...p, appPass:newPass }));
+      if (!firebaseUpdated) {
+        await data.editarClientas(c._id, { appPass:newPass });
+        setC(p => ({ ...p, appPass:newPass }));
+      }
       setNewPassGen(newPass);
       if (firebaseUpdated) toast("✓ contraseña actualizada");
     } catch { setResetErr("Error inesperado. Intentá de nuevo."); }
