@@ -163,6 +163,32 @@ const mondayOfWeek = (weekOffset) => {
   return d;
 };
 
+function layoutCitas(citas, getDurFn) {
+  if (!citas.length) return [];
+  const sorted = [...citas].sort((a, b) => toMin(a.hora) - toMin(b.hora));
+  const cols = [], ends = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const start = toMin(sorted[i].hora);
+    const end   = start + getDurFn(sorted[i]);
+    ends.push(end);
+    const used = new Set();
+    for (let j = 0; j < i; j++) {
+      if (toMin(sorted[j].hora) < end && ends[j] > start) used.add(cols[j]);
+    }
+    let c = 0; while (used.has(c)) c++;
+    cols.push(c);
+  }
+  const nCols = cols.map((_, i) => {
+    let max = cols[i] + 1;
+    for (let j = 0; j < sorted.length; j++) {
+      if (i !== j && toMin(sorted[j].hora) < ends[i] && ends[j] > toMin(sorted[i].hora))
+        max = Math.max(max, cols[j] + 1);
+    }
+    return max;
+  });
+  return sorted.map((c, i) => ({ ...c, _col: cols[i], _nCols: nCols[i] }));
+}
+
 // WA message templates — stored in /config/mensajes, editable by admin
 const DEFAULT_MENSAJES = {
   service14d:  "Hola {nombre}! 🌿 ¿Cómo están tus pestañas? Ya es momento del service. ¡Te espero! 💚",
@@ -1340,7 +1366,7 @@ function AdminAgenda({ data, push, toast }) {
         </div>
       </div>
       {vista === "semana"
-        ? <AgendaSemana data={data} push={push} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
+        ? <AgendaSemana data={data} push={push} toast={toast} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
         : vista === "día"
         ? <AgendaDia data={data} push={push} toast={toast} diaInicial={diaS} />
         : wide
@@ -1592,7 +1618,7 @@ function AdminAgenda({ data, push, toast }) {
 }
 
 // ── Semana Calendar View ───────────────────────────────────────────────────────
-function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
+function AgendaSemana({ data, push, toast, weekOffset, setWeekOffset }) {
   const hoy = hoyISO();
   const ROW_H = 56;
   const [nowMin, setNowMin] = useState(() => { const n = new Date(); return n.getHours()*60 + n.getMinutes(); });
@@ -1647,6 +1673,21 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
   const blkBg  = (e) => e==="confirmada" ? `rgba(${G.greenRGB},0.18)` : e==="solicitada" ? "rgba(224,184,112,0.18)" : "rgba(240,240,240,0.06)";
   const blkBdr = (e) => e==="confirmada" ? `rgba(${G.greenRGB},0.55)` : e==="solicitada" ? "rgba(224,184,112,0.55)"  : G.border;
   const blkTxt = (e) => e==="confirmada" ? G.greenL                   : e==="solicitada" ? G.amber                   : G.muted;
+
+  const getDur = (cita) => data.servicios.find(s => s.nombre === cita.servicio)?.duracion || 60;
+
+  const confirmarRapidoSem = async (cita) => {
+    await data.editarCita(cita._id, { estado:"confirmada" });
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "¡Tu turno está confirmado! 🌿", `${cita.servicio} · ${fmtFecha(cita.fecha)} a las ${cita.hora}`);
+    toast("✓ turno confirmado");
+  };
+
+  const cancelarRapidoSem = async (cita) => {
+    if (!window.confirm(`¿Cancelar el turno de ${cita.clientaNombre}?`)) return;
+    await data.borrarCita(cita._id);
+    if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "Tu turno fue cancelado", `${cita.servicio} · ${cita.hora}`);
+    toast("Turno cancelado");
+  };
 
   // Week label: "19 may – 25 may"
   const weekLabel = `${fmtFecha(weekKeys[0])} – ${fmtFecha(weekKeys[6])}`;
@@ -1734,21 +1775,22 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
                 })}
 
                 {/* Appointment blocks */}
-                {dayCitas.map(cita => {
+                {layoutCitas(dayCitas, getDur).map(cita => {
                   const startMin = toMin(cita.hora);
                   if (startMin < minMin || startMin >= maxMin) return null;
-                  const sv = data.servicios.find(s => s.nombre === cita.servicio);
-                  const duracion = sv?.duracion || 60;
+                  const duracion = getDur(cita);
                   const top = ((startMin - minMin) / 60) * ROW_H;
                   const height = Math.max(42, (duracion / 60) * ROW_H);
                   const done = cita.estado === "completada";
                   const bg  = done ? `rgba(${G.greenRGB},0.10)` : blkBg(cita.estado);
                   const bdr = done ? `rgba(${G.greenRGB},0.25)` : blkBdr(cita.estado);
                   const txt = done ? G.muted                    : blkTxt(cita.estado);
+                  const colW = 100 / cita._nCols;
                   return (
                     <div key={cita._id}
                       onClick={e => { e.stopPropagation(); push("cita-detalle", { cita }); }}
-                      style={{ position:"absolute", top, left:2, right:2, height,
+                      style={{ position:"absolute", top,
+                        left:`calc(${cita._col * colW}% + 1px)`, width:`calc(${colW}% - 2px)`, height,
                         background:bg, border:`1px solid ${bdr}`,
                         borderRadius:8, padding:"3px 5px", overflow:"hidden",
                         cursor:"pointer", zIndex:2, boxSizing:"border-box",
@@ -1764,6 +1806,19 @@ function AgendaSemana({ data, push, weekOffset, setWeekOffset }) {
                           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                           {cita.servicio}
                         </p>
+                      )}
+                      {height >= 70 && !done && (
+                        <div style={{ position:"absolute", bottom:3, left:3, right:3, display:"flex", gap:3 }}
+                          onClick={e => e.stopPropagation()}>
+                          {cita.estado === "solicitada" && (<>
+                            <button onClick={() => confirmarRapidoSem(cita)} style={{ flex:1, background:`rgba(${G.greenRGB},0.2)`, border:`1px solid rgba(${G.greenRGB},0.4)`, borderRadius:4, padding:"2px 0", fontFamily:F.sans, fontSize:8, color:G.greenL, cursor:"pointer" }}>✓</button>
+                            <button onClick={() => cancelarRapidoSem(cita)} style={{ flex:1, background:"rgba(220,70,70,0.15)", border:"1px solid rgba(220,70,70,0.35)", borderRadius:4, padding:"2px 0", fontFamily:F.sans, fontSize:8, color:"#e07070", cursor:"pointer" }}>✕</button>
+                          </>)}
+                          {cita.estado === "confirmada" && (<>
+                            <button onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }} style={{ flex:1, background:"rgba(37,211,102,0.1)", border:"1px solid rgba(37,211,102,0.3)", borderRadius:4, padding:"2px 0", fontFamily:F.sans, fontSize:8, color:"rgba(37,211,102,0.85)", cursor:"pointer" }}>💬</button>
+                            <button onClick={e => { e.stopPropagation(); push("cita-detalle", { cita }); }} style={{ flex:1, background:`rgba(${G.greenRGB},0.15)`, border:`1px solid rgba(${G.greenRGB},0.35)`, borderRadius:4, padding:"2px 0", fontFamily:F.sans, fontSize:8, color:G.greenL, cursor:"pointer" }}>$</button>
+                          </>)}
+                        </div>
                       )}
                     </div>
                   );
@@ -1845,6 +1900,8 @@ function AgendaDia({ data, push, toast, diaInicial }) {
   const blkBg  = (e) => e==="confirmada" ? `rgba(${G.greenRGB},0.18)` : e==="solicitada" ? "rgba(224,184,112,0.18)" : "rgba(240,240,240,0.06)";
   const blkBdr = (e) => e==="confirmada" ? `rgba(${G.greenRGB},0.55)` : e==="solicitada" ? "rgba(224,184,112,0.55)"  : G.border;
   const blkTxt = (e) => e==="confirmada" ? G.greenL                   : e==="solicitada" ? G.amber                   : G.muted;
+
+  const getDur = (cita) => data.servicios.find(s => s.nombre === cita.servicio)?.duracion || 60;
 
   const stepDia = (n) => {
     const d = new Date(dia + "T12:00:00");
@@ -2020,22 +2077,37 @@ function AgendaDia({ data, push, toast, diaInicial }) {
                 onClick={() => nearestSlot && !isPast && push("nueva-cita", { fechaDefault:dia, horaDefault:nearestSlot })} />
             );
           })}
-          {allDayCitas.map(cita => {
+          {layoutCitas(allDayCitas, getDur).map(cita => {
             const startMin = toMin(cita.hora);
             if (startMin < minMin || startMin >= maxMin) return null;
-            const sv = data.servicios.find(s => s.nombre === cita.servicio);
-            const duracion = sv?.duracion || 60;
+            const duracion = getDur(cita);
             const top    = ((startMin - minMin) / 60) * ROW_H;
             const height = Math.max(40, (duracion / 60) * ROW_H);
+            const done   = cita.estado === "completada";
+            const colW   = 100 / cita._nCols;
             return (
               <div key={cita._id}
                 onClick={e => { e.stopPropagation(); push("cita-detalle", { cita }); }}
-                style={{ position:"absolute", top, left:4, right:4, height,
+                style={{ position:"absolute", top,
+                  left:`calc(${cita._col * colW}% + 4px)`, width:`calc(${colW}% - 8px)`, height,
                   background:blkBg(cita.estado), border:`1px solid ${blkBdr(cita.estado)}`,
-                  borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2 }}>
+                  borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2, boxSizing:"border-box" }}>
                 <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:11, color:blkTxt(cita.estado) }}>{cita.hora} · {cita.clientaNombre}</p>
                 <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:10, color:blkTxt(cita.estado), opacity:0.8 }}>{cita.servicio}</p>
-                <span style={{ ...s.tag, position:"absolute", top:5, right:5, fontSize:8, padding:"2px 6px" }}>{cita.estado === "completada" ? "finalizada" : cita.estado}</span>
+                <span style={{ ...s.tag, position:"absolute", top:5, right:5, fontSize:8, padding:"2px 6px" }}>{done ? "finalizada" : cita.estado}</span>
+                {height >= 80 && !done && (
+                  <div style={{ position:"absolute", bottom:6, left:8, right:8, display:"flex", gap:6 }}
+                    onClick={e => e.stopPropagation()}>
+                    {cita.estado === "solicitada" && (<>
+                      <button onClick={() => confirmarRapido(cita)} style={{ flex:1, background:`rgba(${G.greenRGB},0.2)`, border:`1px solid rgba(${G.greenRGB},0.4)`, borderRadius:6, padding:"4px 0", fontFamily:F.sans, fontSize:9, color:G.greenL, cursor:"pointer" }}>✓ confirmar</button>
+                      <button onClick={() => cancelarRapido(cita)} style={{ flex:1, background:"rgba(220,70,70,0.15)", border:"1px solid rgba(220,70,70,0.35)", borderRadius:6, padding:"4px 0", fontFamily:F.sans, fontSize:9, color:"#e07070", cursor:"pointer" }}>✕ cancelar</button>
+                    </>)}
+                    {cita.estado === "confirmada" && (<>
+                      <button onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }} style={{ flex:1, background:"rgba(37,211,102,0.1)", border:"1px solid rgba(37,211,102,0.3)", borderRadius:6, padding:"4px 0", fontFamily:F.sans, fontSize:9, color:"rgba(37,211,102,0.85)", cursor:"pointer" }}>💬 WA</button>
+                      <button onClick={() => abrirPago(cita)} style={{ flex:1, background:`rgba(${G.greenRGB},0.15)`, border:`1px solid rgba(${G.greenRGB},0.35)`, borderRadius:6, padding:"4px 0", fontFamily:F.sans, fontSize:9, color:G.greenL, cursor:"pointer" }}>$ cobrar</button>
+                    </>)}
+                  </div>
+                )}
               </div>
             );
           })}

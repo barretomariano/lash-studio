@@ -44,17 +44,26 @@ async function safePush(sub, payload) {
   }
 }
 
+async function sendPushToClienta(uid, title, body) {
+  const subs = await getSubs(`pushSubs/clientas/${uid}`);
+  for (const sub of subs) await safePush(sub, { title, body, url:"/" });
+}
+
 module.exports = async function handler(req, res) {
   // Vercel cron sends GET; also allow POST for manual triggers
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).end();
 
   const tomorrow = tomorrowBsAs();
+  const now = new Date();
+  const bsasNow = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  const todayStr = bsasNow.toISOString().slice(0, 10);
 
-  // Fetch citas, clientas, and admin subs in parallel
-  const [citas, clientas, adminSubs] = await Promise.all([
+  // Fetch citas, clientas, admin subs, and notification schedule in parallel
+  const [citas, clientas, adminSubs, schedule] = await Promise.all([
     fbGet("citas"),
     fbGet("clientas"),
     getSubs("pushSubs/admin"),
+    fbGetVal("config/notifSchedule").then(v => v || {}),
   ]);
 
   const citasManana = citas.filter(c =>
@@ -110,11 +119,57 @@ module.exports = async function handler(req, res) {
 
   await Promise.all(sends);
 
+  // ── 3. Recall: clients who haven't visited in N days ────────────────────────
+  let recallSent = 0;
+  if (schedule.recall) {
+    const dias = schedule.recallDias || 30;
+    const threshold = new Date(todayStr + "T12:00:00");
+    threshold.setDate(threshold.getDate() - dias);
+    const thresholdStr = threshold.toISOString().slice(0, 10);
+
+    for (const c of clientas) {
+      if (!c.uid) continue;
+      const visitas = Object.values(c.historial || {}).filter(h => h.fecha <= todayStr);
+      if (!visitas.length) continue;
+      const ultima = visitas.sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+      if (ultima.fecha <= thresholdStr) {
+        await sendPushToClienta(c.uid,
+          schedule.recallTitulo || "¡Te extrañamos! 💚",
+          schedule.recallTexto  || "¿Reagendamos tu servicio?");
+        recallSent++;
+      }
+    }
+  }
+
+  // ── 4. Service reminder: clients due for their service ──────────────────────
+  let serviceSent = 0;
+  if (schedule.service) {
+    const dias = schedule.serviceDias || 14;
+    const target = new Date(todayStr + "T12:00:00");
+    target.setDate(target.getDate() - dias);
+    const targetStr = target.toISOString().slice(0, 10);
+
+    for (const c of clientas) {
+      if (!c.uid) continue;
+      const visitas = Object.values(c.historial || {}).filter(h => h.fecha <= todayStr);
+      if (!visitas.length) continue;
+      const ultima = visitas.sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+      if (ultima.fecha === targetStr) {
+        await sendPushToClienta(c.uid,
+          schedule.serviceTitulo || "¡Hora de tu service! 💅",
+          schedule.serviceTexto  || "Ya pasaron los días recomendados. ¡Agendá tu turno! 🌿");
+        serviceSent++;
+      }
+    }
+  }
+
   res.json({
     ok: true,
     tomorrow,
-    citasManana: citasManana.length,
-    adminSubs:   adminSubs.length,
-    sends:       sends.length,
+    citasManana:  citasManana.length,
+    adminSubs:    adminSubs.length,
+    sends:        sends.length,
+    recallSent,
+    serviceSent,
   });
 };
