@@ -114,6 +114,14 @@ const MESES  = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto
 const DIAS_C = ["D","L","M","X","J","V","S"];
 const DIAS_F = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 
+const TIPOS_EVENTO = {
+  personal:   { color:"#818cf8", bg:"rgba(129,140,248,0.18)", border:"rgba(129,140,248,0.45)", icon:"👤" },
+  reunion:    { color:"#a78bfa", bg:"rgba(167,139,250,0.18)", border:"rgba(167,139,250,0.45)", icon:"🤝" },
+  cumpleanos: { color:"#f472b6", bg:"rgba(244,114,182,0.18)", border:"rgba(244,114,182,0.45)", icon:"🎂" },
+  descanso:   { color:"#94a3b8", bg:"rgba(148,163,184,0.14)", border:"rgba(148,163,184,0.38)", icon:"☕" },
+};
+const tipoEvColor = (tipo) => TIPOS_EVENTO[tipo] || TIPOS_EVENTO.personal;
+
 const G_dark = {
   bg:"#0a0a0a", card:"rgba(255,255,255,0.045)", glass:"rgba(255,255,255,0.07)",
   border:"rgba(255,255,255,0.09)", borderHov:"rgba(255,255,255,0.18)",
@@ -1252,8 +1260,8 @@ function AdminInicio({ data, push, setTab, toast }) {
 }
 
 // ── Nuevo Bloque (non-client calendar block) ───────────────────────────────────
-function NuevoBloque({ data, onClose, diaDefault, toast }) {
-  const [form, setForm] = useState({ fecha:diaDefault || hoyISO(), horaInicio:"", duracion:60, titulo:"" });
+function NuevoEvento({ data, onClose, diaDefault, toast }) {
+  const [form, setForm] = useState({ fecha:diaDefault || hoyISO(), horaInicio:"", duracion:60, titulo:"", tipo:"personal" });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
   const slots = (() => {
@@ -1263,43 +1271,59 @@ function NuevoBloque({ data, onClose, diaDefault, toast }) {
     return dow !== null && porDia[dow] !== undefined ? porDia[dow] : global;
   })();
   const guardar = async () => {
-    if (!form.fecha || !form.horaInicio || !form.titulo.trim()) { toast("completá todos los campos"); return; }
+    if (!form.fecha || !form.titulo.trim()) { toast("completá título y fecha"); return; }
     setSaving(true);
-    await data.crearBloque({ fecha:form.fecha, horaInicio:form.horaInicio, duracion:Number(form.duracion), titulo:form.titulo.trim() });
-    toast("✓ bloque guardado");
+    await data.crearBloque({ fecha:form.fecha, horaInicio:form.horaInicio || "00:00", duracion:Number(form.duracion), titulo:form.titulo.trim(), tipo:form.tipo });
+    toast("✓ evento guardado");
     setSaving(false);
     onClose();
   };
+  const TIPOS = [["personal","👤 personal"],["reunion","🤝 reunión"],["cumpleanos","🎂 cumpleaños"],["descanso","☕ descanso"]];
   return (
-    <Sheet titulo="Bloquear horario" onClose={onClose}>
+    <Sheet titulo="Nuevo evento" onClose={onClose}>
       <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:0 }}>Bloqueá un horario para reuniones, capacitaciones u otras actividades. No se puede agendar una cita en este slot.</p>
-        <Field label="título"><input style={s.input} value={form.titulo} onChange={e => set("titulo", e.target.value)} placeholder="Reunión, capacitación, descanso…" /></Field>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+          {TIPOS.map(([v, l]) => {
+            const tc = tipoEvColor(v);
+            return (
+              <button key={v} onClick={() => set("tipo", v)}
+                style={{ ...s.btnGl, padding:"7px 12px", fontSize:11,
+                  background:form.tipo === v ? tc.bg : "transparent",
+                  borderColor:form.tipo === v ? tc.border : G.border,
+                  color:form.tipo === v ? tc.color : G.muted }}>
+                {l}
+              </button>
+            );
+          })}
+        </div>
+        <Field label="título"><input style={s.input} value={form.titulo} onChange={e => set("titulo", e.target.value)} placeholder="¿qué tenés?" /></Field>
         <Field label="fecha"><input style={s.input} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} /></Field>
-        <Field label="hora">
-          <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
-            {slots.length === 0 && <p style={{ color:G.muted, fontSize:12 }}>Configurá horarios en Config → Horarios</p>}
+        <Field label="hora (opcional)">
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            <button onClick={() => set("horaInicio", "")} style={{ ...s.btnGl, padding:"7px 11px", fontSize:11, background:!form.horaInicio ? G.greenM : "transparent", borderColor:!form.horaInicio ? G.green : G.border, color:!form.horaInicio ? G.greenL : G.muted }}>todo el día</button>
             {slots.map(h => (
               <button key={h} onClick={() => set("horaInicio", h)}
-                style={{ ...s.btnGl, padding:"8px 12px", fontSize:12,
-                  background:form.horaInicio === h ? G.greenM : G.glass,
+                style={{ ...s.btnGl, padding:"7px 11px", fontSize:11,
+                  background:form.horaInicio === h ? G.greenM : "transparent",
                   borderColor:form.horaInicio === h ? G.green : G.border,
                   color:form.horaInicio === h ? G.greenL : G.sub }}>{h}</button>
             ))}
           </div>
         </Field>
-        <Field label="duración">
-          <div style={{ display:"flex", gap:7 }}>
-            {[[30,"30 min"],[60,"1 h"],[90,"1:30 h"],[120,"2 h"]].map(([v, l]) => (
-              <button key={v} onClick={() => set("duracion", v)}
-                style={{ ...s.btnGl, flex:1, fontSize:12,
-                  background:form.duracion === v ? G.greenM : G.glass,
-                  borderColor:form.duracion === v ? G.green : G.border,
-                  color:form.duracion === v ? G.greenL : G.sub }}>{l}</button>
-            ))}
-          </div>
-        </Field>
-        <button style={{ ...s.btnG, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : "bloquear horario →"}</button>
+        {form.horaInicio && (
+          <Field label="duración">
+            <div style={{ display:"flex", gap:7 }}>
+              {[[30,"30 min"],[60,"1 h"],[90,"1:30 h"],[120,"2 h"]].map(([v, l]) => (
+                <button key={v} onClick={() => set("duracion", v)}
+                  style={{ ...s.btnGl, flex:1, fontSize:12,
+                    background:form.duracion === v ? G.greenM : "transparent",
+                    borderColor:form.duracion === v ? G.green : G.border,
+                    color:form.duracion === v ? G.greenL : G.sub }}>{l}</button>
+              ))}
+            </div>
+          </Field>
+        )}
+        <button style={{ ...s.btnG, opacity:saving?0.6:1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : "guardar evento →"}</button>
       </div>
     </Sheet>
   );
@@ -1312,10 +1336,17 @@ function AdminAgenda({ data, push, toast }) {
   const nowMin = ahora.getHours()*60 + ahora.getMinutes();
   const [offset, setOffset]       = useState(0);
   const [diaS,   setDiaS]         = useState(hoy);
-  const [vista,  setVista]         = useState("mes");
+  const [vista,  setVista]         = useState("semana");
   const [weekOffset, setWeekOffset] = useState(0);
-  const [showBloque, setShowBloque] = useState(false);
+  const [showEvento, setShowEvento] = useState(false);
   const wide = useIsWide();
+
+  const weekOffsetForDay = (iso) => {
+    const d = new Date(iso + "T12:00:00");
+    const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay()+6)%7));
+    const base = mondayOfWeek(0);
+    return Math.round((mon - base) / (7 * 24 * 60 * 60 * 1000));
+  };
 
   const mesD   = new Date(ahora.getFullYear(), ahora.getMonth() + offset, 1);
   const anio   = mesD.getFullYear();
@@ -1344,275 +1375,187 @@ function AdminAgenda({ data, push, toast }) {
   const keyManana = dtManana.toISOString().slice(0, 10);
   const citasManana = citasPorFecha[keyManana] || [];
 
-  return (
-    <div>
-      <div style={{ ...s.topBar, ...(wide && { padding:"16px 20px 14px" }) }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
-          <div><h1 style={s.h1}>Agenda</h1><p style={s.sub}>calendario del estudio</p></div>
-          <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
-            {["mes","semana","día"].map(v => (
-              <button key={v} onClick={() => setVista(v)}
-                style={{ ...s.btnGl, padding:"8px 14px", fontSize:11, textTransform:"capitalize",
-                  background:vista===v ? G.greenM : "transparent",
-                  borderColor:vista===v ? G.green : G.border,
-                  color:vista===v ? G.greenL : G.muted,
-                  fontWeight:vista===v ? 700 : 400 }}>
-                {v}
-              </button>
-            ))}
-            <button style={{ ...s.btnGl, width:"auto", padding:"9px 11px", fontSize:12, display:"flex", alignItems:"center", gap:5 }} onClick={() => setShowBloque(true)}><Icon name="x" size={12} color={G.sub} /> bloquear</button>
-            <button style={{ ...s.btnG, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={() => push("nueva-cita")}>+ nueva</button>
-          </div>
+  // Mini-calendar shared render helper
+  const miniCal = (onDayClick) => (
+    <div style={{ ...s.card, padding:"12px 8px" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+        <button style={{ ...s.btnGl, padding:"5px 11px", fontSize:14 }} onClick={() => setOffset(o => o-1)}>‹</button>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <p style={{ fontFamily:F.display, fontWeight:400, fontSize:13, color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
+          {(offset !== 0 || diaS !== hoy) && <button style={{ ...s.btnGl, fontSize:9, padding:"2px 7px" }} onClick={() => { setOffset(0); setDiaS(hoy); }}>hoy</button>}
+        </div>
+        <button style={{ ...s.btnGl, padding:"5px 11px", fontSize:14 }} onClick={() => setOffset(o => o+1)}>›</button>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:3 }}>
+        {DIAS_C.map(d => <div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:9, color:G.muted, padding:"1px 0" }}>{d}</div>)}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
+        {Array(primDia).fill(null).map((_, i) => <div key={"e"+i} />)}
+        {Array(diasMes).fill(null).map((_, i) => {
+          const dia = i+1, key = fmtKey(dia);
+          const tiene = !!(citasPorFecha[key]?.length);
+          const bloqExcep = fechasBloq.has(key), bloqDia = !esDiaLaboral(key, diasLaborales);
+          const bloq = bloqExcep || bloqDia;
+          const esH = key === hoy, esSel = key === diaS;
+          return (
+            <div key={dia} onClick={() => onDayClick(key)}
+              style={{ textAlign:"center", borderRadius:6, padding:"4px 1px", cursor:"pointer",
+                background:esSel ? G.green : esH ? G.greenM : "transparent",
+                border:esSel ? "none" : esH ? `0.5px solid ${G.green}` : "0.5px solid transparent" }}>
+              <span style={{ fontFamily:F.sans, fontSize:11, color:esSel ? "#0a0a0a" : esH ? G.greenL : bloq ? "rgba(224,112,112,0.6)" : G.sub, fontWeight:esSel || esH ? 700 : 400, display:"block" }}>{dia}</span>
+              {tiene && <div style={{ display:"flex", justifyContent:"center", gap:2, marginTop:1 }}>{Array(Math.min(citasPorFecha[key].length, 3)).fill(null).map((_, pi) => <div key={pi} style={{ width:3, height:3, borderRadius:"50%", background:esSel ? "rgba(10,10,10,0.5)" : G.green }} />)}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const daySlots = (
+    <div style={{ overflowY:"auto", height:"100%", padding:"16px 20px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6, flexWrap:"wrap" }}>
+        <div style={{ width:5, height:5, borderRadius:"50%", background:diaS===hoy ? G.greenL : G.green, boxShadow:diaS===hoy ? `0 0 6px rgba(${G.greenRGB},0.7)` : "none" }} />
+        <p style={{ margin:0, fontFamily:F.display, fontWeight:400, fontSize:18, letterSpacing:"0.5px", color:diaS===hoy ? G.greenL : G.white }}>{diaS===hoy ? "HOY · " : ""}{DIAS_F[new Date(diaS+"T12:00:00").getDay()]} {fmtFecha(diaS)}</p>
+        {citasDia.length > 0 && <span style={s.tag}>{citasDia.length} turno{citasDia.length>1?"s":""}</span>}
+        <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
+          {diaS===hoy && <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }} onClick={() => setVista("día")}>vista día →</button>}
+          {!esDiaPasado && <button style={{ ...s.btnG, width:"auto", padding:"7px 14px", fontSize:11 }} onClick={() => push("nueva-cita", { fechaDefault:diaS })}>+ agendar</button>}
         </div>
       </div>
-      {vista === "semana"
-        ? <AgendaSemana data={data} push={push} toast={toast} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
-        : vista === "día"
-        ? <AgendaDia data={data} push={push} toast={toast} diaInicial={diaS} />
-        : wide
-        ? (
-          <div style={{ display:"flex", height:"calc(100vh - 80px)", overflow:"hidden" }}>
-            {/* Left column: month calendar */}
-            <div style={{ width:300, flexShrink:0, overflowY:"auto", padding:"14px 10px 0", borderRight:`0.5px solid ${G.border}` }}>
-        <div style={{ ...s.card, padding:"14px 10px", marginBottom:14 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-            <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o - 1)}>‹</button>
-            <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-              <p style={{ fontFamily:F.display, fontWeight:400, fontSize:16, letterSpacing:"0.5px", color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
-              {(offset !== 0 || diaS !== hoy) && (
-                <button style={{ ...s.btnGl, fontSize:10, padding:"3px 8px" }} onClick={() => { setOffset(0); setDiaS(hoy); }}>hoy</button>
-              )}
-            </div>
-            <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o + 1)}>›</button>
+      {diaS===hoy && <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 10px", paddingLeft:15 }}>{String(ahora.getHours()).padStart(2,"0")}:{String(ahora.getMinutes()).padStart(2,"0")} · turnos pasados ocultos</p>}
+      {diaEsBloq && (
+        <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div>
+            <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:11, color:G.red }}>{fechasBloq.has(diaS) ? "día bloqueado manualmente" : "día no laborable"}</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>{excepDia?.razon || ""}</p>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4 }}>
-            {DIAS_C.map(d => <div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:10, color:G.muted, padding:"2px 0" }}>{d}</div>)}
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
-            {Array(primDia).fill(null).map((_, i) => <div key={"e" + i} />)}
-            {Array(diasMes).fill(null).map((_, i) => {
-              const dia = i + 1, key = fmtKey(dia);
-              const tiene = !!(citasPorFecha[key]?.length);
-              const bloqExcep = fechasBloq.has(key);
-              const bloqDia   = !esDiaLaboral(key, diasLaborales);
-              const bloq = bloqExcep || bloqDia;
-              const esH = key === hoy, esSel = key === diaS;
-              return (
-                <div key={dia} onClick={() => setDiaS(key)} style={{ textAlign:"center", borderRadius:8, padding:"5px 2px", cursor:"pointer", background:esSel ? G.green : esH ? G.greenM : bloq ? "rgba(224,112,112,0.1)" : "transparent", border:esSel ? "none" : esH ? `0.5px solid ${G.green}` : bloq ? `0.5px solid rgba(224,112,112,0.3)` : "0.5px solid transparent" }}>
-                  <span style={{ fontFamily:F.sans, fontSize:12, color:esSel ? "#0a0a0a" : esH ? G.greenL : bloq ? G.red : G.sub, fontWeight:esSel || esH ? 700 : 400, display:"block" }}>{dia}</span>
-                  {tiene && <div style={{ display:"flex", justifyContent:"center", gap:2, marginTop:2 }}>{Array(Math.min(citasPorFecha[key].length, 3)).fill(null).map((_, pi) => <div key={pi} style={{ width:3, height:3, borderRadius:"50%", background:esSel ? "rgba(10,10,10,0.5)" : G.green }} />)}</div>}
-                  {bloq && !tiene && <div style={{ fontSize:7, color:G.red }}>✕</div>}
-                </div>
-              );
-            })}
-          </div>
+          <span style={{ fontSize:18 }}>🔒</span>
         </div>
-              {diaS === hoy && citasManana.length > 0 && (
-                <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:12 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <div>
-                      <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.greenL }}>mañana</p>
-                      <p style={{ margin:0, fontFamily:F.serif, fontSize:13 }}>{citasManana.length} cita{citasManana.length > 1 ? "s" : ""}</p>
-                    </div>
-                    <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }}
-                      onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); citasManana.forEach(c => { const cl = data.clientas.find(x => x._id === c.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:c.clientaNombre?.split(" ")[0], hora:c.hora })); }); }}>
-                      Avisar →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-            {/* Right column: day slots */}
-            <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 0" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:diaS===hoy ? 10 : 14 }}>
-                <div style={{ width:5, height:5, borderRadius:"50%", background:diaS===hoy ? G.greenL : G.green, boxShadow:diaS===hoy ? `0 0 6px rgba(${G.greenRGB},0.7)` : "none" }} />
-                <p style={{ margin:0, fontFamily:F.display, fontWeight:400, fontSize:20, letterSpacing:"0.5px", color:diaS===hoy ? G.greenL : G.white }}>{diaS===hoy ? "HOY · " : ""}{DIAS_F[new Date(diaS + "T12:00:00").getDay()]} {fmtFecha(diaS)}</p>
-                {citasDia.length > 0 && <span style={s.tag}>{citasDia.length} turno{citasDia.length>1?"s":""}</span>}
-                <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
-                  {diaS===hoy && <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }} onClick={() => setVista("día")}>vista día →</button>}
-                  {!esDiaPasado && <button style={{ ...s.btnG, width:"auto", padding:"7px 14px", fontSize:11 }} onClick={() => push("nueva-cita", { fechaDefault:diaS })}>+ agendar</button>}
-                </div>
-              </div>
-              {diaS===hoy && (
-                <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 12px", paddingLeft:15 }}>
-                  {String(ahora.getHours()).padStart(2,"0")}:{String(ahora.getMinutes()).padStart(2,"0")} · los turnos pasados están ocultos
-                </p>
-              )}
-              {diaEsBloq && (
-                <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div>
-                    <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:11, color:G.red }}>{fechasBloq.has(diaS) ? "día bloqueado manualmente" : "día no laborable"}</p>
-                    <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{excepDia?.razon || ""}</p>
-                  </div>
-                  <span style={{ fontSize:18 }}></span>
-                </div>
-              )}
-              {!diaEsBloq && slots.length === 0 && (
-                <div style={{ ...s.card, textAlign:"center", padding:"20px" }}>
-                  <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, margin:0 }}>No configuraste horarios aún</p>
-                </div>
-              )}
-              {!diaEsBloq && slots.map(hora => {
-                const esHoy = diaS === hoy;
-                const slotMin = toMin(hora);
-                const esSlotPasado = esDiaPasado || (esHoy && slotMin + 60 <= nowMin);
-                const cita = esSlotPasado
-                  ? citasDia.find(c => c.hora === hora)
-                  : citasDia.find(c => c.hora === hora && c.estado !== "completada");
-                if (!cita && esSlotPasado) return null;
-                const esEnCurso = esHoy && !esDiaPasado && slotMin <= nowMin && slotMin + 60 > nowMin;
-                return (
-                  <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${esEnCurso ? `rgba(${G.greenRGB},0.6)` : cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.5, cursor:cita ? "pointer" : "default" }}
-                    onClick={() => cita && push("cita-detalle", { cita })}>
-                    <div style={{ background:cita ? G.greenM : "transparent", border:`0.5px solid ${cita ? G.green : G.border}`, borderRadius:8, padding:"5px 8px", minWidth:46, textAlign:"center" }}>
-                      <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:cita ? G.greenL : G.muted }}>{hora}</p>
-                    </div>
-                    {!cita ? (
-                      <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                        <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>disponible</p>
-                        <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={e => { e.stopPropagation(); push("nueva-cita", { fechaDefault:diaS, horaDefault:hora }); }}>+ agendar</button>
-                      </div>
-                    ) : (
-                      <>
-                        <div style={{ flex:1 }}>
-                          <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontSize:14 }}>{cita.clientaNombre}</p>
-                          <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}{cita.adicionales?.length ? ` + ${cita.adicionales.join(", ")}` : ""}</p>
-                        </div>
-                        {esEnCurso && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.greenL, background:`rgba(${G.greenRGB},0.18)`, borderRadius:4, padding:"2px 7px" }}>EN CURSO</span>}
-                        <span style={s.tag}>{cita.estado === "completada" ? "finalizada" : cita.estado}</span>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )
-        : <div style={{ padding:"18px 14px 0" }}>
-        <div style={{ ...s.card, padding:"14px 10px", marginBottom:18 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-            <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o - 1)}>‹</button>
-            <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:0, textTransform:"capitalize" }}>{MESES[mes]} {anio}</p>
-              {(offset !== 0 || diaS !== hoy) && (
-                <button style={{ ...s.btnGl, fontSize:10, padding:"3px 8px" }} onClick={() => { setOffset(0); setDiaS(hoy); }}>hoy</button>
-              )}
-            </div>
-            <button style={{ ...s.btnGl, padding:"6px 12px", fontSize:15 }} onClick={() => setOffset(o => o + 1)}>›</button>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4 }}>
-            {DIAS_C.map(d => <div key={d} style={{ textAlign:"center", fontFamily:F.sans, fontSize:10, color:G.muted, padding:"2px 0" }}>{d}</div>)}
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
-            {Array(primDia).fill(null).map((_, i) => <div key={"e" + i} />)}
-            {Array(diasMes).fill(null).map((_, i) => {
-              const dia = i + 1, key = fmtKey(dia);
-              const tiene = !!(citasPorFecha[key]?.length);
-              const bloqExcep = fechasBloq.has(key);
-              const bloqDia   = !esDiaLaboral(key, diasLaborales);
-              const bloq = bloqExcep || bloqDia;
-              const esH = key === hoy, esSel = key === diaS;
-              return (
-                <div key={dia} onClick={() => setDiaS(key)} style={{ textAlign:"center", borderRadius:8, padding:"5px 2px", cursor:"pointer", background:esSel ? G.green : esH ? G.greenM : bloq ? "rgba(224,112,112,0.1)" : "transparent", border:esSel ? "none" : esH ? `0.5px solid ${G.green}` : bloq ? `0.5px solid rgba(224,112,112,0.3)` : "0.5px solid transparent" }}>
-                  <span style={{ fontFamily:F.sans, fontSize:12, color:esSel ? "#0a0a0a" : esH ? G.greenL : bloq ? G.red : G.sub, fontWeight:esSel || esH ? 700 : 400, display:"block" }}>{dia}</span>
-                  {tiene && <div style={{ display:"flex", justifyContent:"center", gap:2, marginTop:2 }}>{Array(Math.min(citasPorFecha[key].length, 3)).fill(null).map((_, pi) => <div key={pi} style={{ width:3, height:3, borderRadius:"50%", background:esSel ? "rgba(10,10,10,0.5)" : G.green }} />)}</div>}
-                  {bloq && !tiene && <div style={{ fontSize:7, color:G.red }}>✕</div>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:4, flexWrap:"wrap" }}>
-          <div style={{ width:5, height:5, borderRadius:"50%", background:diaS===hoy ? G.greenL : G.green }} />
-          <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:16, color:diaS===hoy ? G.greenL : G.white }}>{diaS===hoy ? "HOY · " : ""}{DIAS_F[new Date(diaS + "T12:00:00").getDay()]} {fmtFecha(diaS)}</p>
-          {citasDia.length > 0 && <span style={s.tag}>{citasDia.length} turno{citasDia.length>1?"s":""}</span>}
-          {diaS===hoy && <button style={{ ...s.btnGl, fontSize:10, padding:"5px 10px", marginLeft:"auto", borderColor:G.green, color:G.greenL }} onClick={() => setVista("día")}>vista día →</button>}
-        </div>
-        {diaS===hoy && <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 10px" }}>{String(ahora.getHours()).padStart(2,"0")}:{String(ahora.getMinutes()).padStart(2,"0")} · turnos pasados ocultos</p>}
-
-        {diaEsBloq && (
-          <div style={{ ...s.card, background:"rgba(224,112,112,0.08)", borderColor:G.red, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <div>
-              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:11, color:G.red }}>
-                {fechasBloq.has(diaS) ? "día bloqueado manualmente" : "día no laborable"}
-              </p>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>
-                {excepDia?.razon || (esDiaLaboral(diaS, diasLaborales) ? "" : `los ${DIAS_F[new Date(diaS+"T12:00:00").getDay()]}s no trabajás`)}
-              </p>
-            </div>
-            <span style={{ fontSize:18 }}></span>
-          </div>
-        )}
-
-        {diaS === hoy && citasManana.length > 0 && (
-          <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD, marginBottom:12 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div>
-                <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.greenL }}>recordatorio mañana</p>
-                <p style={{ margin:0, fontFamily:F.serif, fontSize:13 }}>{citasManana.length} cita{citasManana.length > 1 ? "s" : ""} para {keyManana.slice(8, 10)}/{keyManana.slice(5, 7)}</p>
-              </div>
-              <button style={{ ...s.btnGl, fontSize:11, padding:"7px 12px", borderColor:G.green, color:G.greenL }}
-                onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); citasManana.forEach(c => { const cl = data.clientas.find(x => x._id === c.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:c.clientaNombre?.split(" ")[0], hora:c.hora })); }); }}>
-                Avisar →
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div>
-          {diaEsBloq ? (
-            <div style={{ ...s.card, textAlign:"center", padding:"24px", opacity:0.5 }}>
-              <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, margin:0 }}>día bloqueado — sin turnos</p>
-            </div>
-          ) : slots.length === 0 ? (
-            <div style={{ ...s.card, textAlign:"center", padding:"20px" }}>
-              <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, margin:"0 0 8px" }}>No configuraste horarios aún</p>
-              <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:0 }}>Andá a Config → Horarios para agregar tus horarios de trabajo</p>
-            </div>
-          ) : slots.map(hora => {
-            const esHoy = diaS === hoy;
-            const slotMin = toMin(hora);
-            const esSlotPasado = esDiaPasado || (esHoy && slotMin + 60 <= nowMin);
-            const cita = esSlotPasado
-              ? citasDia.find(c => c.hora === hora)
-              : citasDia.find(c => c.hora === hora && c.estado !== "completada");
-            if (!cita && esSlotPasado) return null;
-            const esEnCurso = esHoy && !esDiaPasado && slotMin <= nowMin && slotMin + 60 > nowMin;
-            return (
-              <div key={hora} style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${esEnCurso ? `rgba(${G.greenRGB},0.6)` : cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.5 }}>
-                <div style={{ background:cita ? G.greenM : "transparent", border:`0.5px solid ${cita ? G.green : G.border}`, borderRadius:8, padding:"5px 8px", minWidth:46, textAlign:"center" }}>
-                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:cita ? G.greenL : G.muted }}>{hora}</p>
-                </div>
-                {!cita ? (
-                  <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>disponible</p>
-                    <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={() => push("nueva-cita", { fechaDefault:diaS, horaDefault:hora })}>+ agendar</button>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ flex:1 }}>
-                      <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontSize:13 }}>{cita.clientaNombre}</p>
-                      <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}{cita.adicionales?.length ? ` + ${cita.adicionales.join(", ")}` : ""}</p>
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      {esEnCurso && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.greenL, background:`rgba(${G.greenRGB},0.18)`, borderRadius:4, padding:"2px 7px" }}>EN CURSO</span>}
-                      {!esSlotPasado && <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
-                        onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }}><Icon name="messageCircle" size={13} color="rgba(37,211,102,0.8)" /></button>}
-                      <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => push("cita-detalle", { cita })}>→</button>
-                    </div>
-                    <span style={s.tag}>{cita.estado === "completada" ? "finalizada" : cita.estado}</span>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      }
-      {showBloque && (
-        <NuevoBloque data={data} onClose={() => setShowBloque(false)} diaDefault={diaS} toast={toast} />
       )}
+      {!diaEsBloq && slots.length === 0 && <div style={{ ...s.card, textAlign:"center", padding:20 }}><p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, margin:0 }}>Sin horarios configurados</p></div>}
+      {!diaEsBloq && slots.map(hora => {
+        const esHoy = diaS === hoy, slotMin = toMin(hora);
+        const esSlotPasado = esDiaPasado || (esHoy && slotMin + 60 <= nowMin);
+        const cita = esSlotPasado ? citasDia.find(c => c.hora === hora) : citasDia.find(c => c.hora === hora && c.estado !== "completada");
+        if (!cita && esSlotPasado) return null;
+        const esEnCurso = esHoy && !esDiaPasado && slotMin <= nowMin && slotMin + 60 > nowMin;
+        return (
+          <div key={hora} onClick={() => cita && push("cita-detalle", { cita })}
+            style={{ display:"flex", alignItems:"center", gap:10, background:cita ? G.card : "rgba(255,255,255,0.01)", border:`0.5px solid ${esEnCurso ? `rgba(${G.greenRGB},0.6)` : cita ? G.border : "rgba(255,255,255,0.03)"}`, borderRadius:11, padding:"9px 12px", marginBottom:7, opacity:cita ? 1 : 0.5, cursor:cita ? "pointer" : "default" }}>
+            <div style={{ background:cita ? G.greenM : "transparent", border:`0.5px solid ${cita ? G.green : G.border}`, borderRadius:8, padding:"5px 8px", minWidth:46, textAlign:"center" }}>
+              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:cita ? G.greenL : G.muted }}>{hora}</p>
+            </div>
+            {!cita ? (
+              <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.muted }}>disponible</p>
+                <button style={{ ...s.btnGl, fontSize:10, padding:"4px 10px" }} onClick={e => { e.stopPropagation(); push("nueva-cita", { fechaDefault:diaS, horaDefault:hora }); }}>+ agendar</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ flex:1 }}>
+                  <p style={{ margin:"0 0 1px", fontFamily:F.serif, fontSize:13 }}>{cita.clientaNombre}</p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{cita.servicio}{cita.adicionales?.length ? ` + ${cita.adicionales.join(", ")}` : ""}</p>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  {esEnCurso && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.greenL, background:`rgba(${G.greenRGB},0.18)`, borderRadius:4, padding:"2px 7px" }}>EN CURSO</span>}
+                  {!esSlotPasado && <button style={{ background:"rgba(37,211,102,0.12)", border:"0.5px solid rgba(37,211,102,0.3)", borderRadius:8, width:30, height:30, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+                    onClick={e => { e.stopPropagation(); const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }}><Icon name="messageCircle" size={13} color="rgba(37,211,102,0.8)" /></button>}
+                  <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => push("cita-detalle", { cita })}>→</button>
+                </div>
+                <span style={s.tag}>{cita.estado === "completada" ? "finalizada" : cita.estado}</span>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 58px)" }}>
+      {wide ? (
+        <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
+          {/* LEFT PANEL — mini-calendar always visible */}
+          <div style={{ width:248, flexShrink:0, overflowY:"auto", padding:"16px 12px 20px", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", gap:10 }}>
+            <div>
+              <h1 style={{ ...s.h1, marginBottom:1 }}>Agenda</h1>
+              <p style={{ ...s.sub, margin:0 }}>calendario</p>
+            </div>
+            <button style={{ ...s.btnG }} onClick={() => push("nueva-cita", { fechaDefault:diaS })}>+ nueva cita</button>
+            <button style={{ ...s.btnGl, width:"100%", padding:"9px 0", fontSize:12 }} onClick={() => setShowEvento(true)}>+ evento personal</button>
+            <div style={{ display:"flex", gap:4 }}>
+              {["mes","semana","día"].map(v => (
+                <button key={v} onClick={() => setVista(v)}
+                  style={{ ...s.btnGl, flex:1, fontSize:11, padding:"7px 3px", textTransform:"capitalize",
+                    background:vista===v ? G.greenM : "transparent",
+                    borderColor:vista===v ? G.green : G.border,
+                    color:vista===v ? G.greenL : G.muted,
+                    fontWeight:vista===v ? 700 : 400 }}>{v}</button>
+              ))}
+            </div>
+            {miniCal((key) => {
+              setDiaS(key);
+              if (vista === "semana") setWeekOffset(weekOffsetForDay(key));
+              if (vista === "semana" || vista === "día") {
+                // keep view, just navigate
+              } else {
+                setVista("mes");
+              }
+            })}
+            {diaS === hoy && citasManana.length > 0 && (
+              <div style={{ ...s.card, background:"rgba(143,189,90,0.06)", borderColor:G.greenD }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div>
+                    <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.greenL }}>mañana</p>
+                    <p style={{ margin:0, fontFamily:F.serif, fontSize:13 }}>{citasManana.length} cita{citasManana.length>1?"s":""}</p>
+                  </div>
+                  <button style={{ ...s.btnGl, fontSize:11, padding:"6px 10px", borderColor:G.green, color:G.greenL }}
+                    onClick={() => { const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); citasManana.forEach(c => { const cl = data.clientas.find(x => x._id === c.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:c.clientaNombre?.split(" ")[0], hora:c.hora })); }); }}>
+                    Avisar →
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          {/* RIGHT PANEL */}
+          <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+            {vista === "semana" && <AgendaSemana data={data} push={push} toast={toast} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />}
+            {vista === "día" && <AgendaDia key={diaS} data={data} push={push} toast={toast} diaInicial={diaS} />}
+            {vista === "mes" && daySlots}
+          </div>
+        </div>
+      ) : (
+        // MOBILE
+        <>
+          <div style={{ ...s.topBar }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+              <div><h1 style={s.h1}>Agenda</h1><p style={s.sub}>calendario</p></div>
+              <div style={{ display:"flex", gap:5, alignItems:"center", flexWrap:"wrap" }}>
+                {["mes","semana","día"].map(v => (
+                  <button key={v} onClick={() => setVista(v)}
+                    style={{ ...s.btnGl, padding:"7px 11px", fontSize:11, textTransform:"capitalize",
+                      background:vista===v ? G.greenM : "transparent",
+                      borderColor:vista===v ? G.green : G.border,
+                      color:vista===v ? G.greenL : G.muted,
+                      fontWeight:vista===v ? 700 : 400 }}>{v}</button>
+                ))}
+                <button style={{ ...s.btnGl, width:"auto", padding:"8px 11px", fontSize:11 }} onClick={() => setShowEvento(true)}>+ evento</button>
+                <button style={{ ...s.btnG, width:"auto", padding:"8px 13px", fontSize:11 }} onClick={() => push("nueva-cita")}>+ cita</button>
+              </div>
+            </div>
+          </div>
+          {vista === "semana" && <AgendaSemana data={data} push={push} toast={toast} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />}
+          {vista === "día" && <AgendaDia key={diaS} data={data} push={push} toast={toast} diaInicial={diaS} />}
+          {vista === "mes" && (
+            <div style={{ padding:"14px 14px 0", overflowY:"auto" }}>
+              {miniCal((key) => setDiaS(key))}
+              <div style={{ height:10 }} />
+              {daySlots}
+            </div>
+          )}
+        </>
+      )}
+      {showEvento && <NuevoEvento data={data} onClose={() => setShowEvento(false)} diaDefault={diaS} toast={toast} />}
     </div>
   );
 }
@@ -1823,22 +1766,24 @@ function AgendaSemana({ data, push, toast, weekOffset, setWeekOffset }) {
                     </div>
                   );
                 })}
-                {/* Bloqueo blocks */}
+                {/* Event blocks */}
                 {dayBloques.map(b => {
+                  if (!b.horaInicio || b.horaInicio === "00:00") return null;
                   const startMin = toMin(b.horaInicio);
                   if (startMin < minMin || startMin >= maxMin) return null;
                   const top    = ((startMin - minMin) / 60) * ROW_H;
                   const height = Math.max(30, (b.duracion / 60) * ROW_H);
+                  const tc = tipoEvColor(b.tipo);
                   return (
                     <div key={b._id}
-                      onClick={e => { e.stopPropagation(); if (window.confirm(`Eliminar bloqueo "${b.titulo}"?`)) data.borrarBloque(b._id); }}
+                      onClick={e => { e.stopPropagation(); if (window.confirm(`Eliminar "${b.titulo}"?`)) data.borrarBloque(b._id); }}
                       style={{ position:"absolute", top, left:2, right:2, height,
-                        background:"rgba(120,120,120,0.15)", border:`1px dashed ${G.border}`,
+                        background:tc.bg, borderLeft:`3px solid ${tc.color}`, border:`1px solid ${tc.border}`,
                         borderRadius:8, padding:"3px 5px", overflow:"hidden",
-                        cursor:"pointer", zIndex:2, display:"flex", alignItems:"center" }}>
-                      <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted,
-                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:3 }}>
-                        <Icon name="x" size={9} color={G.muted} /> {b.titulo}
+                        cursor:"pointer", zIndex:2 }}>
+                      <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:tc.color,
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        {tc.icon} {b.titulo}
                       </p>
                     </div>
                   );
@@ -2111,20 +2056,20 @@ function AgendaDia({ data, push, toast, diaInicial }) {
               </div>
             );
           })}
-          {/* Bloqueo blocks */}
-          {(data.bloques || []).filter(b => b.fecha === dia).map(b => {
+          {/* Event blocks */}
+          {(data.bloques || []).filter(b => b.fecha === dia && b.horaInicio && b.horaInicio !== "00:00").map(b => {
             const startMin = toMin(b.horaInicio);
             if (startMin < minMin || startMin >= maxMin) return null;
             const top    = ((startMin - minMin) / 60) * ROW_H;
             const height = Math.max(30, (b.duracion / 60) * ROW_H);
+            const tc = tipoEvColor(b.tipo);
             return (
               <div key={b._id}
-                onClick={e => { e.stopPropagation(); if (window.confirm(`Eliminar bloqueo "${b.titulo}"?`)) data.borrarBloque(b._id); }}
+                onClick={e => { e.stopPropagation(); if (window.confirm(`Eliminar "${b.titulo}"?`)) data.borrarBloque(b._id); }}
                 style={{ position:"absolute", top, left:4, right:4, height,
-                  background:"rgba(120,120,120,0.15)", border:`1px dashed ${G.border}`,
-                  borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2,
-                  display:"flex", alignItems:"center" }}>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted, display:"flex", alignItems:"center", gap:4 }}><Icon name="x" size={11} color={G.muted} /> {b.titulo}</p>
+                  background:tc.bg, borderLeft:`3px solid ${tc.color}`, border:`1px solid ${tc.border}`,
+                  borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:tc.color }}>{tc.icon} {b.titulo}</p>
               </div>
             );
           })}
@@ -3201,7 +3146,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
 
 // ── Admin Finanzas ─────────────────────────────────────────────────────────────
 function AdminFinanzas({ data, toast }) {
-  const [tab, setTab]         = useState("resumen");
+  const [tab, setTab]         = useState("dashboard");
   const [periodo, setPeriodo] = useState("mes");
   const wide = useIsWide();
   const hoy  = hoyISO();
@@ -3210,38 +3155,42 @@ function AdminFinanzas({ data, toast }) {
 
   const todoHist = data.clientas.flatMap(c => Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []));
 
-  const tabs = [["resumen","resumen"],["gastos","gastos"],["insumos","insumos"],["calendario","calendario"]];
+  const tabs = [["dashboard","resumen"],["gastos","gastos"],["insumos","insumos"]];
 
   return (
     <div>
-      <div style={{ ...s.topBar, ...(wide && { padding:"16px 28px 14px" }) }}><h1 style={s.h1}>Finanzas</h1><p style={s.sub}>resumen de ingresos</p></div>
-      {wide ? (
-        <div style={{ display:"flex", minHeight:"calc(100vh - 80px)" }}>
-          <div style={{ width:180, flexShrink:0, padding:"20px 12px", borderRight:`0.5px solid ${G.border}`, display:"flex", flexDirection:"column", gap:4 }}>
+      <div style={{ ...s.topBar, ...(wide && { padding:"16px 28px 14px" }) }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
+          <div><h1 style={s.h1}>Finanzas</h1><p style={s.sub}>ingresos y gastos</p></div>
+          <div style={{ display:"flex", gap:6 }}>
             {tabs.map(([v, l]) => (
-              <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, width:"100%", textAlign:"left", fontSize:13, background:tab === v ? G.greenM : "transparent", borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.muted, fontWeight:tab === v ? 700 : 400, padding:"10px 14px" }}>{l}</button>
+              <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, padding:"8px 14px", fontSize:11, background:tab===v ? G.greenM : "transparent", borderColor:tab===v ? G.green : G.border, color:tab===v ? G.greenL : G.muted, fontWeight:tab===v ? 700 : 400 }}>{l}</button>
             ))}
           </div>
-          <div style={{ flex:1, padding:"24px 32px", overflowY:"auto" }}>
-            {tab === "resumen" && <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} wide={wide} />}
-            {tab === "gastos" && <GastosTab data={data} toast={toast} />}
-            {tab === "insumos" && <InsumosTab data={data} toast={toast} />}
-            {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />}
-          </div>
         </div>
-      ) : (
-        <div style={{ padding:"18px" }}>
-          <div style={{ display:"flex", gap:7, marginBottom:18 }}>
-            {tabs.map(([v, l]) => (
-              <button key={v} onClick={() => setTab(v)} style={{ ...s.btnGl, flex:1, fontSize:12, background:tab === v ? G.greenM : "transparent", borderColor:tab === v ? G.green : G.border, color:tab === v ? G.greenL : G.muted, fontWeight:tab === v ? 700 : 400 }}>{l}</button>
-            ))}
+      </div>
+      {tab === "dashboard" && (
+        wide ? (
+          // WIDE: stats on left + finance calendar on right — both always visible
+          <div style={{ display:"flex", minHeight:"calc(100vh - 80px)", overflow:"hidden" }}>
+            <div style={{ flex:1, overflowY:"auto", padding:"20px 28px" }}>
+              <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} wide={false} />
+            </div>
+            <div style={{ width:360, flexShrink:0, overflowY:"auto", padding:"20px 20px", borderLeft:`0.5px solid ${G.border}` }}>
+              <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />
+            </div>
           </div>
-          {tab === "resumen" && <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} />}
-          {tab === "gastos" && <GastosTab data={data} toast={toast} />}
-          {tab === "insumos" && <InsumosTab data={data} toast={toast} />}
-          {tab === "calendario" && <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />}
-        </div>
+        ) : (
+          <div style={{ padding:"16px 14px" }}>
+            <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} />
+            <div style={s.div} />
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 12px" }}>Calendario de ingresos</p>
+            <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />
+          </div>
+        )
       )}
+      {tab === "gastos" && <div style={{ padding:"18px" }}><GastosTab data={data} toast={toast} /></div>}
+      {tab === "insumos" && <div style={{ padding:"18px" }}><InsumosTab data={data} toast={toast} /></div>}
     </div>
   );
 }
