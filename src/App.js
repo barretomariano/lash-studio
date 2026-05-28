@@ -1564,6 +1564,7 @@ function AdminAgenda({ data, push, toast }) {
 function AgendaSemana({ data, push, toast, weekOffset, setWeekOffset }) {
   const hoy = hoyISO();
   const ROW_H = 56;
+  const wide = useIsWide();
   const [nowMin, setNowMin] = useState(() => { const n = new Date(); return n.getHours()*60 + n.getMinutes(); });
 
   useEffect(() => {
@@ -1651,7 +1652,96 @@ function AgendaSemana({ data, push, toast, weekOffset, setWeekOffset }) {
         </div>
       </div>
 
-      {/* Scrollable grid */}
+      {!wide && (
+        // ── MOBILE: schedule list view ──────────────────────────────────────
+        <div style={{ flex:1, overflowY:"auto" }}>
+          {weekDays.map((d, i) => {
+            const key     = weekKeys[i];
+            const esHoy   = key === hoy;
+            const isPast  = key < hoy;
+            const laboral = esDiaLaboral(key, diasLaborales);
+            const dayCitas   = citasPorFecha[key] || [];
+            const dayBloques = (data.bloques || []).filter(b => b.fecha === key && b.titulo);
+            const hasCont    = dayCitas.length > 0 || dayBloques.length > 0;
+            return (
+              <div key={key} style={{ borderBottom:`0.5px solid ${G.border}`, padding:"12px 14px", opacity:isPast ? 0.5 : 1 }}>
+                {/* Day header row */}
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: hasCont ? 10 : 0 }}>
+                  <div style={{ width:36, height:36, borderRadius:"50%", flexShrink:0,
+                    background:esHoy ? G.green : "transparent",
+                    border:esHoy ? "none" : `0.5px solid ${G.border}`,
+                    display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    <span style={{ fontFamily:F.sans, fontSize:13, fontWeight:700, color:esHoy ? "#0a0a0a" : G.sub }}>{d.getDate()}</span>
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <p style={{ margin:0, fontFamily:F.sans, fontSize:13, fontWeight:esHoy ? 700 : 400,
+                      color:esHoy ? G.greenL : G.white, textTransform:"capitalize" }}>
+                      {DIAS_F[d.getDay()]}{esHoy ? " · HOY" : ""}
+                    </p>
+                    {!laboral && <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>no laborable</p>}
+                  </div>
+                  {dayCitas.length > 0
+                    ? <span style={s.tag}>{dayCitas.length} turno{dayCitas.length>1?"s":""}</span>
+                    : (!isPast && laboral && <button style={{ ...s.btnGl, fontSize:10, padding:"4px 9px" }}
+                        onClick={() => push("nueva-cita", { fechaDefault:key })}>+ agendar</button>)
+                  }
+                </div>
+
+                {/* Personal events */}
+                {dayBloques.map(b => {
+                  const tc = tipoEvColor(b.tipo);
+                  return (
+                    <div key={b._id}
+                      style={{ background:tc.bg, border:`1px solid ${tc.border}`, borderRadius:10, padding:"7px 12px", marginBottom:6, cursor:"pointer" }}
+                      onClick={() => { if (window.confirm(`Eliminar "${b.titulo}"?`)) data.borrarBloque(b._id); }}>
+                      <span style={{ fontFamily:F.sans, fontSize:12, color:tc.color }}>{tc.icon} {b.titulo}{b.horaInicio && b.horaInicio !== "00:00" ? ` · ${b.horaInicio}` : ""}</span>
+                    </div>
+                  );
+                })}
+
+                {/* Appointment cards */}
+                {[...dayCitas].sort((a, b) => a.hora.localeCompare(b.hora)).map(cita => {
+                  const done = cita.estado === "completada";
+                  return (
+                    <div key={cita._id}
+                      onClick={() => push("cita-detalle", { cita })}
+                      style={{ background:G.card, border:`0.5px solid ${blkBdr(cita.estado)}`, borderRadius:12, padding:"11px 13px", marginBottom:7, cursor:"pointer" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+                        <div style={{ background:blkBg(cita.estado), border:`0.5px solid ${blkBdr(cita.estado)}`, borderRadius:7, padding:"5px 9px", flexShrink:0 }}>
+                          <span style={{ fontFamily:F.serif, fontWeight:700, fontSize:13, color:blkTxt(cita.estado) }}>{cita.hora}</span>
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14, color:G.white, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cita.clientaNombre}</p>
+                          <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cita.servicio}{cita.adicionales?.length ? ` + ${cita.adicionales.join(", ")}` : ""}</p>
+                        </div>
+                        <span style={{ ...s.tag, flexShrink:0 }}>{done ? "finalizada" : cita.estado}</span>
+                      </div>
+                      {!done && (
+                        <div style={{ display:"flex", gap:7, marginTop:9 }} onClick={e => e.stopPropagation()}>
+                          {cita.estado === "solicitada" && (<>
+                            <button onClick={() => confirmarRapidoSem(cita)} style={{ flex:1, background:`rgba(${G.greenRGB},0.2)`, border:`1px solid rgba(${G.greenRGB},0.4)`, borderRadius:8, padding:"7px 0", fontFamily:F.sans, fontSize:11, color:G.greenL, cursor:"pointer" }}>✓ confirmar</button>
+                            <button onClick={() => cancelarRapidoSem(cita)} style={{ flex:1, background:"rgba(220,70,70,0.15)", border:"1px solid rgba(220,70,70,0.35)", borderRadius:8, padding:"7px 0", fontFamily:F.sans, fontSize:11, color:"#e07070", cursor:"pointer" }}>✕ cancelar</button>
+                          </>)}
+                          {cita.estado === "confirmada" && (<>
+                            <button onClick={e => { e.stopPropagation(); const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }} style={{ flex:1, background:"rgba(37,211,102,0.1)", border:"1px solid rgba(37,211,102,0.3)", borderRadius:8, padding:"7px 0", fontFamily:F.sans, fontSize:11, color:"rgba(37,211,102,0.85)", cursor:"pointer" }}>💬 WA</button>
+                            <button onClick={e => { e.stopPropagation(); push("cita-detalle", { cita }); }} style={{ flex:1, background:`rgba(${G.greenRGB},0.15)`, border:`1px solid rgba(${G.greenRGB},0.35)`, borderRadius:8, padding:"7px 0", fontFamily:F.sans, fontSize:11, color:G.greenL, cursor:"pointer" }}>$ cobrar</button>
+                          </>)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {!hasCont && laboral && !isPast && (
+                  <p style={{ fontFamily:F.sans, fontSize:11, color:"rgba(255,255,255,0.2)", margin:0 }}>sin turnos</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {wide && (
       <div style={{ flex:1, overflowY:"auto", overflowX:"hidden" }}>
         {/* Day headers — sticky at top of scroll */}
         <div style={{ display:"flex", marginLeft:42, position:"sticky", top:0, zIndex:5, background:G.topBarBg, backdropFilter:"blur(12px)", borderBottom:`0.5px solid ${G.border}` }}>
@@ -1803,6 +1893,7 @@ function AgendaSemana({ data, push, toast, weekOffset, setWeekOffset }) {
           })}
         </div>
       </div>
+      )}
     </div>
   );
 }
