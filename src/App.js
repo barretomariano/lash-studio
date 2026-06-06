@@ -1519,6 +1519,7 @@ function AdminAgenda({ data, push, toast }) {
     </div>
   ) : null;
 
+
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 58px)" }}>
       {wide ? (
