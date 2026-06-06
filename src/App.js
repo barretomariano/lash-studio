@@ -2276,8 +2276,11 @@ function AgendaDia({ data, push, toast, diaInicial }) {
 // ── Nueva Cita ─────────────────────────────────────────────────────────────────
 function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clientaIdDefault = "" }) {
   const [form, setForm] = useState({ clientaId:clientaIdDefault, fecha:fechaDefault, hora:horaDefault, servicio:"", notas:"", adicionales:[] });
-  const [saving, setSaving] = useState(false);
-  const [customHora, setCustomHora] = useState(false);
+  const [saving, setSaving]           = useState(false);
+  const [customHora, setCustomHora]   = useState(false);
+  const [recurrente, setRecurrente]   = useState(false);
+  const [recurrInterval, setRecurrInterval] = useState(14);
+  const [recurrReps, setRecurrReps]   = useState(3);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
   const initNombre = clientaIdDefault ? (data.clientas.find(c => c._id === clientaIdDefault)?.nombre || "") : "";
   const [busq, setBusq]         = useState(initNombre);
@@ -2302,14 +2305,23 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
     if (!form.clientaId || !form.fecha || !form.hora || !form.servicio) { toast("completá todos los campos"); return; }
     setSaving(true);
     const clienta = data.clientas.find(c => c._id === form.clientaId);
-    await data.crearCita({ ...form, clientaNombre:clienta?.nombre || "", clientaUid:clienta?.uid || "", estado:"confirmada" });
-    // Notify the clienta that their appointment was confirmed
+    const baseCita = { ...form, clientaNombre:clienta?.nombre || "", clientaUid:clienta?.uid || "", estado:"confirmada" };
+    await data.crearCita(baseCita);
+    if (recurrente && recurrInterval > 0 && recurrReps > 0) {
+      const base = new Date(form.fecha + "T12:00:00");
+      for (let i = 1; i <= Math.min(recurrReps, 12); i++) {
+        const d = new Date(base);
+        d.setDate(d.getDate() + recurrInterval * i);
+        await data.crearCita({ ...baseCita, fecha: d.toISOString().slice(0, 10) });
+      }
+    }
     if (clienta?.uid) {
       sendPush([`clienta:${clienta.uid}`],
         "¡Tu turno está confirmado! 🌿",
         `${form.servicio} · ${form.fecha} a las ${form.hora}`);
     }
-    toast("✓ turno agendado"); pop();
+    toast(recurrente ? `✓ ${recurrReps + 1} turnos agendados` : "✓ turno agendado");
+    pop();
   };
 
   return (
@@ -2397,7 +2409,36 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
             </div>
           </Field>
           <Field label="notas (opcional)"><textarea style={{ ...s.input, height:70, resize:"none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder="indicaciones especiales..." /></Field>
-          <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>{saving ? "guardando..." : "confirmar turno →"}</button>
+
+          {/* Recurrencia */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 0", borderTop:`0.5px solid ${G.border}` }}>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:13, color:G.text, fontWeight:600 }}>¿Clienta recurrente?</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Agendar turnos futuros automáticamente</p>
+            </div>
+            <button onClick={() => setRecurrente(r => !r)} style={{ flexShrink:0, padding:"7px 14px", borderRadius:20, border:`1.5px solid ${recurrente ? G.green : G.border}`, background:recurrente ? G.greenM : "transparent", fontFamily:F.sans, fontSize:12, fontWeight:700, color:recurrente ? G.greenL : G.muted, cursor:"pointer", transition:"all 0.15s", marginLeft:12 }}>
+              {recurrente ? "Sí" : "No"}
+            </button>
+          </div>
+          {recurrente && (
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                <Field label="cada cuántos días">
+                  <input style={{ ...s.input, textAlign:"center" }} type="number" min="1" max="365" value={recurrInterval} onChange={e => setRecurrInterval(Math.max(1, Math.min(365, Number(e.target.value) || 1)))} />
+                </Field>
+                <Field label="repeticiones (máx. 12)">
+                  <input style={{ ...s.input, textAlign:"center" }} type="number" min="1" max="12" value={recurrReps} onChange={e => setRecurrReps(Math.max(1, Math.min(12, Number(e.target.value) || 1)))} />
+                </Field>
+              </div>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted, background:G.glass, borderRadius:10, padding:"8px 12px", border:`0.5px solid ${G.border}` }}>
+                Se crearán <strong style={{ color:G.greenL }}>{recurrReps}</strong> turnos adicionales, cada <strong style={{ color:G.greenL }}>{recurrInterval} días</strong>. Total: {recurrReps + 1} turnos.
+              </p>
+            </div>
+          )}
+
+          <button style={{ ...s.btnG, opacity:saving ? 0.6 : 1 }} onClick={guardar} disabled={saving}>
+            {saving ? "guardando..." : recurrente ? `confirmar ${recurrReps + 1} turnos →` : "confirmar turno →"}
+          </button>
         </div>
       </div>
     </div>
@@ -5246,7 +5287,7 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
               <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 10px" }}>
                 {ultima.servicio} · {fmtFecha(ultima.fecha)}
               </p>
-              <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, lineHeight:1.7, margin:0 }}>
+              <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, lineHeight:1.7, margin:0, whiteSpace:"pre-line" }}>
                 {cuidados}
               </p>
             </div>
@@ -5449,8 +5490,11 @@ function CAgendar({ clienta, data, servicioPresel, clearServicioPresel }) {
   const [lbTouchY, setLbTouchY] = useState(null);
   const [touchX, setTouchX]     = useState(null);
   const [calOffset, setCalOffset] = useState(0);
-  const [enviado, setEnviado] = useState(false);
-  const [saving, setSaving]   = useState(false);
+  const [enviado, setEnviado]           = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const [recurrente, setRecurrente]     = useState(false);
+  const [recurrInterval, setRecurrInterval] = useState(14);
+  const [recurrReps, setRecurrReps]     = useState(3);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
   const slots         = data.getConfig("slots", []);
@@ -5479,7 +5523,7 @@ function CAgendar({ clienta, data, servicioPresel, clearServicioPresel }) {
   const confirmar = async () => {
     setSaving(true);
     try {
-      await data.crearCita({
+      const baseCita = {
         clientaId:     clienta._id,
         clientaNombre: clienta.nombre,
         clientaUid:    clienta.uid || "",
@@ -5489,10 +5533,19 @@ function CAgendar({ clienta, data, servicioPresel, clearServicioPresel }) {
         notas:         form.notas,
         adicionales:   form.adicionales || [],
         estado:        "solicitada",
-      });
+      };
+      await data.crearCita(baseCita);
+      if (recurrente && recurrInterval > 0 && recurrReps > 0) {
+        const base = new Date(form.fecha + "T12:00:00");
+        for (let i = 1; i <= Math.min(recurrReps, 12); i++) {
+          const d = new Date(base);
+          d.setDate(d.getDate() + recurrInterval * i);
+          await data.crearCita({ ...baseCita, fecha: d.toISOString().slice(0, 10) });
+        }
+      }
       sendPush(["admin"],
         `Nueva solicitud de turno 🗓`,
-        `${clienta.nombre?.split(" ")[0]} quiere: ${form.servicio?.nombre || "A confirmar"} el ${form.fecha} a las ${form.hora}`);
+        `${clienta.nombre?.split(" ")[0]} quiere: ${form.servicio?.nombre || "A confirmar"} el ${form.fecha} a las ${form.hora}${recurrente ? ` (+${recurrReps} más c/${recurrInterval}d)` : ""}`);
     } catch (e) { console.warn("Firebase write:", e); }
     setSaving(false);
     setEnviado(true);
@@ -5700,7 +5753,33 @@ function CAgendar({ clienta, data, servicioPresel, clearServicioPresel }) {
                 </div>
               ))}
             </div>
-            <button style={{ ...s.btnG, marginTop:14, opacity:saving?0.6:1 }} onClick={confirmar} disabled={saving}>{saving?"enviando...":"enviar solicitud →"}</button>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 0", marginTop:8 }}>
+              <div>
+                <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:13, color:G.text, fontWeight:600 }}>¿Turno recurrente?</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Solicitar turnos futuros automáticamente</p>
+              </div>
+              <button onClick={() => setRecurrente(r => !r)} style={{ flexShrink:0, padding:"7px 14px", borderRadius:20, border:`1.5px solid ${recurrente ? G.green : G.border}`, background:recurrente ? G.greenM : "transparent", fontFamily:F.sans, fontSize:12, fontWeight:700, color:recurrente ? G.greenL : G.muted, cursor:"pointer", marginLeft:12 }}>
+                {recurrente ? "Sí" : "No"}
+              </button>
+            </div>
+            {recurrente && (
+              <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:4 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                  <Field label="cada cuántos días">
+                    <input style={{ ...s.input, textAlign:"center" }} type="number" min="1" max="365" value={recurrInterval} onChange={e => setRecurrInterval(Math.max(1, Math.min(365, Number(e.target.value) || 1)))} />
+                  </Field>
+                  <Field label="repeticiones (máx. 12)">
+                    <input style={{ ...s.input, textAlign:"center" }} type="number" min="1" max="12" value={recurrReps} onChange={e => setRecurrReps(Math.max(1, Math.min(12, Number(e.target.value) || 1)))} />
+                  </Field>
+                </div>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted, background:G.glass, borderRadius:10, padding:"8px 12px", border:`0.5px solid ${G.border}` }}>
+                  Se solicitarán <strong style={{ color:G.greenL }}>{recurrReps}</strong> turnos más, cada <strong style={{ color:G.greenL }}>{recurrInterval} días</strong>. Total: {recurrReps + 1} solicitudes.
+                </p>
+              </div>
+            )}
+            <button style={{ ...s.btnG, marginTop:6, opacity:saving?0.6:1 }} onClick={confirmar} disabled={saving}>
+              {saving ? "enviando..." : recurrente ? `enviar ${recurrReps + 1} solicitudes →` : "enviar solicitud →"}
+            </button>
             <button style={{ ...s.btnGl, marginTop:9, width:"100%" }} onClick={() => setPaso(1)}>modificar</button>
           </div>
         )}
