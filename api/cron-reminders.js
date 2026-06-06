@@ -1,5 +1,6 @@
 // Vercel Cron — runs daily at 12:00 UTC (09:00 Buenos Aires, UTC-3)
 // Sends appointment reminders to clientas + daily summary to admin
+const crypto  = require("crypto");
 const webpush = require("web-push");
 
 const VAPID_PUBLIC  = "BBsJiZsDUVmNPVoNNvzhlKiJG25M27n7IEKJmf9gCO1CDiAM7D-8pFlxuRQP_CNN_p0utbKR1JOR90HoA78_Hxk";
@@ -16,20 +17,51 @@ function tomorrowBsAs() {
   return bsas.toISOString().slice(0, 10);
 }
 
-async function fbGet(path) {
-  const r = await fetch(`${FB}/${path}.json`);
+function b64url(data) {
+  return Buffer.from(data).toString("base64")
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+async function getGoogleAccessToken(sa) {
+  const now     = Math.floor(Date.now() / 1000);
+  const header  = b64url(JSON.stringify({ alg:"RS256", typ:"JWT" }));
+  const payload = b64url(JSON.stringify({
+    iss: sa.client_email, sub: sa.client_email,
+    aud: "https://oauth2.googleapis.com/token",
+    scope: "https://www.googleapis.com/auth/firebase https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/identitytoolkit",
+    iat: now, exp: now + 3600,
+  }));
+  const toSign = `${header}.${payload}`;
+  const sign   = crypto.createSign("RSA-SHA256");
+  sign.update(toSign);
+  const sig = b64url(sign.sign(sa.private_key));
+  const jwt = `${toSign}.${sig}`;
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type":"application/x-www-form-urlencoded" },
+    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
+  });
+  const j = await r.json();
+  if (!j.access_token) throw new Error("OAuth error: " + JSON.stringify(j));
+  return j.access_token;
+}
+
+async function fbGet(path, token) {
+  const headers = token ? { Authorization:`Bearer ${token}` } : {};
+  const r = await fetch(`${FB}/${path}.json`, { headers });
   const d = await r.json();
   if (!d || typeof d !== "object" || Array.isArray(d)) return [];
   return Object.entries(d).map(([k, v]) => ({ ...v, _id: k }));
 }
 
-async function fbGetVal(path) {
-  const r = await fetch(`${FB}/${path}.json`);
+async function fbGetVal(path, token) {
+  const headers = token ? { Authorization:`Bearer ${token}` } : {};
+  const r = await fetch(`${FB}/${path}.json`, { headers });
   return r.json();
 }
 
-async function getSubs(path) {
-  const obj = await fbGetVal(path);
+async function getSubs(path, token) {
+  const obj = await fbGetVal(path, token);
   if (!obj || typeof obj !== "object") return [];
   return Object.values(obj).filter(s => s?.endpoint);
 }
@@ -44,14 +76,27 @@ async function safePush(sub, payload) {
   }
 }
 
-async function sendPushToClienta(uid, title, body) {
-  const subs = await getSubs(`pushSubs/clientas/${uid}`);
+async function sendPushToClienta(uid, title, body, token) {
+  const subs = await getSubs(`pushSubs/clientas/${uid}`, token);
   for (const sub of subs) await safePush(sub, { title, body, url:"/" });
 }
 
 module.exports = async function handler(req, res) {
   // Vercel cron sends GET; also allow POST for manual triggers
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).end();
+
+  // Get service account token for authenticated RTDB reads
+  let token = null;
+  const saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (saJson) {
+    try {
+      const sa = JSON.parse(saJson);
+      if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, "\n");
+      token = await getGoogleAccessToken(sa);
+    } catch (e) {
+      console.error("cron-reminders: could not get access token:", e.message);
+    }
+  }
 
   const tomorrow = tomorrowBsAs();
   const now = new Date();
@@ -60,10 +105,10 @@ module.exports = async function handler(req, res) {
 
   // Fetch citas, clientas, admin subs, and notification schedule in parallel
   const [citas, clientas, adminSubs, schedule] = await Promise.all([
-    fbGet("citas"),
-    fbGet("clientas"),
-    getSubs("pushSubs/admin"),
-    fbGetVal("config/notifSchedule").then(v => v || {}),
+    fbGet("citas", token),
+    fbGet("clientas", token),
+    getSubs("pushSubs/admin", token),
+    fbGetVal("config/notifSchedule", token).then(v => v || {}),
   ]);
 
   const citasManana = citas.filter(c =>
@@ -81,7 +126,7 @@ module.exports = async function handler(req, res) {
     const uid = cita.clientaUid || clienta?.uid;
     if (!uid) continue;
 
-    const subs = await getSubs(`pushSubs/clientas/${uid}`);
+    const subs = await getSubs(`pushSubs/clientas/${uid}`, token);
     for (const sub of subs) {
       sends.push(safePush(sub, {
         title: "Recordatorio de cita 💅",
@@ -135,7 +180,8 @@ module.exports = async function handler(req, res) {
       if (ultima.fecha <= thresholdStr) {
         await sendPushToClienta(c.uid,
           schedule.recallTitulo || "¡Te extrañamos! 💚",
-          schedule.recallTexto  || "¿Reagendamos tu servicio?");
+          schedule.recallTexto  || "¿Reagendamos tu servicio?",
+          token);
         recallSent++;
       }
     }
@@ -157,7 +203,8 @@ module.exports = async function handler(req, res) {
       if (ultima.fecha === targetStr) {
         await sendPushToClienta(c.uid,
           schedule.serviceTitulo || "¡Hora de tu service! 💅",
-          schedule.serviceTexto  || "Ya pasaron los días recomendados. ¡Agendá tu turno! 🌿");
+          schedule.serviceTexto  || "Ya pasaron los días recomendados. ¡Agendá tu turno! 🌿",
+          token);
         serviceSent++;
       }
     }
