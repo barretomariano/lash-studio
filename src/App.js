@@ -139,25 +139,25 @@ const TIPOS_EVENTO = {
 const tipoEvColor = (tipo) => TIPOS_EVENTO[tipo] || TIPOS_EVENTO.personal;
 
 const G_dark = {
-  bg:"#0a0a0a", card:"rgba(255,255,255,0.045)", glass:"rgba(255,255,255,0.07)",
+  bg:"#111209", card:"rgba(255,255,255,0.055)", glass:"rgba(255,255,255,0.08)",
   border:"rgba(255,255,255,0.09)", borderHov:"rgba(255,255,255,0.18)",
-  green:"#8fbd5a", greenD:"#5c8f2e", greenL:"#b5d98a", greenM:"rgba(143,189,90,0.30)", greenRGB:"143,189,90",
-  text:"#f0f0f0", muted:"rgba(240,240,240,0.45)", sub:"rgba(240,240,240,0.65)",
-  white:"#fff", red:"#e07070", amber:"#e0b870",
-  navBg:"rgba(12,12,12,0.95)", topBarBg:"rgba(10,10,10,0.88)",
-  shadow:"rgba(0,0,0,0.28)", shadowMd:"rgba(0,0,0,0.18)", shadowSm:"rgba(0,0,0,0.1)",
-  appBgGradient:"radial-gradient(ellipse 90% 60% at 50% -8%, rgba(143,189,90,0.18) 0%, transparent 62%), radial-gradient(ellipse 45% 40% at 96% 88%, rgba(143,189,90,0.10) 0%, transparent 56%), radial-gradient(ellipse 55% 45% at 4% 100%, rgba(143,189,90,0.07) 0%, transparent 58%)",
-  eyebrowOpacity: 0.65,
+  green:"#8aad60", greenD:"#5c8a30", greenL:"#a8c47c", greenM:"rgba(138,173,96,0.28)", greenRGB:"138,173,96",
+  text:"#ede8df", muted:"rgba(237,232,223,0.42)", sub:"rgba(237,232,223,0.62)",
+  white:"#ede8df", red:"#d97070", amber:"#d4a85a",
+  navBg:"rgba(17,18,9,0.96)", topBarBg:"rgba(17,18,9,0.92)",
+  shadow:"rgba(0,0,0,0.30)", shadowMd:"rgba(0,0,0,0.20)", shadowSm:"rgba(0,0,0,0.12)",
+  appBgGradient:"radial-gradient(ellipse 90% 60% at 50% -8%, rgba(138,173,96,0.14) 0%, transparent 62%), radial-gradient(ellipse 45% 40% at 96% 88%, rgba(138,173,96,0.08) 0%, transparent 56%), radial-gradient(ellipse 55% 45% at 4% 100%, rgba(138,173,96,0.06) 0%, transparent 58%)",
+  eyebrowOpacity: 0.62,
 };
 const G_light = {
-  bg:"#f5f1eb", card:"rgba(255,255,255,0.85)", glass:"rgba(0,0,0,0.04)",
-  border:"rgba(0,0,0,0.1)", borderHov:"rgba(0,0,0,0.2)",
+  bg:"#f4efe8", card:"rgba(255,255,255,0.94)", glass:"rgba(0,0,0,0.03)",
+  border:"rgba(0,0,0,0.12)", borderHov:"rgba(0,0,0,0.22)",
   green:"#5a9020", greenD:"#3d6e14", greenL:"#3a7010", greenM:"rgba(90,144,32,0.22)", greenRGB:"90,144,32",
-  text:"#2a2a2a", muted:"rgba(20,20,20,0.6)", sub:"rgba(20,20,20,0.82)",
+  text:"#2a2a2a", muted:"rgba(20,20,20,0.58)", sub:"rgba(20,20,20,0.80)",
   white:"#1a1a1a", red:"#c04040", amber:"#9a6418",
-  navBg:"rgba(244,240,234,0.96)", topBarBg:"rgba(244,240,234,0.92)",
-  shadow:"rgba(0,0,0,0.1)", shadowMd:"rgba(0,0,0,0.07)", shadowSm:"rgba(0,0,0,0.04)",
-  appBgGradient:"radial-gradient(ellipse 90% 60% at 50% -8%, rgba(90,144,32,0.11) 0%, transparent 55%), radial-gradient(ellipse 55% 45% at 4% 100%, rgba(90,144,32,0.07) 0%, transparent 52%)",
+  navBg:"rgba(242,237,230,0.97)", topBarBg:"rgba(242,237,230,0.94)",
+  shadow:"rgba(0,0,0,0.13)", shadowMd:"rgba(0,0,0,0.09)", shadowSm:"rgba(0,0,0,0.05)",
+  appBgGradient:"radial-gradient(ellipse 90% 60% at 50% -8%, rgba(90,144,32,0.1) 0%, transparent 55%), radial-gradient(ellipse 55% 45% at 4% 100%, rgba(90,144,32,0.06) 0%, transparent 52%)",
   eyebrowOpacity: 0.88,
 };
 const G = Object.assign({}, G_dark);
@@ -387,13 +387,13 @@ const s = {
   get cardSub(){ return { background:G.glass, border:`0.5px solid ${G.border}`, borderRadius:14, padding:"12px 14px", marginBottom:8, boxShadow:`0 1px 8px ${G.shadowSm}` }; },
   get input()  { return { background:G.glass, border:`0.5px solid ${G.border}`, borderRadius:11, padding:"13px 15px", color:G.text, fontFamily:F.sans, fontSize:15, width:"100%", outline:"none", boxSizing:"border-box", transition:"border-color 0.2s" }; },
   get label()  { return { fontFamily:F.sans, fontSize:12, color:G.muted, display:"block", marginBottom:6, fontWeight:500 }; },
-  btnG:   { background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", borderRadius:13, padding:"14px 20px", color:"#0a0a0a", fontFamily:F.sans, fontSize:14, fontWeight:700, cursor:"pointer", width:"100%", maxWidth:420, display:"block", transition:"opacity 0.15s, transform 0.1s", letterSpacing:"0.02em", boxShadow:"0 4px 18px rgba(143,189,90,0.38), 0 1px 3px rgba(0,0,0,0.3)" },
+  btnG:   { background:"linear-gradient(135deg, #90b850 0%, #6a9230 100%)", border:"none", borderRadius:13, padding:"14px 20px", color:"#0e1209", fontFamily:F.sans, fontSize:14, fontWeight:700, cursor:"pointer", width:"100%", maxWidth:420, display:"block", transition:"opacity 0.15s, transform 0.1s", letterSpacing:"0.02em", boxShadow:"0 4px 18px rgba(106,146,48,0.38), 0 1px 3px rgba(0,0,0,0.3)" },
   get btnGl()  { return { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:12, padding:"10px 16px", color:G.text, fontFamily:F.sans, fontSize:13, fontWeight:500, cursor:"pointer", backdropFilter:"blur(10px)", transition:"all 0.2s", boxShadow:`0 2px 8px ${G.shadowSm}` }; },
   get btnRed() { return { background:"rgba(224,112,112,0.1)", border:`0.5px solid rgba(224,112,112,0.35)`, borderRadius:12, padding:"10px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" }; },
   get tag()    { return { background:G.greenM, border:`0.5px solid rgba(${G.greenRGB},0.35)`, borderRadius:20, padding:"3px 11px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3, fontWeight:500 }; },
   get div()    { return { height:"0.5px", background:G.border, margin:"16px 0" }; },
   get nav() { return { position:"fixed", bottom:"max(20px, env(safe-area-inset-bottom, 0px))", left:"50%", transform:"translateX(-50%)", width:"calc(100% - 32px)", maxWidth:398, background:G.navBg, backdropFilter:"blur(32px) saturate(200%)", border:`0.5px solid ${G.border}`, borderRadius:28, display:"flex", zIndex:20, padding:"10px 6px 10px", boxShadow:`0 8px 40px ${G.shadow}, 0 1px 0 rgba(255,255,255,0.06) inset` }; },
-  get fab() { return { position:"fixed", bottom:"calc(max(20px, env(safe-area-inset-bottom, 0px)) + 70px)", right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #a3d468 0%, #7db047 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(143,189,90,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" }; },
+  get fab() { return { position:"fixed", bottom:"calc(max(20px, env(safe-area-inset-bottom, 0px)) + 70px)", right:18, width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg, #90b850 0%, #6a9230 100%)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px rgba(106,146,48,0.5), 0 2px 8px rgba(0,0,0,0.4)`, zIndex:30, transition:"transform 0.15s" }; },
 };
 
 const navItmSty     = (active) => ({ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"6px 0", cursor:"pointer", color:active ? G.green : G.muted, transition:"color 0.18s, background 0.18s, box-shadow 0.18s", borderRadius:22, background:active ? `rgba(${G.greenRGB},0.13)` : "transparent", boxShadow:active ? `inset 0 2px 0 rgba(${G.greenRGB},0.55)` : "none" });
@@ -1369,6 +1369,7 @@ function AdminAgenda({ data, push, toast }) {
   const [vista,  setVista]         = useState("semana");
   const [weekOffset, setWeekOffset] = useState(0);
   const [showEvento, setShowEvento] = useState(false);
+  const [busqAgenda, setBusqAgenda] = useState("");
   const wide = useIsWide();
 
   const weekOffsetForDay = (iso) => {
@@ -1492,7 +1493,7 @@ function AdminAgenda({ data, push, toast }) {
                     onClick={e => { e.stopPropagation(); const tpl = data.getConfig("mensajes", DEFAULT_MENSAJES); const cl = data.clientas.find(c => c._id === cita.clientaId); openWAClienta(cl, fillMsg(tpl.recordatorio || DEFAULT_MENSAJES.recordatorio, { nombre:cita.clientaNombre?.split(" ")[0], hora:cita.hora })); }}><Icon name="messageCircle" size={13} color="rgba(37,211,102,0.8)" /></button>}
                   <button style={{ ...s.btnGl, padding:"5px 9px", fontSize:11 }} onClick={() => push("cita-detalle", { cita })}>→</button>
                 </div>
-                <span style={s.tag}>{cita.estado === "completada" ? "finalizada" : cita.estado}</span>
+                <span style={s.tag}>{cita.estado}</span>
               </>
             )}
           </div>
@@ -1500,6 +1501,24 @@ function AdminAgenda({ data, push, toast }) {
       })}
     </div>
   );
+
+  const busqQ = busqAgenda.trim().toLowerCase();
+  const busqResultados = busqQ ? (
+    <div style={{ overflowY:"auto", flex:1, padding:"16px 20px" }}>
+      <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:12 }}>{data.citas.filter(c => c.clientaNombre?.toLowerCase().includes(busqQ)).length} resultado{data.citas.filter(c => c.clientaNombre?.toLowerCase().includes(busqQ)).length !== 1 ? "s" : ""}</p>
+      {[...data.citas].filter(c => c.clientaNombre?.toLowerCase().includes(busqQ)).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.hora.localeCompare(b.hora)).map(c => (
+        <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
+          <div>
+            <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:13, fontWeight:600, color:G.text }}>{c.clientaNombre}</p>
+            <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{c.fecha} · {c.hora} · {c.servicio}</p>
+          </div>
+          <span style={{ ...s.tag, margin:0 }}>{c.estado}</span>
+        </div>
+      ))}
+      {data.citas.filter(c => c.clientaNombre?.toLowerCase().includes(busqQ)).length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin resultados</p>}
+    </div>
+  ) : null;
+
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 58px)" }}>
@@ -1523,6 +1542,7 @@ function AdminAgenda({ data, push, toast }) {
                     fontWeight:vista===v ? 700 : 400 }}>{v}</button>
               ))}
             </div>
+            <input style={{ ...s.input, margin:0, fontSize:13 }} placeholder="🔍 buscar clienta..." value={busqAgenda} onChange={e => setBusqAgenda(e.target.value)} />
             {miniCal((key) => {
               setDiaS(key);
               if (vista === "semana") setWeekOffset(weekOffsetForDay(key));
@@ -1549,9 +1569,13 @@ function AdminAgenda({ data, push, toast }) {
           </div>
           {/* RIGHT PANEL */}
           <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-            {vista === "semana" && <AgendaSemana data={data} push={push} toast={toast} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />}
-            {vista === "día" && <AgendaDia key={diaS} data={data} push={push} toast={toast} diaInicial={diaS} />}
-            {vista === "mes" && daySlots}
+            {busqResultados || (
+              <>
+                {vista === "semana" && <AgendaSemana data={data} push={push} toast={toast} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />}
+                {vista === "día" && <AgendaDia key={diaS} data={data} push={push} toast={toast} diaInicial={diaS} />}
+                {vista === "mes" && daySlots}
+              </>
+            )}
           </div>
         </div>
       ) : (
@@ -1573,15 +1597,20 @@ function AdminAgenda({ data, push, toast }) {
                 <button style={{ ...s.btnG, width:"auto", padding:"8px 13px", fontSize:11 }} onClick={() => push("nueva-cita")}>+ cita</button>
               </div>
             </div>
+            <input style={{ ...s.input, margin:"8px 0 0", fontSize:13 }} placeholder="🔍 buscar clienta..." value={busqAgenda} onChange={e => setBusqAgenda(e.target.value)} />
           </div>
-          {vista === "semana" && <AgendaSemana data={data} push={push} toast={toast} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />}
-          {vista === "día" && <AgendaDia key={diaS} data={data} push={push} toast={toast} diaInicial={diaS} />}
-          {vista === "mes" && (
-            <div style={{ padding:"14px 14px 0", overflowY:"auto" }}>
-              {miniCal((key) => setDiaS(key))}
-              <div style={{ height:10 }} />
-              {daySlots}
-            </div>
+          {busqResultados || (
+            <>
+              {vista === "semana" && <AgendaSemana data={data} push={push} toast={toast} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />}
+              {vista === "día" && <AgendaDia key={diaS} data={data} push={push} toast={toast} diaInicial={diaS} />}
+              {vista === "mes" && (
+                <div style={{ padding:"14px 14px 0", overflowY:"auto" }}>
+                  {miniCal((key) => setDiaS(key))}
+                  <div style={{ height:10 }} />
+                  {daySlots}
+                </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -1744,7 +1773,7 @@ function AgendaSemana({ data, push, toast, weekOffset, setWeekOffset }) {
                           <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14, color:G.white, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cita.clientaNombre}</p>
                           <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cita.servicio}{cita.adicionales?.length ? ` + ${cita.adicionales.join(", ")}` : ""}</p>
                         </div>
-                        <span style={{ ...s.tag, flexShrink:0 }}>{done ? "finalizada" : cita.estado}</span>
+                        <span style={{ ...s.tag, flexShrink:0 }}>{done ? "completada" : cita.estado}</span>
                       </div>
                       {!done && (
                         <div style={{ display:"flex", gap:7, marginTop:9 }} onClick={e => e.stopPropagation()}>
@@ -2090,7 +2119,7 @@ function AgendaDia({ data, push, toast, diaInicial }) {
                     <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:3 }}>
                       <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:13, color:G.white }}>{cita.hora}</p>
                       {enCurso && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.greenL, background:`rgba(${G.greenRGB},0.2)`, borderRadius:4, padding:"1px 6px" }}>EN CURSO</span>}
-                      {completada && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.greenL, background:`rgba(${G.greenRGB},0.15)`, borderRadius:4, padding:"1px 6px" }}>✓ finalizada</span>}
+                      {completada && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.greenL, background:`rgba(${G.greenRGB},0.15)`, borderRadius:4, padding:"1px 6px" }}>✓ completada</span>}
                       {cita.estado === "solicitada" && <span style={{ fontFamily:F.sans, fontSize:9, fontWeight:700, color:G.amber, background:"rgba(224,184,112,0.15)", borderRadius:4, padding:"1px 6px" }}>pendiente</span>}
                     </div>
                     <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.sub }}>{cita.clientaNombre}</p>
@@ -2160,7 +2189,7 @@ function AgendaDia({ data, push, toast, diaInicial }) {
                   borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2, boxSizing:"border-box" }}>
                 <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:11, color:blkTxt(cita.estado) }}>{cita.hora} · {cita.clientaNombre}</p>
                 <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:10, color:blkTxt(cita.estado), opacity:0.8 }}>{cita.servicio}</p>
-                <span style={{ ...s.tag, position:"absolute", top:5, right:5, fontSize:8, padding:"2px 6px" }}>{done ? "finalizada" : cita.estado}</span>
+                <span style={{ ...s.tag, position:"absolute", top:5, right:5, fontSize:8, padding:"2px 6px" }}>{done ? "completada" : cita.estado}</span>
                 {height >= 80 && !done && (
                   <div style={{ position:"absolute", bottom:6, left:8, right:8, display:"flex", gap:6 }}
                     onClick={e => e.stopPropagation()}>
@@ -2778,10 +2807,34 @@ function AdminClientas({ data, push, toast }) {
     return h.length ? [...h].sort((a, b) => b.fecha?.localeCompare(a.fecha))[0] : null;
   };
 
+  const hoyStr = hoyISO();
+  const getProxCita = (c) => {
+    const citasC = data.citas.filter(x => x.clientaId === c._id && x.fecha >= hoyStr && x.estado !== "cancelada" && x.estado !== "completada");
+    return citasC.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.hora.localeCompare(b.hora))[0] || null;
+  };
+
   const filtradas = data.clientas
-    .filter(c => c.nombre?.toLowerCase().includes(search.toLowerCase()))
+    .filter(c => {
+      if (!c.nombre?.toLowerCase().includes(search.toLowerCase())) return false;
+      if (orden === "inactivas") {
+        const ult = getUlt(c);
+        if (!ult) return false;
+        const diasSinVisita = Math.floor((new Date(hoyStr) - new Date(ult.fecha)) / (1000*60*60*24));
+        return diasSinVisita >= 30 && !getProxCita(c);
+      }
+      if (orden === "proximas") return !!getProxCita(c);
+      return true;
+    })
     .sort((a, b) => {
       if (orden === "az") return a.nombre?.localeCompare(b.nombre);
+      if (orden === "inactivas") {
+        const ua = getUlt(a)?.fecha || ""; const ub = getUlt(b)?.fecha || "";
+        return ua.localeCompare(ub);
+      }
+      if (orden === "proximas") {
+        const pa = getProxCita(a)?.fecha || ""; const pb = getProxCita(b)?.fecha || "";
+        return pa.localeCompare(pb);
+      }
       const ua = getUlt(a)?.fecha || ""; const ub = getUlt(b)?.fecha || "";
       return ub.localeCompare(ua);
     });
@@ -2811,9 +2864,9 @@ function AdminClientas({ data, push, toast }) {
           <input style={{ ...s.input, flex:1, margin:0 }} placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} />
           <button style={{ ...s.btnG, width:"auto", padding:"9px 14px", fontSize:12 }} onClick={() => setSheet(true)}>+ nueva</button>
         </div>
-        <div style={{ display:"flex", gap:7, marginBottom:14 }}>
-          {[["az", "A → Z"], ["reciente", "última visita"]].map(([v, l]) => (
-            <button key={v} onClick={() => setOrden(v)} style={{ ...s.btnGl, fontSize:11, background:orden === v ? G.greenM : "transparent", borderColor:orden === v ? G.green : G.border, color:orden === v ? G.greenL : G.muted, padding:"8px 14px", fontWeight:orden === v ? 700 : 400 }}>{l}</button>
+        <div style={{ display:"flex", gap:7, marginBottom:14, flexWrap:"wrap" }}>
+          {[["az", "A → Z"], ["reciente", "última visita"], ["inactivas", "+30d sin turno"], ["proximas", "turno próximo"]].map(([v, l]) => (
+            <button key={v} onClick={() => setOrden(v)} style={{ ...s.btnGl, fontSize:11, background:orden === v ? G.greenM : "transparent", borderColor:orden === v ? G.green : G.border, color:orden === v ? G.greenL : G.muted, padding:"8px 12px", fontWeight:orden === v ? 700 : 400 }}>{l}</button>
           ))}
         </div>
         {filtradas.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin clientas aún</p>}
@@ -3361,6 +3414,10 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, 
   const filtrar = (h) => { if (periodo === "hoy") return h.fecha === hoy; if (periodo === "mes") return h.fecha?.startsWith(mes); if (periodo === "año") return h.fecha?.startsWith(anio); return true; };
   const ings   = todoHist.filter(filtrar);
   const total  = ings.reduce((a, h) => a + (h.monto || 0), 0);
+  const prevMesStr = (() => { const [y, m] = mes.split("-").map(Number); return m === 1 ? `${y-1}-12` : `${y}-${String(m-1).padStart(2,"0")}`; })();
+  const totalPrev  = todoHist.filter(h => h.fecha?.startsWith(prevMesStr)).reduce((a, h) => a + (h.monto || 0), 0);
+  const varPct     = periodo === "mes" && totalPrev > 0 ? Math.round(((total - totalPrev) / totalPrev) * 100) : null;
+  const prevMesNombre = new Date(prevMesStr + "-15").toLocaleDateString("es-AR", { month:"long" });
   const totalGastos = (data.gastos || []).filter(g => filtrar({ fecha:g.fecha })).reduce((a, g) => a + (g.monto || 0), 0);
   const ganancia = total - totalGastos;
   const transf = ings.filter(h => h.pago === "transferencia" || h.montoTransf > 0).reduce((a, h) => a + (h.montoTransf || (h.pago === "transferencia" ? h.monto : 0)), 0);
@@ -3382,6 +3439,7 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, 
         <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 6px", textTransform:"lowercase", letterSpacing:"0.08em" }}>ingresos · {periodo === "mes" ? new Date().toLocaleDateString("es-AR", { month:"long", year:"numeric" }) : periodo === "año" ? anio : periodo === "hoy" ? "hoy" : "histórico"}</p>
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:36, color:G.green, margin:"0 0 4px" }}>{fmtPesos(total)}</p>
         <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0 }}>{ings.length} servicio{ings.length !== 1 ? "s" : ""}</p>
+        {varPct !== null && <p style={{ fontFamily:F.sans, fontSize:11, color:varPct >= 0 ? G.green : G.red, margin:"5px 0 0", fontWeight:600 }}>{varPct >= 0 ? "↑" : "↓"}{Math.abs(varPct)}% vs {prevMesNombre}</p>}
       </div>
       {totalGastos > 0 && (
         <div style={{ display:"flex", gap:9, marginBottom:14 }}>
