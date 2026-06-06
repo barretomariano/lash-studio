@@ -38,18 +38,34 @@ async function subirFoto(fileOrDataUrl) {
   return j.secure_url || dataUrl;
 }
 
+let _fbAuthToken = null;
+let _fbRefreshToken = null;
+let _fbTokenTimer = null;
+
 const db = {
+  setAuth: (idToken, refreshToken) => {
+    _fbAuthToken = idToken;
+    if (refreshToken) _fbRefreshToken = refreshToken;
+    if (_fbTokenTimer) clearTimeout(_fbTokenTimer);
+    if (_fbRefreshToken) {
+      _fbTokenTimer = setTimeout(async () => {
+        const r = await fbAuth.refresh(_fbRefreshToken);
+        if (r.idToken) db.setAuth(r.idToken, r.refreshToken);
+      }, 55 * 60 * 1000);
+    }
+  },
+  _q: () => _fbAuthToken ? `?auth=${_fbAuthToken}` : "",
   get: async (path) => {
-    const r = await fetch(`${FB}/${path}.json`);
+    const r = await fetch(`${FB}/${path}.json${db._q()}`);
     const d = await r.json();
     if (!d || typeof d !== "object" || Array.isArray(d)) return [];
     return Object.entries(d).map(([k, v]) => ({ ...v, _id: k }));
   },
-  getVal: async (path) => { const r = await fetch(`${FB}/${path}.json`); return r.json(); },
-  set:    async (path, data) => { await fetch(`${FB}/${path}.json`, { method:"PUT",    body:JSON.stringify(data) }); },
-  push:   async (path, data) => { const r = await fetch(`${FB}/${path}.json`, { method:"POST",   body:JSON.stringify(data) }); return (await r.json()).name; },
-  update: async (path, data) => { await fetch(`${FB}/${path}.json`, { method:"PATCH",  body:JSON.stringify(data) }); },
-  del:    async (path)       => { await fetch(`${FB}/${path}.json`, { method:"DELETE" }); },
+  getVal: async (path) => { const r = await fetch(`${FB}/${path}.json${db._q()}`); return r.json(); },
+  set:    async (path, data) => { await fetch(`${FB}/${path}.json${db._q()}`, { method:"PUT",    body:JSON.stringify(data) }); },
+  push:   async (path, data) => { const r = await fetch(`${FB}/${path}.json${db._q()}`, { method:"POST",   body:JSON.stringify(data) }); return (await r.json()).name; },
+  update: async (path, data) => { await fetch(`${FB}/${path}.json${db._q()}`, { method:"PATCH",  body:JSON.stringify(data) }); },
+  del:    async (path)       => { await fetch(`${FB}/${path}.json${db._q()}`, { method:"DELETE" }); },
 };
 
 const SECURETOKEN_URL = "https://securetoken.googleapis.com/v1/token";
@@ -711,7 +727,20 @@ function Login({ onLogin }) {
 
   useEffect(() => {
     const g = localStorage.getItem("ls_session");
-    if (g) { try { const p = JSON.parse(g); if (p.expiry > Date.now()) onLogin(p.tipo, p.data); } catch {} }
+    if (!g) return;
+    try {
+      const p = JSON.parse(g);
+      if (p.expiry <= Date.now()) return;
+      const rt = p.data?.refreshToken || p.data?.authRefreshToken;
+      if (rt) {
+        fbAuth.refresh(rt).then(r => {
+          if (r.idToken) db.setAuth(r.idToken, r.refreshToken || rt);
+          onLogin(p.tipo, p.data);
+        }).catch(() => { localStorage.removeItem("ls_session"); });
+      } else {
+        localStorage.removeItem("ls_session");
+      }
+    } catch {}
   }, []);
 
   const guardar = (tipo, data = null) => {
@@ -723,8 +752,9 @@ function Login({ onLogin }) {
     setLoading(true); setErr("");
     const r = await fbAuth.signIn(email, pass);
     if (r.error) { setErr("Email o contraseña incorrectos"); setLoading(false); return; }
+    db.setAuth(r.idToken, r.refreshToken);
     if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-      guardar("admin"); onLogin("admin");
+      guardar("admin", { refreshToken: r.refreshToken }); onLogin("admin");
     } else {
       const todas = await db.get("clientas");
       const c = todas.find(x => x.email?.toLowerCase() === email.toLowerCase());
@@ -824,8 +854,8 @@ export default function App() {
 
   Object.assign(G, dark ? G_dark : G_light);
 
-  const login  = (tipo, d = null) => setSession({ tipo, data:d });
-  const logout = () => { localStorage.removeItem("ls_session"); setSession(null); };
+  const login  = (tipo, d = null) => { setSession({ tipo, data:d }); data.recargar(); };
+  const logout = () => { localStorage.removeItem("ls_session"); _fbAuthToken = null; _fbRefreshToken = null; if (_fbTokenTimer) { clearTimeout(_fbTokenTimer); _fbTokenTimer = null; } setSession(null); };
   const toggleTheme = () => {
     const nd = !dark;
     Object.assign(G, nd ? G_dark : G_light);
