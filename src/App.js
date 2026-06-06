@@ -38,18 +38,34 @@ async function subirFoto(fileOrDataUrl) {
   return j.secure_url || dataUrl;
 }
 
+let _fbAuthToken = null;
+let _fbRefreshToken = null;
+let _fbTokenTimer = null;
+
 const db = {
+  setAuth: (idToken, refreshToken) => {
+    _fbAuthToken = idToken;
+    if (refreshToken) _fbRefreshToken = refreshToken;
+    if (_fbTokenTimer) clearTimeout(_fbTokenTimer);
+    if (_fbRefreshToken) {
+      _fbTokenTimer = setTimeout(async () => {
+        const r = await fbAuth.refresh(_fbRefreshToken);
+        if (r.idToken) db.setAuth(r.idToken, r.refreshToken);
+      }, 55 * 60 * 1000);
+    }
+  },
+  _q: () => _fbAuthToken ? `?auth=${_fbAuthToken}` : "",
   get: async (path) => {
-    const r = await fetch(`${FB}/${path}.json`);
+    const r = await fetch(`${FB}/${path}.json${db._q()}`);
     const d = await r.json();
     if (!d || typeof d !== "object" || Array.isArray(d)) return [];
     return Object.entries(d).map(([k, v]) => ({ ...v, _id: k }));
   },
-  getVal: async (path) => { const r = await fetch(`${FB}/${path}.json`); return r.json(); },
-  set:    async (path, data) => { await fetch(`${FB}/${path}.json`, { method:"PUT",    body:JSON.stringify(data) }); },
-  push:   async (path, data) => { const r = await fetch(`${FB}/${path}.json`, { method:"POST",   body:JSON.stringify(data) }); return (await r.json()).name; },
-  update: async (path, data) => { await fetch(`${FB}/${path}.json`, { method:"PATCH",  body:JSON.stringify(data) }); },
-  del:    async (path)       => { await fetch(`${FB}/${path}.json`, { method:"DELETE" }); },
+  getVal: async (path) => { const r = await fetch(`${FB}/${path}.json${db._q()}`); return r.json(); },
+  set:    async (path, data) => { await fetch(`${FB}/${path}.json${db._q()}`, { method:"PUT",    body:JSON.stringify(data) }); },
+  push:   async (path, data) => { const r = await fetch(`${FB}/${path}.json${db._q()}`, { method:"POST",   body:JSON.stringify(data) }); return (await r.json()).name; },
+  update: async (path, data) => { await fetch(`${FB}/${path}.json${db._q()}`, { method:"PATCH",  body:JSON.stringify(data) }); },
+  del:    async (path)       => { await fetch(`${FB}/${path}.json${db._q()}`, { method:"DELETE" }); },
 };
 
 const SECURETOKEN_URL = "https://securetoken.googleapis.com/v1/token";
@@ -711,7 +727,20 @@ function Login({ onLogin }) {
 
   useEffect(() => {
     const g = localStorage.getItem("ls_session");
-    if (g) { try { const p = JSON.parse(g); if (p.expiry > Date.now()) onLogin(p.tipo, p.data); } catch {} }
+    if (!g) return;
+    try {
+      const p = JSON.parse(g);
+      if (p.expiry <= Date.now()) return;
+      const rt = p.data?.refreshToken || p.data?.authRefreshToken;
+      if (rt) {
+        fbAuth.refresh(rt).then(r => {
+          if (r.idToken) db.setAuth(r.idToken, r.refreshToken || rt);
+          onLogin(p.tipo, p.data);
+        }).catch(() => { localStorage.removeItem("ls_session"); });
+      } else {
+        localStorage.removeItem("ls_session");
+      }
+    } catch {}
   }, []);
 
   const guardar = (tipo, data = null) => {
@@ -723,8 +752,9 @@ function Login({ onLogin }) {
     setLoading(true); setErr("");
     const r = await fbAuth.signIn(email, pass);
     if (r.error) { setErr("Email o contraseña incorrectos"); setLoading(false); return; }
+    db.setAuth(r.idToken, r.refreshToken);
     if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-      guardar("admin"); onLogin("admin");
+      guardar("admin", { refreshToken: r.refreshToken }); onLogin("admin");
     } else {
       const todas = await db.get("clientas");
       const c = todas.find(x => x.email?.toLowerCase() === email.toLowerCase());
@@ -824,8 +854,8 @@ export default function App() {
 
   Object.assign(G, dark ? G_dark : G_light);
 
-  const login  = (tipo, d = null) => setSession({ tipo, data:d });
-  const logout = () => { localStorage.removeItem("ls_session"); setSession(null); };
+  const login  = (tipo, d = null) => { setSession({ tipo, data:d }); data.recargar(); };
+  const logout = () => { localStorage.removeItem("ls_session"); _fbAuthToken = null; _fbRefreshToken = null; if (_fbTokenTimer) { clearTimeout(_fbTokenTimer); _fbTokenTimer = null; } setSession(null); };
   const toggleTheme = () => {
     const nd = !dark;
     Object.assign(G, nd ? G_dark : G_light);
@@ -4570,7 +4600,7 @@ function ConfigHorarios({ data, toast }) {
 // ── Config Estudio ─────────────────────────────────────────────────────────────
 function ConfigEstudio({ data, toast, onLogout }) {
   const est  = data.getConfig("estudio", {});
-  const [form, setForm] = useState({ nombre:est.nombre||"", direccion:est.direccion||"", telefono:est.telefono||"", instagram:est.instagram||"", descripcion:est.descripcion||"", recordatorioCita:est.recordatorioCita||"" });
+  const [form, setForm] = useState({ nombre:est.nombre||"", direccion:est.direccion||"", telefono:est.telefono||"", instagram:est.instagram||"", descripcion:est.descripcion||"", recordatorioCita:est.recordatorioCita||"", googleMapsReview:est.googleMapsReview||"" });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
@@ -4582,7 +4612,7 @@ function ConfigEstudio({ data, toast, onLogout }) {
 
   useEffect(() => {
     const e = data.getConfig("estudio", {});
-    setForm({ nombre:e.nombre||"", direccion:e.direccion||"", telefono:e.telefono||"", instagram:e.instagram||"", descripcion:e.descripcion||"", recordatorioCita:e.recordatorioCita||"" });
+    setForm({ nombre:e.nombre||"", direccion:e.direccion||"", telefono:e.telefono||"", instagram:e.instagram||"", descripcion:e.descripcion||"", recordatorioCita:e.recordatorioCita||"", googleMapsReview:e.googleMapsReview||"" });
   }, [data.config]);
 
   const guardarEstudio = async () => { setSaving(true); await data.saveConfig("estudio", form); setSaving(false); toast("✓ datos guardados"); };
@@ -4599,6 +4629,7 @@ function ConfigEstudio({ data, toast, onLogout }) {
         <Field label="dirección"><input style={s.input} value={form.direccion} onChange={e => set("direccion", e.target.value)} placeholder="calle, localidad..." /></Field>
         <Field label="teléfono / WhatsApp"><input style={s.input} value={form.telefono} onChange={e => set("telefono", e.target.value)} placeholder="11 XXXX-XXXX" /></Field>
         <Field label="instagram"><input style={s.input} value={form.instagram} onChange={e => set("instagram", e.target.value)} placeholder="@tuusuario" /></Field>
+        <Field label="link de reseña en Google Maps" hint="Aparece como botón para que clientas dejen su reseña"><input style={s.input} value={form.googleMapsReview} onChange={e => set("googleMapsReview", e.target.value)} placeholder="https://g.page/r/…/review" /></Field>
         <Field label="descripción (opcional)" hint="Se muestra a las clientas en la app">
           <textarea style={{ ...s.input, height:70, resize:"none" }} value={form.descripcion} onChange={e => set("descripcion", e.target.value)} placeholder="Breve descripción del estudio..." />
         </Field>
@@ -5039,9 +5070,11 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
   const estudio   = data.getConfig("estudio", {});
   const curvaFav  = (() => { const cnt = {}; histPasado.forEach(h => { if(h.curva) cnt[h.curva]=(cnt[h.curva]||0)+1; }); return Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0]?.[0] || clienta.curva || "—"; })();
 
-  // Días hasta cumplir 14 días del service (para el countdown motivacional)
-  const diasParaService = diasDesde !== null ? Math.max(0, 14 - diasDesde) : null;
-  const necesitaService = diasDesde !== null && diasDesde >= 14 && !proxCita;
+  // Service interval from the last service config (defaults to 14 days)
+  const svUltima = data.servicios.find(sv => sv.nombre === ultima?.servicio);
+  const intervaloService = svUltima?.intervaloService || 14;
+  const diasParaService = diasDesde !== null ? Math.max(0, intervaloService - diasDesde) : null;
+  const necesitaService = diasDesde !== null && diasDesde >= intervaloService && !proxCita;
 
   const instagramUrl = estudio.instagram
     ? `https://www.instagram.com/${estudio.instagram.replace("@", "")}`
@@ -5050,6 +5083,7 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
   const ubicacionUrl = estudio.direccion
     ? `https://maps.google.com/?q=${encodeURIComponent(estudio.direccion)}`
     : null;
+  const reviewUrl = estudio.googleMapsReview || null;
 
   const politicas = data.getConfig("politicas", []);
 
@@ -5204,9 +5238,8 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
 
         {/* ── Post-care widget ── */}
         {(() => {
-          const svUltima = data.servicios.find(sv => sv.nombre === ultima?.servicio);
           const cuidados = svUltima?.cuidados || "";
-          if (!ultima || !cuidados || diasDesde === null || diasDesde > 7) return null;
+          if (!ultima || !cuidados || diasDesde === null || diasDesde > intervaloService) return null;
           return (
             <div style={{ ...s.cardHero, marginBottom:12 }}>
               <p style={s.eyebrow}>cuidados post-tratamiento</p>
@@ -5223,13 +5256,13 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
         {/* ── Stats: última visita | curva fav ── */}
         {ultima && (
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:16 }}>
-            <div onClick={() => setTab("historial")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
+            <div onClick={() => setTab("perfil")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
               <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="star" size={16} color={G.muted} strokeWidth={1.5} /></div>
               <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.white, margin:"0 0 2px", lineHeight:1.3 }}>{fmtFecha(ultima.fecha)}</p>
               <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>última visita</p>
             </div>
             <div onClick={() => setTab("perfil")} style={{ ...s.card, textAlign:"center", cursor:"pointer", margin:0, padding:"16px 6px" }}>
-              <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="scissors" size={16} color={G.muted} strokeWidth={1.5} /></div>
+              <div style={{ display:"flex", justifyContent:"center", marginBottom:5 }}><Icon name="sparkles" size={16} color={G.muted} strokeWidth={1.5} /></div>
               <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.white, margin:"0 0 2px", lineHeight:1 }}>{curvaFav}</p>
               <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>curva usada</p>
             </div>
@@ -5278,6 +5311,19 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
           </div>
         </div>
 
+        {reviewUrl && (
+          <div onClick={() => window.open(reviewUrl, "_blank")} style={{ ...s.card, cursor:"pointer", marginBottom:16, padding:"16px 18px", background:"rgba(251,191,36,0.06)", borderColor:"rgba(251,191,36,0.22)", display:"flex", alignItems:"center", gap:14 }}>
+            <div style={{ width:40, height:40, borderRadius:12, background:"rgba(251,191,36,0.14)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <Icon name="star" size={20} color="rgba(251,191,36,0.9)" strokeWidth={1.6} />
+            </div>
+            <div style={{ flex:1 }}>
+              <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.white }}>Dejá tu reseña</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Contanos tu experiencia en Google Maps ⭐</p>
+            </div>
+            <Icon name="chevronRight" size={16} color={G.muted} strokeWidth={1.5} />
+          </div>
+        )}
+
         {/* ── 1b. Services carousel ── */}
         {data.servicios.length > 0 && (
           <div style={{ marginBottom:16 }}>
@@ -5288,7 +5334,7 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
                   onClick={() => _goToAgendar(sv)}>
                   {sv.fotos?.[0]
                     ? <img src={sv.fotos[0]} alt={sv.nombre} style={{ width:"100%", height:90, objectFit:"cover" }} loading="lazy" />
-                    : <div style={{ height:70, background:"rgba(143,189,90,0.12)", display:"flex", alignItems:"center", justifyContent:"center" }}><Icon name="scissors" size={22} color={G.greenL} /></div>
+                    : <div style={{ height:70, background:"rgba(143,189,90,0.12)", display:"flex", alignItems:"center", justifyContent:"center" }}><Icon name="sparkles" size={22} color={G.greenL} /></div>
                   }
                   <div style={{ padding:"8px 10px 10px" }}>
                     <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{sv.nombre}</p>
@@ -5372,7 +5418,7 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
           <>
             <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>último servicio</p>
             <p style={{ ...s.sub, marginBottom:10 }}>{fmtFecha(ultima.fecha)}</p>
-            <div style={{ ...s.card, cursor:"pointer" }} onClick={() => setTab("historial")}>
+            <div style={{ ...s.card, cursor:"pointer" }} onClick={() => setTab("perfil")}>
               <p style={{ margin:"0 0 5px", fontFamily:F.serif, fontWeight:700, fontSize:15 }}>{ultima.servicio}</p>
               {ultima.curva && <span style={s.tag}>curva {ultima.curva}</span>}
               <p style={{ margin:"9px 0 0", fontFamily:F.sans, fontSize:11, color:G.muted }}>ver historial completo →</p>
