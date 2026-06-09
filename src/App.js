@@ -125,6 +125,7 @@ const mesISO   = () => { const d = new Date(); return `${d.getFullYear()}-${Stri
 const fmtPesos = (n) => `$${Number(n || 0).toLocaleString("es-AR")}`;
 const fmtFecha = (iso) => { if (!iso) return ""; const [,m,d] = iso.split("-"); const M = ["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]; return `${parseInt(d)} ${M[parseInt(m)]}`; };
 const openWA   = (msg = "") => window.open(`https://wa.me/${WA_NUM}?text=${encodeURIComponent(msg)}`, "_blank");
+const haptic   = (ms = 8) => typeof navigator !== "undefined" && navigator.vibrate?.(ms);
 
 const MESES  = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const DIAS_C = ["D","L","M","X","J","V","S"];
@@ -390,7 +391,7 @@ const s = {
   get input()  { return { background:G.glass, border:`0.5px solid ${G.border}`, borderRadius:11, padding:"13px 15px", color:G.text, fontFamily:F.sans, fontSize:15, width:"100%", outline:"none", boxSizing:"border-box", transition:"border-color 0.2s" }; },
   get label()  { return { fontFamily:F.sans, fontSize:12, color:G.muted, display:"block", marginBottom:6, fontWeight:500 }; },
   btnG:   { background:"linear-gradient(135deg, #90b850 0%, #6a9230 100%)", border:"none", borderRadius:13, padding:"14px 20px", color:"#0e1209", fontFamily:F.sans, fontSize:14, fontWeight:700, cursor:"pointer", width:"100%", maxWidth:420, display:"block", transition:"opacity 0.15s, transform 0.1s", letterSpacing:"0.02em", boxShadow:"0 4px 18px rgba(106,146,48,0.38), 0 1px 3px rgba(0,0,0,0.3)" },
-  get btnGl()  { return { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:12, padding:"10px 16px", color:G.text, fontFamily:F.sans, fontSize:13, fontWeight:500, cursor:"pointer", backdropFilter:"blur(10px)", transition:"all 0.2s", boxShadow:`0 2px 8px ${G.shadowSm}` }; },
+  get btnGl()  { return { background:G.glass, border:`0.5px solid ${G.borderHov}`, borderRadius:12, padding:"10px 16px", color:G.text, fontFamily:F.sans, fontSize:13, fontWeight:500, cursor:"pointer", backdropFilter:"blur(10px)", transition:"background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s", boxShadow:`0 2px 8px ${G.shadowSm}` }; },
   get btnRed() { return { background:"rgba(224,112,112,0.1)", border:`0.5px solid rgba(224,112,112,0.35)`, borderRadius:12, padding:"10px 16px", color:G.red, fontFamily:F.sans, fontSize:13, cursor:"pointer" }; },
   get tag()    { return { background:G.greenM, border:`0.5px solid rgba(${G.greenRGB},0.35)`, borderRadius:20, padding:"3px 11px", fontSize:11, color:G.greenL, fontFamily:F.sans, display:"inline-block", marginRight:5, marginBottom:3, fontWeight:500 }; },
   get div()    { return { height:"0.5px", background:G.border, margin:"16px 0" }; },
@@ -424,6 +425,8 @@ const GlobalStyles = () => (
       to   { opacity:1; transform:translateY(0); }
     }
     * { -webkit-tap-highlight-color:transparent; }
+    html { scroll-behavior:smooth; }
+    button { touch-action:manipulation; }
     body { background:${G.bg}; transition:background 0.3s; }
     input { background:${G.glass}; color:${G.text}; }
     input:focus { border-color:${G.green}88 !important; outline:none !important; box-shadow:0 0 0 3px ${G.greenM} !important; }
@@ -652,6 +655,10 @@ function Sheet({ titulo, onClose, children }) {
       </div>
     </div>
   );
+}
+
+function Skeleton({ width = "100%", height = 16, radius = 8, mb = 8 }) {
+  return <div style={{ width, height, borderRadius:radius, background:`linear-gradient(90deg, ${G.card} 25%, ${G.glass} 50%, ${G.card} 75%)`, backgroundSize:"200% 100%", animation:"shimmer 1.4s infinite", marginBottom:mb }} />;
 }
 
 function Field({ label, children, hint }) {
@@ -1074,6 +1081,39 @@ function AdminInicio({ data, push, setTab, toast }) {
     return Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 3);
   })();
 
+  if (data.loading) {
+    return (
+      <div>
+        <div style={s.topBar}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+            <div style={{ flex:1 }}>
+              <Skeleton width={80} height={10} mb={6} />
+              <Skeleton width={160} height={24} mb={4} />
+              <Skeleton width={120} height={12} mb={0} />
+            </div>
+          </div>
+        </div>
+        <div style={{ padding:wide ? "24px 32px 0" : "18px 18px 0" }}>
+          <div style={{ display:"grid", gridTemplateColumns:wide ? "2fr 1fr 1fr 1fr" : "1fr 1fr", gap:10, marginBottom:18 }}>
+            {Array.from({ length:4 }).map((_, i) => (
+              <div key={i} style={{ ...s.card, margin:0, padding:"16px 14px", minHeight:80 }}>
+                <Skeleton width={80} height={10} mb={8} />
+                <Skeleton width={100} height={28} mb={0} />
+              </div>
+            ))}
+          </div>
+          <Skeleton height={14} mb={10} />
+          {Array.from({ length:3 }).map((_, i) => (
+            <div key={i} style={{ ...s.card, padding:"14px" }}>
+              <Skeleton width="60%" height={14} mb={6} />
+              <Skeleton width="40%" height={10} mb={0} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div style={s.topBar}>
@@ -1151,14 +1191,18 @@ function AdminInicio({ data, push, setTab, toast }) {
               <p style={{ ...s.eyebrow, color:"#f5c842", marginBottom:8 }}>🎂 cumpleaños próximos</p>
               {cumplesSemana.map(c => {
                 const hoyStr = hoyISO();
-                const [, mm, dd] = c.fechaNacimiento.split("-");
-                const anio = parseInt(hoyStr.slice(0,4));
-                let bd = `${anio}-${mm}-${dd}`;
-                if (bd < hoyStr) bd = `${anio+1}-${mm}-${dd}`;
+                const [anioNac, mm, dd] = c.fechaNacimiento.split("-");
+                const anioHoy = parseInt(hoyStr.slice(0,4));
+                let bd = `${anioHoy}-${mm}-${dd}`;
+                if (bd < hoyStr) bd = `${anioHoy+1}-${mm}-${dd}`;
                 const d = Math.ceil((new Date(bd+"T12:00:00") - new Date(hoyStr+"T12:00:00")) / (1000*60*60*24));
+                const edad = parseInt(bd.slice(0,4)) - parseInt(anioNac);
                 return (
                   <div key={c._id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingBottom:6, marginBottom:6, borderBottom:`0.5px solid ${G.border}` }}>
-                    <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.text }}>{c.nombre}</p>
+                    <div>
+                      <p style={{ margin:0, fontFamily:F.sans, fontSize:13, color:G.text }}>{c.nombre}</p>
+                      <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>cumple {edad} años</p>
+                    </div>
                     <span style={{ fontFamily:F.sans, fontSize:11, color:"#f5c842" }}>{d===0?"¡hoy! 🎂":`en ${d} día${d!==1?"s":""}`}</span>
                   </div>
                 );
@@ -1631,6 +1675,7 @@ function AgendaSemana({ data, push, toast, weekOffset, setWeekOffset }) {
   const ROW_H = 56;
   const wide = useIsWide();
   const [nowMin, setNowMin] = useState(() => { const n = new Date(); return n.getHours()*60 + n.getMinutes(); });
+  const [cancelTarget, setCancelTarget] = useState(null);
 
   useEffect(() => {
     const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours()*60 + n.getMinutes()); }, 60_000);
@@ -1691,8 +1736,10 @@ function AgendaSemana({ data, push, toast, weekOffset, setWeekOffset }) {
     toast("✓ turno confirmado");
   };
 
-  const cancelarRapidoSem = async (cita) => {
-    if (!window.confirm(`¿Cancelar el turno de ${cita.clientaNombre}?`)) return;
+  const cancelarRapidoSem = (cita) => setCancelTarget(cita);
+  const confirmarCancelSem = async () => {
+    const cita = cancelTarget;
+    setCancelTarget(null);
     await data.borrarCita(cita._id);
     if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "Tu turno fue cancelado", `${cita.servicio} · ${cita.hora}`);
     toast("Turno cancelado");
@@ -1959,6 +2006,7 @@ function AgendaSemana({ data, push, toast, weekOffset, setWeekOffset }) {
         </div>
       </div>
       )}
+      {cancelTarget && <Modal titulo="Cancelar turno" msg={`¿Cancelar el turno de ${cancelTarget.clientaNombre}?`} onOk={confirmarCancelSem} onCancel={() => setCancelTarget(null)} okLabel="cancelar" danger />}
     </div>
   );
 }
@@ -1974,6 +2022,7 @@ function AgendaDia({ data, push, toast, diaInicial }) {
   const [quickPago, setQuickPago] = useState({ metodo:"efectivo", monto:"", montoEfectivo:"", montoTransf:"" });
   const [savingPago, setSavingPago] = useState(false);
   const [aplicarDescRapido, setAplicarDescRapido] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState(null);
 
   useEffect(() => {
     const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours()*60 + n.getMinutes()); }, 30_000);
@@ -2057,8 +2106,10 @@ function AgendaDia({ data, push, toast, diaInicial }) {
     setSavingPago(false);
   };
 
-  const cancelarRapido = async (cita) => {
-    if (!window.confirm(`¿Cancelar el turno de ${cita.clientaNombre}?`)) return;
+  const cancelarRapido = (cita) => setCancelTarget(cita);
+  const confirmarCancelRapido = async () => {
+    const cita = cancelTarget;
+    setCancelTarget(null);
     await data.borrarCita(cita._id);
     if (cita.clientaUid) sendPush([`clienta:${cita.clientaUid}`], "Tu turno fue cancelado", `${cita.servicio} · ${cita.hora}`);
     toast("Turno cancelado");
@@ -2304,6 +2355,7 @@ function AgendaDia({ data, push, toast, diaInicial }) {
           </div>
         </div>
       )}
+      {cancelTarget && <Modal titulo="Cancelar turno" msg={`¿Cancelar el turno de ${cancelTarget.clientaNombre}?`} onOk={confirmarCancelRapido} onCancel={() => setCancelTarget(null)} okLabel="cancelar" danger />}
     </div>
   );
 }
@@ -2489,6 +2541,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
   const [reagForm, setReagForm] = useState({ fecha:"", hora:"" });
   const [pago, setPago] = useState({ metodo:"efectivo", montoEfectivo:"", montoTransf:"", montoTotal:"" });
   const [aplicarDescVisitas, setAplicarDescVisitas] = useState(false);
+  const [ficha, setFicha] = useState({ curvaS:"", grosorS:"", largoS:"" });
 
   const sv      = data.servicios.find(s => s.nombre === cita.servicio);
   const clienta = data.clientas.find(c => c._id === cita.clientaId);
@@ -2527,12 +2580,19 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
       monto:    totalCalculado,
       ...(modoMixto ? { montoEfectivo:Number(pago.montoEfectivo)||0, montoTransf:Number(pago.montoTransf)||0 } : {}),
       ...(aplicarDescVisitas && descMonto > 0 ? { descuentoVisitas:true, montoOriginal:totalSinDesc, descuentoMonto:descMonto } : {}),
+      ...(ficha.curvaS ? { curvaS:ficha.curvaS } : {}),
+      ...(ficha.grosorS ? { grosorS:ficha.grosorS } : {}),
+      ...(ficha.largoS ? { largoS:ficha.largoS } : {}),
     };
 
     await data.registrarPago(cita.clientaId, cita._id, registro);
     const svObj = data.servicios.find(s => s.nombre === cita.servicio);
     if (svObj?.cuidados && cita.clientaUid) {
       sendPush([`clienta:${cita.clientaUid}`], "Cuidados de tu tratamiento 💚", svObj.cuidados);
+    }
+    if (cita.clientaUid) {
+      await db.set(`encuestas/${cita.clientaId}/${cita._id}`, { citaId:cita._id, fecha:cita.fecha, servicio:cita.servicio, pendiente:true, creadaEn:new Date().toISOString() });
+      sendPush([`clienta:${cita.clientaUid}`], "¿Cómo estuvo tu visita? 💅", "Contanos cómo te fue — toca para responder");
     }
     toast("Cita completada y pago registrado");
     setMP(false);
@@ -2785,6 +2845,47 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
             </div>
           )}
 
+          {(() => {
+            const curvas  = data.getConfig("curvas",   []);
+            const grosores = data.getConfig("grosores", []);
+            const largos  = data.getConfig("largos",   []);
+            if (!curvas.length && !grosores.length && !largos.length) return null;
+            return (
+              <div style={{ marginBottom:12 }}>
+                <p style={{ ...s.label, marginBottom:8 }}>ficha técnica</p>
+                {curvas.length > 0 && (
+                  <Field label="curva">
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                      {curvas.map(c => (
+                        <button key={c} onClick={() => setFicha(f => ({ ...f, curvaS:f.curvaS===c?"":c }))}
+                          style={{ ...s.btnGl, padding:"6px 12px", fontSize:11, background:ficha.curvaS===c ? G.greenM : G.glass, borderColor:ficha.curvaS===c ? G.green : G.border, color:ficha.curvaS===c ? G.greenL : G.sub }}>{c}</button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
+                {grosores.length > 0 && (
+                  <Field label="grosor">
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                      {grosores.map(g => (
+                        <button key={g} onClick={() => setFicha(f => ({ ...f, grosorS:f.grosorS===g?"":g }))}
+                          style={{ ...s.btnGl, padding:"6px 12px", fontSize:11, background:ficha.grosorS===g ? G.greenM : G.glass, borderColor:ficha.grosorS===g ? G.green : G.border, color:ficha.grosorS===g ? G.greenL : G.sub }}>{g}</button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
+                {largos.length > 0 && (
+                  <Field label="largo">
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                      {largos.map(l => (
+                        <button key={l} onClick={() => setFicha(f => ({ ...f, largoS:f.largoS===l?"":l }))}
+                          style={{ ...s.btnGl, padding:"6px 12px", fontSize:11, background:ficha.largoS===l ? G.greenM : G.glass, borderColor:ficha.largoS===l ? G.green : G.border, color:ficha.largoS===l ? G.greenL : G.sub }}>{l}</button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
+              </div>
+            );
+          })()}
           <button style={s.btnG} onClick={completar}>guardar y cerrar cita →</button>
         </Sheet>
       )}
@@ -3245,7 +3346,10 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
             {[...hist].reverse().map((h, i) => (
               <div key={i} style={s.card}>
                 <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                  <div><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p><p style={{ margin:0, ...s.sub, fontSize:11 }}>{fmtFecha(h.fecha)}{h.curva ? ` · curva ${h.curva}` : ""}</p></div>
+                  <div>
+                  <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p>
+                  <p style={{ margin:0, ...s.sub, fontSize:11 }}>{fmtFecha(h.fecha)}{h.curva ? ` · curva ${h.curva}` : ""}{h.curvaS ? ` · ${h.curvaS}` : ""}{h.grosorS ? ` · ${h.grosorS}` : ""}{h.largoS ? ` · ${h.largoS}` : ""}</p>
+                </div>
                   <div style={{ textAlign:"right" }}>
                     <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(h.monto)}</p>
                     {h.descuentoVisitas && <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:10, color:G.muted, textDecoration:"line-through" }}>{fmtPesos(h.montoOriginal)}</p>}
@@ -3434,6 +3538,21 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, 
   const maxSv  = Math.max(...Object.values(porSv), 1);
   const topC   = data.clientas.map(c => { const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []); const hF = h.filter(filtrar); return { ...c, total:hF.reduce((a, x) => a + (x.monto || 0), 0), vis:hF.length }; }).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
 
+  // Retention: % of clients who came this month AND had at least one visit before this month
+  const retencion = (() => {
+    if (periodo !== "mes") return null;
+    const activasMes = data.clientas.filter(c => {
+      const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
+      return h.some(x => x.fecha?.startsWith(mes));
+    });
+    if (!activasMes.length) return null;
+    const retenidas = activasMes.filter(c => {
+      const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
+      return h.some(x => x.fecha && x.fecha < mes);
+    });
+    return Math.round((retenidas.length / activasMes.length) * 100);
+  })();
+
   return (
     <div>
       <div style={{ display:"flex", gap:7, marginBottom:18 }}>
@@ -3446,6 +3565,7 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, 
         <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:36, color:G.green, margin:"0 0 4px" }}>{fmtPesos(total)}</p>
         <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0 }}>{ings.length} servicio{ings.length !== 1 ? "s" : ""}</p>
         {varPct !== null && <p style={{ fontFamily:F.sans, fontSize:11, color:varPct >= 0 ? G.green : G.red, margin:"5px 0 0", fontWeight:600 }}>{varPct >= 0 ? "↑" : "↓"}{Math.abs(varPct)}% vs {prevMesNombre}</p>}
+        {retencion !== null && <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"5px 0 0" }}>retención: <span style={{ color:retencion >= 70 ? G.green : retencion >= 40 ? G.amber : G.red, fontWeight:600 }}>{retencion}%</span></p>}
       </div>
       {totalGastos > 0 && (
         <div style={{ display:"flex", gap:9, marginBottom:14 }}>
@@ -5206,8 +5326,58 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
   const bdayPromo = data.getConfig("promos", {})?.cumpleanos || {};
   const visitasDescInfo = calcVisitasDesc(hist, data.getConfig("promos", {}));
 
+  const [encuestaPendiente, setEncuestaPendiente] = useState(null);
+  const [encuestaRespondida, setEncuestaRespondida] = useState(false);
+
+  useEffect(() => {
+    if (!clienta._id || encuestaRespondida) return;
+    db.getVal(`encuestas/${clienta._id}`).then(enc => {
+      if (!enc || typeof enc !== "object") return;
+      const pendiente = Object.entries(enc).find(([, v]) => v.pendiente);
+      if (pendiente) setEncuestaPendiente({ key:pendiente[0], ...pendiente[1] });
+    });
+  }, [clienta._id]);
+
+  const responderEncuesta = async (calificacion) => {
+    if (!encuestaPendiente) return;
+    await db.set(`encuestas/${clienta._id}/${encuestaPendiente.key}`, { ...encuestaPendiente, pendiente:false, calificacion, respondidaEn:new Date().toISOString() });
+    setEncuestaRespondida(true);
+    if (calificacion === "excelente" && reviewUrl) {
+      setEncuestaPendiente({ ...encuestaPendiente, mostrarMaps:true, calificacion });
+    } else {
+      setEncuestaPendiente(null);
+    }
+  };
+
   return (
     <div>
+      {encuestaPendiente && !encuestaPendiente.mostrarMaps && !encuestaRespondida && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", backdropFilter:"blur(10px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+          <div style={{ background:G.bg, border:`0.5px solid ${G.border}`, borderRadius:20, padding:24, width:"100%", maxWidth:360, boxShadow:"0 24px 48px rgba(0,0,0,0.6)", textAlign:"center" }}>
+            <p style={{ fontSize:32, margin:"0 0 8px" }}>💅</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:G.text, margin:"0 0 6px" }}>¿Cómo estuvo tu visita?</p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 22px" }}>{encuestaPendiente.servicio} · {fmtFecha(encuestaPendiente.fecha)}</p>
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {[["excelente","😍 Excelente"],["buena","😊 Buena"],["mejorable","😕 Mejorable"]].map(([val, label]) => (
+                <button key={val} style={{ ...s.btnGl, width:"100%", fontSize:14, padding:"12px" }} onClick={() => responderEncuesta(val)}>{label}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {encuestaPendiente?.mostrarMaps && reviewUrl && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", backdropFilter:"blur(10px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+          <div style={{ background:G.bg, border:`0.5px solid ${G.border}`, borderRadius:20, padding:24, width:"100%", maxWidth:360, boxShadow:"0 24px 48px rgba(0,0,0,0.6)", textAlign:"center" }}>
+            <p style={{ fontSize:32, margin:"0 0 8px" }}>⭐</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:G.text, margin:"0 0 8px" }}>¡Gracias por tu opinión!</p>
+            <p style={{ fontFamily:F.sans, fontSize:13, color:G.sub, margin:"0 0 22px", lineHeight:1.6 }}>¿Nos dejás una reseña en Google? Tu experiencia ayuda a que más personas nos encuentren 🌿</p>
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              <button style={s.btnG} onClick={() => { window.open(reviewUrl, "_blank"); setEncuestaPendiente(null); }}>Dejar reseña en Google ↗</button>
+              <button style={{ ...s.btnGl, width:"100%" }} onClick={() => setEncuestaPendiente(null)}>Ahora no</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={s.topBar}>
         <p style={{ fontFamily:F.display, fontWeight:400, fontSize:36, letterSpacing:"1px", color:G.greenL, margin:"0 0 2px", lineHeight:1 }}>Hola, {clienta.nombre?.split(" ")[0]}</p>
         <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0" }}>{estudio.nombre || "Lash Studio"} · {new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
