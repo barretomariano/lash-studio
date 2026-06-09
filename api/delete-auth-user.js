@@ -1,12 +1,11 @@
 // Serverless function: delete a Firebase Auth user by email
-// Uses only Node.js built-in crypto — no extra packages needed.
 // Requires env var: FIREBASE_SERVICE_ACCOUNT (full service-account JSON from Firebase Console)
-//
-// To set up: Firebase Console → Project Settings → Service Accounts → Generate new private key
-// Paste the downloaded JSON content as FIREBASE_SERVICE_ACCOUNT in Vercel env vars.
+// Caller must include Authorization: Bearer <admin-idToken> header; request is rejected unless
+// the token belongs to the configured ADMIN_EMAIL.
 
 const crypto = require("crypto");
 const FIREBASE_PROJECT_ID = "lash-studio-c9cd7";
+const ADMIN_EMAIL = "maleocampo3@gmail.com";
 
 function b64url(data) {
   return Buffer.from(data).toString("base64")
@@ -43,13 +42,18 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).end();
 
+  // Verify caller is the admin
+  const authHeader = req.headers.authorization || "";
+  const callerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!callerToken) return res.status(401).json({ error:"Unauthorized" });
+
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error:"email required" });
 
   const saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!saJson) {
     console.error("delete-auth-user: FIREBASE_SERVICE_ACCOUNT env var not set");
-    return res.json({ ok:false, reason:"service_account_not_configured" });
+    return res.status(500).json({ error:"service_account_not_configured" });
   }
 
   try {
@@ -57,14 +61,25 @@ module.exports = async function handler(req, res) {
     try {
       sa = JSON.parse(saJson);
     } catch (parseErr) {
-      console.error("delete-auth-user: JSON.parse failed —", parseErr.message, "— first 80 chars:", saJson.slice(0, 80));
+      console.error("delete-auth-user: JSON.parse failed —", parseErr.message);
       return res.status(500).json({ error:"invalid FIREBASE_SERVICE_ACCOUNT JSON: " + parseErr.message });
     }
-    // Normalize private_key in case env var was stored with literal \n instead of real newlines
     if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, "\n");
-    console.log("delete-auth-user: called for", email, "— sa.client_email:", sa.client_email);
     const token = await getGoogleAccessToken(sa);
     const BASE  = `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}`;
+
+    // Verify caller's idToken and check they are the admin
+    const verifyRes = await fetch(`${BASE}/accounts:lookup`, {
+      method: "POST",
+      headers: { "Authorization":`Bearer ${token}`, "Content-Type":"application/json" },
+      body: JSON.stringify({ idToken: callerToken }),
+    });
+    const verifyBody = await verifyRes.json();
+    const callerEmail = verifyBody.users?.[0]?.email;
+    if (callerEmail !== ADMIN_EMAIL) {
+      console.warn("delete-auth-user: unauthorized attempt from", callerEmail || "(unknown)");
+      return res.status(403).json({ error:"Forbidden" });
+    }
 
     // Find uid by email
     const lookupRes = await fetch(`${BASE}/accounts:lookup`, {

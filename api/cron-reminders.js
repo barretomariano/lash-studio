@@ -4,17 +4,22 @@ const crypto  = require("crypto");
 const webpush = require("web-push");
 
 const VAPID_PUBLIC  = "BBsJiZsDUVmNPVoNNvzhlKiJG25M27n7IEKJmf9gCO1CDiAM7D-8pFlxuRQP_CNN_p0utbKR1JOR90HoA78_Hxk";
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || "67JA73EIzffmKb19mNmMvXLUnnPTW827jC7DnNKOlTc";
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
+if (!VAPID_PRIVATE) throw new Error("VAPID_PRIVATE_KEY env var not set");
 const FB = "https://lash-studio-c9cd7-default-rtdb.firebaseio.com";
 
 webpush.setVapidDetails("mailto:maleocampo3@gmail.com", VAPID_PUBLIC, VAPID_PRIVATE);
 
-// Tomorrow's date in Buenos Aires (UTC-3, no DST)
-function tomorrowBsAs() {
+// Today's date in Buenos Aires (UTC-3, no DST since 2008)
+function todayBsAs() {
   const now = new Date();
-  const bsas = new Date(now.getTime() - 3 * 60 * 60 * 1000); // shift to UTC-3
-  bsas.setDate(bsas.getDate() + 1);
-  return bsas.toISOString().slice(0, 10);
+  return new Date(now.getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function tomorrowBsAs() {
+  const t = new Date(todayBsAs() + "T12:00:00");
+  t.setDate(t.getDate() + 1);
+  return t.toISOString().slice(0, 10);
 }
 
 function b64url(data) {
@@ -49,6 +54,7 @@ async function getGoogleAccessToken(sa) {
 async function fbGet(path, token) {
   const headers = token ? { Authorization:`Bearer ${token}` } : {};
   const r = await fetch(`${FB}/${path}.json`, { headers });
+  if (!r.ok) throw new Error(`fbGet ${path} failed: HTTP ${r.status}`);
   const d = await r.json();
   if (!d || typeof d !== "object" || Array.isArray(d)) return [];
   return Object.entries(d).map(([k, v]) => ({ ...v, _id: k }));
@@ -57,6 +63,7 @@ async function fbGet(path, token) {
 async function fbGetVal(path, token) {
   const headers = token ? { Authorization:`Bearer ${token}` } : {};
   const r = await fetch(`${FB}/${path}.json`, { headers });
+  if (!r.ok) throw new Error(`fbGetVal ${path} failed: HTTP ${r.status}`);
   return r.json();
 }
 
@@ -85,23 +92,25 @@ module.exports = async function handler(req, res) {
   // Vercel cron sends GET; also allow POST for manual triggers
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).end();
 
-  // Get service account token for authenticated RTDB reads
-  let token = null;
+  // Service account token is required — without it all RTDB reads return nothing
   const saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (saJson) {
-    try {
-      const sa = JSON.parse(saJson);
-      if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, "\n");
-      token = await getGoogleAccessToken(sa);
-    } catch (e) {
-      console.error("cron-reminders: could not get access token:", e.message);
-    }
+  if (!saJson) {
+    console.error("cron-reminders: FIREBASE_SERVICE_ACCOUNT env var not set — aborting");
+    return res.status(500).json({ error:"FIREBASE_SERVICE_ACCOUNT not configured" });
   }
 
+  let token;
+  try {
+    const sa = JSON.parse(saJson);
+    if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, "\n");
+    token = await getGoogleAccessToken(sa);
+  } catch (e) {
+    console.error("cron-reminders: could not get access token:", e.message);
+    return res.status(500).json({ error:"access token error: " + e.message });
+  }
+
+  const todayStr = todayBsAs();
   const tomorrow = tomorrowBsAs();
-  const now = new Date();
-  const bsasNow = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-  const todayStr = bsasNow.toISOString().slice(0, 10);
 
   // Fetch citas, clientas, admin subs, and notification schedule in parallel
   const [citas, clientas, adminSubs, schedule] = await Promise.all([
@@ -121,7 +130,6 @@ module.exports = async function handler(req, res) {
 
   // ── 1. Clienta reminders ─────────────────────────────────────────────────────
   for (const cita of citasManana) {
-    // Find uid: first from cita.clientaUid, then from clientas list
     const clienta = clientas.find(c => c._id === cita.clientaId);
     const uid = cita.clientaUid || clienta?.uid;
     if (!uid) continue;
@@ -166,6 +174,7 @@ module.exports = async function handler(req, res) {
 
   // ── 3. Recall: clients who haven't visited in N days ────────────────────────
   let recallSent = 0;
+  const recallUids = new Set();
   if (schedule.recall) {
     const dias = schedule.recallDias || 30;
     const threshold = new Date(todayStr + "T12:00:00");
@@ -182,12 +191,15 @@ module.exports = async function handler(req, res) {
           schedule.recallTitulo || "¡Te extrañamos! 💚",
           schedule.recallTexto  || "¿Reagendamos tu servicio?",
           token);
+        recallUids.add(c.uid);
         recallSent++;
       }
     }
   }
 
   // ── 4. Service reminder: clients due for their service ──────────────────────
+  // Uses <= so clients are caught even if the cron was skipped a day.
+  // Skips clients already sent a recall today to avoid double-notification.
   let serviceSent = 0;
   if (schedule.service) {
     const dias = schedule.serviceDias || 14;
@@ -196,11 +208,11 @@ module.exports = async function handler(req, res) {
     const targetStr = target.toISOString().slice(0, 10);
 
     for (const c of clientas) {
-      if (!c.uid) continue;
+      if (!c.uid || recallUids.has(c.uid)) continue;
       const visitas = Object.values(c.historial || {}).filter(h => h.fecha <= todayStr);
       if (!visitas.length) continue;
       const ultima = visitas.sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
-      if (ultima.fecha === targetStr) {
+      if (ultima.fecha <= targetStr) {
         await sendPushToClienta(c.uid,
           schedule.serviceTitulo || "¡Hora de tu service! 💅",
           schedule.serviceTexto  || "Ya pasaron los días recomendados. ¡Agendá tu turno! 🌿",

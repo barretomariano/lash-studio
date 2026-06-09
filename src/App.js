@@ -86,7 +86,7 @@ const fbAuth = {
 // helper: construir link WA con el teléfono de una clienta (o el de Male como fallback)
 const openWAClienta = (clienta, msg = "") => {
   const raw = (clienta?.telefono || "").replace(/\D/g, "");
-  const num  = raw.length >= 10 ? `54${raw.slice(-10)}` : WA_NUM;
+  const num  = raw.length >= 10 ? `549${raw.slice(-10)}` : WA_NUM;
   window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, "_blank");
 };
 
@@ -120,8 +120,8 @@ const generarICS = (cita, estudio = {}) => {
   URL.revokeObjectURL(url);
 };
 const genPass  = () => Math.random().toString(36).slice(2, 8).toUpperCase();
-const hoyISO   = () => new Date().toISOString().slice(0, 10);
-const mesISO   = () => new Date().toISOString().slice(0, 7);
+const hoyISO   = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const mesISO   = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
 const fmtPesos = (n) => `$${Number(n || 0).toLocaleString("es-AR")}`;
 const fmtFecha = (iso) => { if (!iso) return ""; const [,m,d] = iso.split("-"); const M = ["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]; return `${parseInt(d)} ${M[parseInt(m)]}`; };
 const openWA   = (msg = "") => window.open(`https://wa.me/${WA_NUM}?text=${encodeURIComponent(msg)}`, "_blank");
@@ -252,7 +252,9 @@ const sendPush = (targets, title, body, url = "/") => {
   }).catch(() => {});
   targets.forEach(t => {
     if (!t.startsWith("clienta:")) return;
-    db.push(`notificaciones/${t.slice(8)}`, { titulo:title, cuerpo:body, url, fecha:new Date().toISOString().slice(0,10), ts:Date.now(), leida:false }).catch(() => {});
+    const uid = t.slice(8);
+    if (!uid) return;
+    db.push(`notificaciones/${uid}`, { titulo:title, cuerpo:body, url, fecha:new Date().toISOString().slice(0,10), ts:Date.now(), leida:false }).catch(() => {});
   });
 };
 
@@ -270,7 +272,7 @@ async function registerPushSubscription(role, uid = null) {
     }
     await fetch("/api/subscribe", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(_fbAuthToken ? {"Authorization":`Bearer ${_fbAuthToken}`} : {}) },
       body: JSON.stringify({ role, uid, subscription: sub }),
     });
     return true;
@@ -513,7 +515,7 @@ function useData() {
         let authEntry = {};
         try {
           const delRes = await fetch("/api/delete-auth-user", {
-            method:"POST", headers:{"Content-Type":"application/json"},
+            method:"POST", headers:{"Content-Type":"application/json", ...(_fbAuthToken ? {"Authorization":`Bearer ${_fbAuthToken}`} : {})},
             body:JSON.stringify({ email:datos.email }),
           }).then(r => r.json()).catch(() => ({}));
           if (delRes.ok) {
@@ -551,7 +553,7 @@ function useData() {
         } else {
           // Fallback: server-side admin deletion (needs FIREBASE_SERVICE_ACCOUNT env var)
           await fetch("/api/delete-auth-user", {
-            method:"POST", headers:{"Content-Type":"application/json"},
+            method:"POST", headers:{"Content-Type":"application/json", ...(_fbAuthToken ? {"Authorization":`Bearer ${_fbAuthToken}`} : {})},
             body:JSON.stringify({ email:c.email }),
           }).catch(() => {});
         }
@@ -734,8 +736,12 @@ function Login({ onLogin }) {
       const rt = p.data?.refreshToken || p.data?.authRefreshToken;
       if (rt) {
         fbAuth.refresh(rt).then(r => {
-          if (r.idToken) db.setAuth(r.idToken, r.refreshToken || rt);
-          onLogin(p.tipo, p.data);
+          if (r.idToken) {
+            db.setAuth(r.idToken, r.refreshToken || rt);
+            onLogin(p.tipo, p.data);
+          } else {
+            localStorage.removeItem("ls_session");
+          }
         }).catch(() => { localStorage.removeItem("ls_session"); });
       } else {
         localStorage.removeItem("ls_session");
@@ -1506,7 +1512,7 @@ function AdminAgenda({ data, push, toast }) {
   const busqResultados = busqQ ? (
     <div style={{ overflowY:"auto", flex:1, padding:"16px 20px" }}>
       <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, marginBottom:12 }}>{data.citas.filter(c => c.clientaNombre?.toLowerCase().includes(busqQ)).length} resultado{data.citas.filter(c => c.clientaNombre?.toLowerCase().includes(busqQ)).length !== 1 ? "s" : ""}</p>
-      {[...data.citas].filter(c => c.clientaNombre?.toLowerCase().includes(busqQ)).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.hora.localeCompare(b.hora)).map(c => (
+      {[...data.citas].filter(c => c.clientaNombre?.toLowerCase().includes(busqQ)).sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "") || (a.hora || "").localeCompare(b.hora || "")).map(c => (
         <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
           <div>
             <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:13, fontWeight:600, color:G.text }}>{c.clientaNombre}</p>
@@ -2187,7 +2193,7 @@ function AgendaDia({ data, push, toast, diaInicial }) {
                   left:`calc(${cita._col * colW}% + 4px)`, width:`calc(${colW}% - 8px)`, height,
                   background:blkBg(cita.estado), border:`1px solid ${blkBdr(cita.estado)}`,
                   borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2, boxSizing:"border-box" }}>
-                <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:11, color:blkTxt(cita.estado) }}>{cita.hora} · {cita.clientaNombre}</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:11, color:blkTxt(cita.estado) }}>{cita.hora} · {cita.clientaNombre ?? ""}</p>
                 <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:10, color:blkTxt(cita.estado), opacity:0.8 }}>{cita.servicio}</p>
                 <span style={{ ...s.tag, position:"absolute", top:5, right:5, fontSize:8, padding:"2px 6px" }}>{done ? "completada" : cita.estado}</span>
                 {height >= 80 && !done && (
@@ -2510,7 +2516,7 @@ function CitaDetalle({ data, pop, toast, cita:citaInit }) {
     if (!cita.clientaId) { toast("sin clienta — no se puede cerrar"); return; }
     if (cita.fecha > hoyISO()) { toast("⚠️ La fecha del turno es futura — no se puede cerrar antes de que ocurra"); return; }
     if (modoMixto && !pago.montoEfectivo && !pago.montoTransf) { toast("ingresá al menos un monto"); return; }
-    if (!modoMixto && !pago.montoTotal) { toast("ingresá el monto"); return; }
+    if (!modoMixto && !Number(pago.montoTotal)) { toast("ingresá el monto"); return; }
 
     const registro = {
       fecha:    cita.fecha,
@@ -3039,7 +3045,7 @@ function ClientaDetalle({ clienta:cInit, data, pop, push, toast }) {
           // Delete old Firebase Auth account + recreate with new password
           try {
             const delRes = await fetch("/api/delete-auth-user", {
-              method:"POST", headers:{"Content-Type":"application/json"},
+              method:"POST", headers:{"Content-Type":"application/json", ...(_fbAuthToken ? {"Authorization":`Bearer ${_fbAuthToken}`} : {})},
               body:JSON.stringify({ email:c.email }),
             }).then(r => r.json()).catch(() => ({}));
             if (delRes.ok) {
