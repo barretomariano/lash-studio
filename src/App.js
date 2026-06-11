@@ -139,6 +139,14 @@ const TIPOS_EVENTO = {
 };
 const tipoEvColor = (tipo) => TIPOS_EVENTO[tipo] || TIPOS_EVENTO.personal;
 
+// Deterministic accent color per service name — used in agenda grids
+const SV_PALETTE = ["#e8a4c9", "#a78bfa", "#7dd3fc", "#fbbf77", "#86efac", "#f9a8d4", "#fcd34d", "#93c5fd"];
+const svColor = (nombre = "") => {
+  let h = 0;
+  for (let i = 0; i < nombre.length; i++) h = (h * 31 + nombre.charCodeAt(i)) >>> 0;
+  return SV_PALETTE[h % SV_PALETTE.length];
+};
+
 const G_dark = {
   bg:"#111209", card:"rgba(255,255,255,0.055)", glass:"rgba(255,255,255,0.08)",
   border:"rgba(255,255,255,0.09)", borderHov:"rgba(255,255,255,0.18)",
@@ -1247,29 +1255,55 @@ function AdminInicio({ data, push, setTab, toast }) {
       </div>
       <div style={{ padding:wide ? "24px 32px 0" : "18px 18px 0" }}>
         <PushBanner role="admin" />
-        <div style={{ display:"grid", gridTemplateColumns:wide ? "2fr 1fr 1fr 1fr" : "1fr 1fr", gap:10, marginBottom:18 }}>
-          <div onClick={() => setTab("finanzas")} style={{ ...s.cardHero, cursor:"pointer", margin:0, padding:"16px 14px", gridColumn:wide ? "1" : "1 / -1" }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.sub, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.14em" }}>ingresos del mes</p>
-            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:32, letterSpacing:"1px", color:G.greenL, margin:"0 0 2px", lineHeight:1.1 }}>{fmtPesos(ingresosMes)}</p>
+        {/* ── Bento stats grid ── */}
+        <div style={{ display:"grid", gridTemplateColumns:wide ? "2fr 1fr 1fr 1fr" : "1fr 1fr", gap:10, marginBottom:12 }}>
+          <div onClick={() => setTab("finanzas")} style={{ cursor:"pointer", margin:0, padding:"20px 18px", gridColumn:wide ? "1" : "1 / -1", borderRadius:22,
+            background:`linear-gradient(135deg, rgba(${G.greenRGB},0.20) 0%, rgba(${G.greenRGB},0.05) 60%, rgba(232,164,201,0.06) 100%)`,
+            border:`1px solid rgba(${G.greenRGB},0.32)`, boxShadow:`0 8px 32px ${G.shadow}, 0 0 0 0.5px rgba(${G.greenRGB},0.12) inset`, position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", top:-30, right:-30, width:110, height:110, borderRadius:"50%", background:`radial-gradient(circle, rgba(${G.greenRGB},0.18) 0%, transparent 70%)` }} />
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.sub, margin:"0 0 6px", textTransform:"uppercase", letterSpacing:"0.16em" }}>✦ ingresos del mes</p>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:38, letterSpacing:"1px", color:G.greenL, margin:"0 0 4px", lineHeight:1 }}>{fmtPesos(ingresosMes)}</p>
             <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{todoHist.filter(h => h.fecha?.startsWith(mes)).length} servicios este mes</p>
           </div>
-          <div onClick={() => setTab("agenda")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"14px 12px", textAlign:"center" }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.1em" }}>hoy</p>
-            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:28, letterSpacing:"1px", color:G.white, margin:"0 0 2px", lineHeight:1.1 }}>{citasHoy.length}</p>
+          <div onClick={() => setTab("agenda")} style={{ cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", borderRadius:18,
+            background:"linear-gradient(160deg, rgba(167,139,250,0.10) 0%, rgba(167,139,250,0.03) 100%)",
+            border:"0.5px solid rgba(167,139,250,0.28)", boxShadow:`0 2px 16px ${G.shadowMd}` }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 5px", textTransform:"uppercase", letterSpacing:"0.1em" }}>hoy</p>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:"#c4b5fd", margin:"0 0 2px", lineHeight:1 }}>{citasHoy.length}</p>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>{data.citas.filter(c => c.fecha === hoy).length} citas</p>
           </div>
-          <div onClick={() => setTab("clientas")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"14px 12px", textAlign:"center" }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.1em" }}>clientas</p>
-            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:28, letterSpacing:"1px", color:G.white, margin:"0 0 2px", lineHeight:1.1 }}>{data.clientas.length}</p>
+          <div onClick={() => setTab("clientas")} style={{ cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", borderRadius:18,
+            background:"linear-gradient(160deg, rgba(232,164,201,0.10) 0%, rgba(232,164,201,0.03) 100%)",
+            border:"0.5px solid rgba(232,164,201,0.28)", boxShadow:`0 2px 16px ${G.shadowMd}` }}>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 5px", textTransform:"uppercase", letterSpacing:"0.1em" }}>clientas</p>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:"#f0abcd", margin:"0 0 2px", lineHeight:1 }}>{data.clientas.length}</p>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>registradas</p>
           </div>
           {wide && (
-            <div onClick={() => setTab("agenda")} style={{ ...s.card, cursor:"pointer", margin:0, padding:"14px 12px", textAlign:"center" }}>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 4px", textTransform:"uppercase", letterSpacing:"0.1em" }}>próximas</p>
-              <p style={{ fontFamily:F.display, fontWeight:400, fontSize:28, letterSpacing:"1px", color:G.green, margin:"0 0 2px", lineHeight:1.1 }}>{data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").length}</p>
+            <div onClick={() => setTab("agenda")} style={{ cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", borderRadius:18,
+              background:`linear-gradient(160deg, rgba(${G.greenRGB},0.10) 0%, rgba(${G.greenRGB},0.03) 100%)`,
+              border:`0.5px solid rgba(${G.greenRGB},0.28)`, boxShadow:`0 2px 16px ${G.shadowMd}` }}>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 5px", textTransform:"uppercase", letterSpacing:"0.1em" }}>próximas</p>
+              <p style={{ fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:G.green, margin:"0 0 2px", lineHeight:1 }}>{data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").length}</p>
               <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>confirmadas</p>
             </div>
           )}
+        </div>
+
+        {/* ── Quick actions ── */}
+        <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+          <button style={{ ...s.btnGl, flex:1, padding:"11px 8px", fontSize:11, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}
+            onClick={() => { haptic(); push("nueva-cita", {}); }}>
+            <Icon name="calendarPlus" size={14} color={G.greenL} /> nuevo turno
+          </button>
+          <button style={{ ...s.btnGl, flex:1, padding:"11px 8px", fontSize:11, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}
+            onClick={() => { haptic(); setTab("agenda"); }}>
+            <Icon name="calendar" size={14} color={G.sub} /> agenda
+          </button>
+          <button style={{ ...s.btnGl, flex:1, padding:"11px 8px", fontSize:11, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}
+            onClick={() => { haptic(); setShowDisp(true); }}>
+            📸 compartir
+          </button>
         </div>
 
         {/* ── Disponibilidad semanal ─────────────────────────────────────────── */}
@@ -2087,7 +2121,7 @@ function AgendaSemana({ data, push, toast, weekOffset, setWeekOffset }) {
                       onClick={e => { e.stopPropagation(); push("cita-detalle", { cita }); }}
                       style={{ position:"absolute", top,
                         left:`calc(${cita._col * colW}% + 1px)`, width:`calc(${colW}% - 2px)`, height,
-                        background:bg, border:`1px solid ${bdr}`,
+                        background:bg, border:`1px solid ${bdr}`, borderLeft:`3px solid ${done ? bdr : svColor(cita.servicio)}`,
                         borderRadius:8, padding:"3px 5px", overflow:"hidden",
                         cursor:"pointer", zIndex:2, boxSizing:"border-box",
                         opacity:done ? 0.7 : 1 }}>
@@ -2320,9 +2354,10 @@ function AgendaDia({ data, push, toast, diaInicial }) {
             else if (enCurso)  { cardBg = `rgba(${G.greenRGB},0.14)`; cardBorder = `rgba(${G.greenRGB},0.7)`; }
 
             return (
-              <div key={cita._id} style={{ border:`1.5px solid ${cardBorder}`, borderRadius:14, background:cardBg, overflow:"hidden", opacity:esPasada ? 0.6 : 1 }}>
+              <div key={cita._id} style={{ border:`1.5px solid ${cardBorder}`, borderLeft:`4px solid ${completada ? cardBorder : svColor(cita.servicio)}`, borderRadius:14, background:cardBg, overflow:"hidden", opacity:esPasada ? 0.6 : 1 }}>
                 <div style={{ padding:"10px 14px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}
                   onClick={() => push("cita-detalle", { cita })}>
+                  <Avatar nombre={cita.clientaNombre} size={36} />
                   <div style={{ flex:1 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:3 }}>
                       <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:13, color:G.white }}>{cita.hora}</p>
@@ -2393,9 +2428,12 @@ function AgendaDia({ data, push, toast, diaInicial }) {
                 onClick={e => { e.stopPropagation(); push("cita-detalle", { cita }); }}
                 style={{ position:"absolute", top,
                   left:`calc(${cita._col * colW}% + 4px)`, width:`calc(${colW}% - 8px)`, height,
-                  background:blkBg(cita.estado), border:`1px solid ${blkBdr(cita.estado)}`,
+                  background:blkBg(cita.estado), border:`1px solid ${blkBdr(cita.estado)}`, borderLeft:`3px solid ${done ? blkBdr(cita.estado) : svColor(cita.servicio)}`,
                   borderRadius:10, padding:"6px 9px", overflow:"hidden", cursor:"pointer", zIndex:2, boxSizing:"border-box" }}>
-                <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:11, color:blkTxt(cita.estado) }}>{cita.hora} · {cita.clientaNombre ?? ""}</p>
+                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  {height >= 54 && cita._nCols === 1 && <Avatar nombre={cita.clientaNombre} size={20} />}
+                  <p style={{ margin:0, fontFamily:F.sans, fontWeight:700, fontSize:11, color:blkTxt(cita.estado), overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cita.hora} · {cita.clientaNombre ?? ""}</p>
+                </div>
                 <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:10, color:blkTxt(cita.estado), opacity:0.8 }}>{cita.servicio}</p>
                 <span style={{ ...s.tag, position:"absolute", top:5, right:5, fontSize:8, padding:"2px 6px" }}>{done ? "completada" : cita.estado}</span>
                 {height >= 80 && !done && (
@@ -5569,6 +5607,37 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
           </div>
         )}
 
+
+        {/* ── Carnet de clienta ── */}
+        <div style={{ position:"relative", overflow:"hidden", borderRadius:22, marginBottom:14, padding:"20px 18px",
+          background:`linear-gradient(130deg, rgba(${G.greenRGB},0.16) 0%, rgba(232,164,201,0.08) 55%, rgba(167,139,250,0.07) 100%)`,
+          border:`1px solid rgba(${G.greenRGB},0.30)`, boxShadow:`0 8px 32px ${G.shadow}, 0 0 0 0.5px rgba(${G.greenRGB},0.10) inset` }}>
+          <div style={{ position:"absolute", top:-40, right:-40, width:140, height:140, borderRadius:"50%", background:`radial-gradient(circle, rgba(232,164,201,0.14) 0%, transparent 70%)` }} />
+          <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
+            <Avatar nombre={clienta.nombre} size={48} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:17, color:G.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{clienta.nombre}</p>
+              <p style={{ margin:"2px 0 0", fontFamily:F.sans, fontSize:10, color:G.muted, textTransform:"uppercase", letterSpacing:"0.12em" }}>
+                clienta {estudio.nombre || "Lash Studio"}{clienta.creadaEn ? ` · desde ${clienta.creadaEn.slice(0,4)}` : ""}
+              </p>
+            </div>
+            <span style={{ fontSize:20 }}>🌿</span>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <div style={{ flex:1, textAlign:"center", background:"rgba(255,255,255,0.05)", borderRadius:12, padding:"9px 4px", border:`0.5px solid ${G.border}` }}>
+              <p style={{ margin:0, fontFamily:F.display, fontSize:20, letterSpacing:"0.5px", color:G.greenL, lineHeight:1 }}>{histPasado.length}</p>
+              <p style={{ margin:"3px 0 0", fontFamily:F.sans, fontSize:8, color:G.muted, textTransform:"uppercase", letterSpacing:"0.1em" }}>visitas</p>
+            </div>
+            <div style={{ flex:1, textAlign:"center", background:"rgba(255,255,255,0.05)", borderRadius:12, padding:"9px 4px", border:`0.5px solid ${G.border}` }}>
+              <p style={{ margin:0, fontFamily:F.display, fontSize:20, letterSpacing:"0.5px", color:"#f0abcd", lineHeight:1 }}>{curvaFav}</p>
+              <p style={{ margin:"3px 0 0", fontFamily:F.sans, fontSize:8, color:G.muted, textTransform:"uppercase", letterSpacing:"0.1em" }}>curva fav</p>
+            </div>
+            <div style={{ flex:1, textAlign:"center", background:"rgba(255,255,255,0.05)", borderRadius:12, padding:"9px 4px", border:`0.5px solid ${G.border}` }}>
+              <p style={{ margin:0, fontFamily:F.display, fontSize:20, letterSpacing:"0.5px", color:"#c4b5fd", lineHeight:1 }}>{proxCita ? fmtFecha(proxCita.fecha) : "—"}</p>
+              <p style={{ margin:"3px 0 0", fontFamily:F.sans, fontSize:8, color:G.muted, textTransform:"uppercase", letterSpacing:"0.1em" }}>próx. turno</p>
+            </div>
+          </div>
+        </div>
 
         {cumpleEnBreve && bdayPromo.habilitado && (
           <div style={{ background:"linear-gradient(135deg,rgba(255,200,80,0.13),rgba(255,160,60,0.07))", border:`1.5px solid rgba(255,190,60,0.5)`, borderRadius:18, padding:"18px 16px", marginBottom:14 }}>

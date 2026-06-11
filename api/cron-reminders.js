@@ -112,12 +112,13 @@ module.exports = async function handler(req, res) {
   const todayStr = todayBsAs();
   const tomorrow = tomorrowBsAs();
 
-  // Fetch citas, clientas, admin subs, and notification schedule in parallel
-  const [citas, clientas, adminSubs, schedule] = await Promise.all([
+  // Fetch citas, clientas, admin subs, notification schedule and promos in parallel
+  const [citas, clientas, adminSubs, schedule, promos] = await Promise.all([
     fbGet("citas", token),
     fbGet("clientas", token),
     getSubs("pushSubs/admin", token),
     fbGetVal("config/notifSchedule", token).then(v => v || {}),
+    fbGetVal("config/promos", token).then(v => v || {}),
   ]);
 
   const citasManana = citas.filter(c =>
@@ -222,6 +223,38 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // ── 5. Birthday greetings ────────────────────────────────────────────────────
+  // Sends a special push to every clienta whose birthday is today (BsAs time),
+  // including the birthday discount if one is configured in config/promos.
+  let bdaySent = 0;
+  const todayMMDD = todayStr.slice(5); // "MM-DD"
+  const bdayPromo = promos.cumpleanos || {};
+  const cumpleaneras = clientas.filter(c => c.fechaNacimiento && c.fechaNacimiento.slice(5) === todayMMDD);
+
+  for (const c of cumpleaneras) {
+    if (!c.uid) continue;
+    const nombre = c.nombre?.split(" ")[0] || "";
+    const regalo = bdayPromo.habilitado
+      ? (bdayPromo.tipo === "%" ? ` Tenés ${bdayPromo.monto}% de descuento en tu próxima visita 🎁` : ` Tenés $${bdayPromo.monto} de descuento en tu próxima visita 🎁`)
+      : "";
+    await sendPushToClienta(c.uid,
+      `¡Feliz cumpleaños, ${nombre}! 🎂`,
+      `Que tengas un día hermoso.${regalo} 💚`,
+      token);
+    bdaySent++;
+  }
+
+  // Heads-up to the admin so she can greet them personally
+  if (cumpleaneras.length > 0 && adminSubs.length > 0) {
+    const nombres = cumpleaneras.map(c => c.nombre?.split(" ")[0] || "").filter(Boolean).join(", ");
+    const payload = {
+      title: `🎂 Cumpleaños hoy`,
+      body:  `${nombres} cumple${cumpleaneras.length > 1 ? "n" : ""} años hoy — ¡mandale un saludo!`,
+      url:   "/",
+    };
+    for (const sub of adminSubs) await safePush(sub, payload);
+  }
+
   res.json({
     ok: true,
     tomorrow,
@@ -230,5 +263,6 @@ module.exports = async function handler(req, res) {
     sends:        sends.length,
     recallSent,
     serviceSent,
+    bdaySent,
   });
 };
