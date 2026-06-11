@@ -1,0 +1,66 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "config": {
+      ".read":  "auth != null",
+      ".write": "auth != null && auth.token.email === 'maleocampo3@gmail.com'"
+    },
+    "servicios": {
+      ".read":  "auth != null",
+      ".write": "auth != null && auth.token.email === 'maleocampo3@gmail.com'"
+    },
+    "clientas": {
+      ".read":  "auth != null",
+      ".write": "auth != null && auth.token.email === 'maleocampo3@gmail.com'"
+    },
+    "citas": {
+      ".read":  "auth != null",
+      ".write": "auth != null && auth.token.email === 'maleocampo3@gmail.com'"
+    },
+    "excepciones": {
+      ".read":  "auth != null",
+      ".write": "auth != null && auth.token.email === 'maleocampo3@gmail.com'"
+    },
+    "bloques": {
+      ".read":  "auth != null",
+      ".write": "auth != null && auth.token.email === 'maleocampo3@gmail.com'"
+    },
+    "gastos": {
+      ".read":  "auth != null && auth.token.email === 'maleocampo3@gmail.com'",
+      ".write": "auth != null && auth.token.email === 'maleocampo3@gmail.com'"
+    },
+    "insumos": {
+      ".read":  "auth != null && auth.token.email === 'maleocampo3@gmail.com'",
+      ".write": "auth != null && auth.token.email === 'maleocampo3@gmail.com'"
+    },
+    "pushSubs": {
+      "admin": {
+        ".read":  "auth != null && auth.token.email === 'maleocampo3@gmail.com'",
+        ".write": "auth != null && auth.token.email === 'maleocampo3@gmail.com'"
+      },
+      "clientas": {
+        "$uid": {
+          ".read":  "auth != null && (auth.uid === $uid || auth.token.email === 'maleocampo3@gmail.com')",
+          ".write": "auth != null && (auth.uid === $uid || auth.token.email === 'maleocampo3@gmail.com')"
+        }
+      }
+    },
+    "notificaciones": {
+      "$uid": {
+        ".read":  "auth != null && (auth.uid === $uid || auth.token.email === 'maleocampo3@gmail.com')",
+        ".write": "auth != null && auth.token.email === 'maleocampo3@gmail.com'"
+      }
+    },
+    "encuestas": {
+      ".read": "auth != null && auth.token.email === 'maleocampo3@gmail.com'",
+      "$clientaId": {
+        "$citaId": {
+          ".read":  "auth != null",
+          ".write": "auth != null"
+        }
+      }
+    }
+  }
+}
