@@ -1053,11 +1053,128 @@ function SolicitudCard({ cita, data, toast, push }) {
   );
 }
 
+// ── Vista Disponibilidad (shareable weekly availability) ───────────────────────
+function VistaDisponibilidad({ data, onClose }) {
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [fotoMode, setFotoMode]     = useState(false);
+
+  const estudio      = data.getConfig("estudio", {});
+  const slotsGlobal  = data.getConfig("slots", []);
+  const slotsPorDia  = data.getConfig("slotsPorDia", {});
+  const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
+
+  const lunes    = mondayOfWeek(weekOffset);
+  const weekDays = Array.from({ length:7 }, (_, i) => {
+    const d = new Date(lunes); d.setDate(lunes.getDate() + i); return d;
+  });
+  const weekKeys = weekDays.map(isoOfDate);
+
+  const DIAS_NOMBRE = ["dom","lun","mar","mié","jue","vie","sáb"];
+
+  const diasData = weekKeys.map((key, i) => {
+    const dow = weekDays[i].getDay();
+    const laboral = diasLaborales.includes(dow) || diasLaborales.includes(String(dow));
+    if (!laboral) return null;
+    const daySlots = slotsPorDia[dow] !== undefined ? slotsPorDia[dow] : slotsGlobal;
+    if (!daySlots.length) return null;
+    const horasOcupadas = new Set(
+      data.citas.filter(c => c.fecha === key && c.estado !== "cancelada" && c.estado !== "completada").map(c => c.hora)
+    );
+    return {
+      key, dow,
+      disponibles: daySlots.filter(s => !horasOcupadas.has(s)),
+      total: daySlots.length,
+    };
+  }).filter(Boolean);
+
+  const totalLibres = diasData.reduce((a, d) => a + d.disponibles.length, 0);
+  const weekLabel   = `${fmtFecha(weekKeys[0])} – ${fmtFecha(weekKeys[6])}`;
+
+  const disponibilidadRows = diasData.map(({ key, dow, disponibles, total }) => (
+    <div key={key} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8, padding:"10px 14px", borderRadius:14,
+      background: disponibles.length ? `rgba(${G.greenRGB},0.07)` : "rgba(255,255,255,0.03)",
+      border: `0.5px solid ${disponibles.length ? `rgba(${G.greenRGB},0.25)` : G.border}`,
+    }}>
+      <div style={{ minWidth:40, textAlign:"center" }}>
+        <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 2px", textTransform:"uppercase", letterSpacing:"0.08em" }}>{DIAS_NOMBRE[dow]}</p>
+        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:disponibles.length ? G.white : G.muted, margin:0 }}>{key.slice(8)}</p>
+      </div>
+      <div style={{ flex:1 }}>
+        {disponibles.length === 0 ? (
+          <span style={{ fontFamily:F.sans, fontSize:11, color:G.muted, fontStyle:"italic" }}>sin lugares</span>
+        ) : (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+            {disponibles.map(h => (
+              <span key={h} style={{ background:`rgba(${G.greenRGB},0.18)`, border:`0.5px solid rgba(${G.greenRGB},0.4)`, borderRadius:8, padding:"4px 10px", fontFamily:F.sans, fontSize:12, color:G.greenL, fontWeight:600 }}>{h}</span>
+            ))}
+          </div>
+        )}
+      </div>
+      {disponibles.length > 0 && <span style={{ fontFamily:F.sans, fontSize:10, color:G.muted, minWidth:24, textAlign:"right" }}>{disponibles.length}/{total}</span>}
+    </div>
+  ));
+
+  if (fotoMode) {
+    return (
+      <div style={{ position:"fixed", inset:0, background:G.bg, zIndex:300, display:"flex", flexDirection:"column" }}>
+        <div style={{ flex:1, overflowY:"auto", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px 18px" }}>
+          <div style={{ width:"100%", maxWidth:380, background:`linear-gradient(145deg, rgba(${G.greenRGB},0.10) 0%, rgba(${G.greenRGB},0.03) 100%)`, border:`1px solid rgba(${G.greenRGB},0.25)`, borderRadius:24, padding:"28px 22px" }}>
+            <div style={{ textAlign:"center", marginBottom:22, paddingBottom:16, borderBottom:`0.5px solid rgba(${G.greenRGB},0.2)` }}>
+              <p style={{ fontFamily:F.display, fontWeight:400, fontSize:26, letterSpacing:"1px", color:G.greenL, margin:"0 0 4px" }}>{estudio.nombre || "Lash Studio"}</p>
+              <p style={{ fontFamily:F.sans, fontSize:11, color:G.sub, margin:0 }}>turnos disponibles · {weekLabel}</p>
+            </div>
+            {disponibilidadRows}
+            {(estudio.instagram || estudio.whatsapp) && (
+              <div style={{ textAlign:"center", marginTop:18, paddingTop:14, borderTop:`0.5px solid rgba(${G.greenRGB},0.2)` }}>
+                {estudio.instagram && <p style={{ fontFamily:F.sans, fontSize:11, color:G.sub, margin:"0 0 2px" }}>📸 {estudio.instagram}</p>}
+                {estudio.whatsapp && <p style={{ fontFamily:F.sans, fontSize:11, color:G.sub, margin:0 }}>💬 Agendá por WhatsApp</p>}
+              </div>
+            )}
+          </div>
+        </div>
+        <div style={{ padding:"14px 18px calc(14px + env(safe-area-inset-bottom, 0px))", display:"flex", gap:10, borderTop:`0.5px solid ${G.border}`, background:G.navBg, backdropFilter:"blur(20px)" }}>
+          <button style={{ ...s.btnGl, padding:"12px 16px" }} onClick={() => setFotoMode(false)}>‹ Volver</button>
+          {typeof navigator !== "undefined" && navigator.share && (
+            <button style={{ ...s.btnG, flex:1 }} onClick={() => navigator.share({ title:`Turnos disponibles · ${weekLabel}`, text:`Disponibilidad en ${estudio.nombre || "Lash Studio"} esta semana 💚` }).catch(()=>{}) }>
+              Compartir 📤
+            </button>
+          )}
+          <button style={{ ...s.btnGl, flex:1, fontSize:11 }} onClick={() => { setWeekOffset(w => w+1); setFotoMode(false); }}>próx. semana →</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Sheet titulo="Disponibilidad" onClose={onClose}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+        <button style={{ ...s.btnGl, padding:"7px 14px", fontSize:15 }} onClick={() => setWeekOffset(w => w-1)}>‹</button>
+        <div style={{ textAlign:"center" }}>
+          <p style={{ fontFamily:F.sans, fontSize:13, color:G.text, margin:0, fontWeight:500 }}>{weekLabel}</p>
+          <p style={{ fontFamily:F.sans, fontSize:10, color: totalLibres > 0 ? G.greenL : G.muted, margin:"3px 0 0" }}>
+            {totalLibres > 0 ? `${totalLibres} lugar${totalLibres !== 1 ? "es" : ""} disponible${totalLibres !== 1 ? "s" : ""}` : "semana completa"}
+          </p>
+        </div>
+        <button style={{ ...s.btnGl, padding:"7px 14px", fontSize:15 }} onClick={() => setWeekOffset(w => w+1)}>›</button>
+      </div>
+
+      {diasData.length === 0 ? (
+        <p style={{ fontFamily:F.sans, fontSize:13, color:G.muted, textAlign:"center", padding:"24px 0" }}>Sin días laborales esta semana</p>
+      ) : disponibilidadRows}
+
+      <button style={{ ...s.btnG, marginTop:12 }} onClick={() => setFotoMode(true)}>
+        📸 modo foto — compartir en Instagram / WhatsApp →
+      </button>
+    </Sheet>
+  );
+}
+
 function AdminInicio({ data, push, setTab, toast }) {
   const hoy = hoyISO();
   const mes = mesISO();
   const { dark, toggleTheme } = useTheme();
   const wide = useIsWide();
+  const [showDisp, setShowDisp] = useState(false);
   const citasHoy    = data.citas.filter(c => c.fecha === hoy && c.estado !== "completada");
   const proximas    = data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)).slice(0, 6);
   const todoHist    = data.clientas.flatMap(c => Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []));
@@ -1154,6 +1271,40 @@ function AdminInicio({ data, push, setTab, toast }) {
             </div>
           )}
         </div>
+
+        {/* ── Disponibilidad semanal ─────────────────────────────────────────── */}
+        {(() => {
+          const slotsGlobal   = data.getConfig("slots", []);
+          const slotsPorDia   = data.getConfig("slotsPorDia", {});
+          const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
+          const lunes = mondayOfWeek(0);
+          const weekDays = Array.from({ length:7 }, (_, i) => { const d = new Date(lunes); d.setDate(lunes.getDate() + i); return d; });
+          const weekKeys = weekDays.map(isoOfDate);
+          let totalDisp = 0;
+          weekKeys.forEach((key, i) => {
+            const dow = weekDays[i].getDay();
+            const laboral = diasLaborales.includes(dow) || diasLaborales.includes(String(dow));
+            if (!laboral) return;
+            const daySlots = slotsPorDia[dow] !== undefined ? slotsPorDia[dow] : slotsGlobal;
+            const horasOcupadas = new Set(data.citas.filter(c => c.fecha === key && c.estado !== "cancelada" && c.estado !== "completada").map(c => c.hora));
+            totalDisp += daySlots.filter(s => !horasOcupadas.has(s)).length;
+          });
+          return (
+            <button onClick={() => setShowDisp(true)} style={{ width:"100%", textAlign:"left", background:"transparent", border:"none", cursor:"pointer", marginBottom:12 }}>
+              <div style={{ ...s.cardHero, margin:0, display:"flex", alignItems:"center", gap:14, padding:"14px 16px" }}>
+                <div style={{ width:44, height:44, borderRadius:12, background:`rgba(${G.greenRGB},0.2)`, border:`1px solid rgba(${G.greenRGB},0.35)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:22 }}>📸</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <p style={{ fontFamily:F.sans, fontSize:9, color:G.sub, margin:"0 0 3px", textTransform:"uppercase", letterSpacing:"0.14em" }}>disponibilidad esta semana</p>
+                  <p style={{ fontFamily:F.display, fontWeight:400, fontSize:20, letterSpacing:"0.5px", color:G.greenL, margin:"0 0 1px", lineHeight:1.1 }}>
+                    {totalDisp > 0 ? `${totalDisp} lugar${totalDisp !== 1 ? "es" : ""} libre${totalDisp !== 1 ? "s" : ""}` : "semana completa"}
+                  </p>
+                  <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>tap para ver y compartir →</p>
+                </div>
+              </div>
+            </button>
+          );
+        })()}
+        {showDisp && <VistaDisponibilidad data={data} onClose={() => setShowDisp(false)} />}
 
         {/* Solicitudes pendientes inbox */}
         {(() => {
