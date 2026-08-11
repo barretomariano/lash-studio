@@ -2555,7 +2555,7 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
   const [saving, setSaving]           = useState(false);
   const [customHora, setCustomHora]   = useState(false);
   const [recurrente, setRecurrente]   = useState(false);
-  const [recurrInterval, setRecurrInterval] = useState(14);
+  const [recurrSemanas, setRecurrSemanas] = useState(2);
   const [recurrReps, setRecurrReps]   = useState(3);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
   const initNombre = clientaIdDefault ? (data.clientas.find(c => c._id === clientaIdDefault)?.nombre || "") : "";
@@ -2583,20 +2583,26 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
     const clienta = data.clientas.find(c => c._id === form.clientaId);
     const baseCita = { ...form, clientaNombre:clienta?.nombre || "", clientaUid:clienta?.uid || "", estado:"confirmada" };
     await data.crearCita(baseCita);
-    if (recurrente && recurrInterval > 0 && recurrReps > 0) {
-      const base = new Date(form.fecha + "T12:00:00");
-      for (let i = 1; i <= Math.min(recurrReps, 12); i++) {
-        const d = new Date(base);
-        d.setDate(d.getDate() + recurrInterval * i);
-        await data.crearCita({ ...baseCita, fecha: d.toISOString().slice(0, 10) });
-      }
+    let omitidas = [];
+    if (recurrente && recurrSemanas > 0 && recurrReps > 0) {
+      const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
+      const fechasBloq    = new Set((data.excepciones||[]).map(e => e.fecha));
+      const { validas, omitidas:om } = generarOcurrenciasRecurrentes({
+        fechaBase: form.fecha, hora: form.hora,
+        semanas: recurrSemanas, reps: recurrReps,
+        diasLaborales, fechasBloq, citas: data.citas, bloques: data.bloques,
+      });
+      omitidas = om;
+      for (const fecha of validas) await data.crearCita({ ...baseCita, fecha });
     }
     if (clienta?.uid) {
       sendPush([`clienta:${clienta.uid}`],
         "¡Tu turno está confirmado! 🌿",
         `${form.servicio} · ${form.fecha} a las ${form.hora}`);
     }
-    toast(recurrente ? `✓ ${recurrReps + 1} turnos agendados` : "✓ turno agendado");
+    const total = recurrente ? (recurrReps - omitidas.length + 1) : 1;
+    const msgOmit = omitidas.length ? ` (${omitidas.length} omitido${omitidas.length>1?"s":""} por indisponibilidad)` : "";
+    toast(recurrente ? `✓ ${total} turno${total!==1?"s":""} agendado${total!==1?"s":""}${msgOmit}` : "✓ turno agendado");
     pop();
   };
 
@@ -2687,28 +2693,35 @@ function NuevaCita({ data, pop, toast, fechaDefault = "", horaDefault = "", clie
           <Field label="notas (opcional)"><textarea style={{ ...s.input, height:70, resize:"none" }} value={form.notas} onChange={e => set("notas", e.target.value)} placeholder="indicaciones especiales..." /></Field>
 
           {/* Recurrencia */}
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 0", borderTop:`0.5px solid ${G.border}` }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 0", borderTop:`0.5px solid ${G.border}` }}>
             <div>
               <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:13, color:G.text, fontWeight:600 }}>¿Clienta recurrente?</p>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Agendar turnos futuros automáticamente</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Agenda los próximos turnos automáticamente</p>
             </div>
-            <button onClick={() => setRecurrente(r => !r)} style={{ flexShrink:0, padding:"7px 14px", borderRadius:20, border:`1.5px solid ${recurrente ? G.green : G.border}`, background:recurrente ? G.greenM : "transparent", fontFamily:F.sans, fontSize:12, fontWeight:700, color:recurrente ? G.greenL : G.muted, cursor:"pointer", transition:"all 0.15s", marginLeft:12 }}>
-              {recurrente ? "Sí" : "No"}
+            <button onClick={() => setRecurrente(r => !r)} style={{ flexShrink:0, padding:"7px 16px", borderRadius:20, border:`1.5px solid ${recurrente ? G.green : G.border}`, background:recurrente ? G.greenM : "transparent", fontFamily:F.sans, fontSize:12, fontWeight:700, color:recurrente ? G.greenL : G.muted, cursor:"pointer", transition:"all 0.18s", marginLeft:12 }}>
+              {recurrente ? "Sí ✓" : "No"}
             </button>
           </div>
           {recurrente && (
-            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <div style={{ display:"flex", flexDirection:"column", gap:10, marginTop:-4, marginBottom:4 }}>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                <Field label="cada cuántos días">
-                  <input style={{ ...s.input, textAlign:"center" }} type="number" min="1" max="365" value={recurrInterval} onChange={e => setRecurrInterval(Math.max(1, Math.min(365, Number(e.target.value) || 1)))} />
+                <Field label="cada cuántas semanas">
+                  <input style={{ ...s.input, textAlign:"center" }} type="number" min="1" max="52" value={recurrSemanas} onChange={e => setRecurrSemanas(Math.max(1, Math.min(52, Number(e.target.value) || 1)))} />
                 </Field>
                 <Field label="repeticiones (máx. 12)">
                   <input style={{ ...s.input, textAlign:"center" }} type="number" min="1" max="12" value={recurrReps} onChange={e => setRecurrReps(Math.max(1, Math.min(12, Number(e.target.value) || 1)))} />
                 </Field>
               </div>
-              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted, background:G.glass, borderRadius:10, padding:"8px 12px", border:`0.5px solid ${G.border}` }}>
-                Se crearán <strong style={{ color:G.greenL }}>{recurrReps}</strong> turnos adicionales, cada <strong style={{ color:G.greenL }}>{recurrInterval} días</strong>. Total: {recurrReps + 1} turnos.
-              </p>
+              {form.fecha && form.hora && (
+                <div style={{ background:G.glass, borderRadius:12, padding:"10px 14px", border:`0.5px solid ${G.border}` }}>
+                  <p style={{ margin:"0 0 4px", fontFamily:F.sans, fontSize:11, color:G.muted }}>
+                    Mismo día y horario · cada <strong style={{ color:G.greenL }}>{recurrSemanas} semana{recurrSemanas>1?"s":""}</strong> · <strong style={{ color:G.greenL }}>{recurrReps}</strong> veces más
+                  </p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted, lineHeight:1.5 }}>
+                    Las fechas que caigan en días bloqueados o con ese horario ya ocupado se omitirán automáticamente.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -4755,6 +4768,33 @@ const esDiaLaboral = (fechaISO, diasLaborales) => {
   return diasLaborales.includes(dow);
 };
 
+// Turnos recurrentes: frecuencia semanal fija (mismo día de la semana y horario que el turno base).
+// Al ser múltiplos de 7 días, la ocurrencia siempre cae en el mismo día de semana que el turno original,
+// así que nunca puede "correrse" a un domingo o día no laborable por arrastre de offset.
+// Igual valida cada fecha contra excepciones puntuales (feriados/bloqueos) y contra el horario ya ocupado,
+// y devuelve separadas las ocurrencias válidas de las omitidas (con motivo) para no agendar turnos inválidos en silencio.
+const generarOcurrenciasRecurrentes = ({ fechaBase, hora, semanas, reps, diasLaborales, fechasBloq, citas, bloques }) => {
+  const base = new Date(fechaBase + "T12:00:00");
+  const validas = [];
+  const omitidas = [];
+  const n = Math.max(1, Math.min(12, Number(reps) || 0));
+  const w = Math.max(1, Number(semanas) || 1);
+  for (let i = 1; i <= n; i++) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + 7 * w * i);
+    const fecha = d.toISOString().slice(0, 10);
+    const bloqueada = fechasBloq.has(fecha) || !esDiaLaboral(fecha, diasLaborales);
+    const ocupadasFecha = [
+      ...(citas || []).filter(c => c.fecha === fecha && c.estado !== "cancelada").map(c => c.hora),
+      ...(bloques || []).filter(b => b.fecha === fecha).map(b => b.horaInicio),
+    ];
+    const ocupada = !bloqueada && ocupadasFecha.includes(hora);
+    if (bloqueada || ocupada) omitidas.push({ fecha, motivo: bloqueada ? "día no disponible" : "horario ocupado" });
+    else validas.push(fecha);
+  }
+  return { validas, omitidas };
+};
+
 // ── Config Horarios ────────────────────────────────────────────────────────────
 function ConfigHorarios({ data, toast }) {
   const [tab, setTab] = useState("dias");
@@ -5947,7 +5987,7 @@ function CAgendar({ clienta, data, servicioPresel, clearServicioPresel }) {
   const [enviado, setEnviado]           = useState(false);
   const [saving, setSaving]             = useState(false);
   const [recurrente, setRecurrente]     = useState(false);
-  const [recurrInterval, setRecurrInterval] = useState(14);
+  const [recurrSemanas, setRecurrSemanas] = useState(2);
   const [recurrReps, setRecurrReps]     = useState(3);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
@@ -5989,17 +6029,19 @@ function CAgendar({ clienta, data, servicioPresel, clearServicioPresel }) {
         estado:        "solicitada",
       };
       await data.crearCita(baseCita);
-      if (recurrente && recurrInterval > 0 && recurrReps > 0) {
-        const base = new Date(form.fecha + "T12:00:00");
-        for (let i = 1; i <= Math.min(recurrReps, 12); i++) {
-          const d = new Date(base);
-          d.setDate(d.getDate() + recurrInterval * i);
-          await data.crearCita({ ...baseCita, fecha: d.toISOString().slice(0, 10) });
-        }
+      if (recurrente && recurrSemanas > 0 && recurrReps > 0) {
+        const diasLaborales = data.getConfig("diasLaborales", [1,2,3,4,5,6]);
+        const fechasBloq    = new Set((data.excepciones||[]).map(e => e.fecha));
+        const { validas } = generarOcurrenciasRecurrentes({
+          fechaBase: form.fecha, hora: form.hora,
+          semanas: recurrSemanas, reps: recurrReps,
+          diasLaborales, fechasBloq, citas: data.citas, bloques: data.bloques,
+        });
+        for (const fecha of validas) await data.crearCita({ ...baseCita, fecha });
       }
       sendPush(["admin"],
         `Nueva solicitud de turno 🗓`,
-        `${clienta.nombre?.split(" ")[0]} quiere: ${form.servicio?.nombre || "A confirmar"} el ${form.fecha} a las ${form.hora}${recurrente ? ` (+${recurrReps} más c/${recurrInterval}d)` : ""}`);
+        `${clienta.nombre?.split(" ")[0]} quiere: ${form.servicio?.nombre || "A confirmar"} el ${form.fecha} a las ${form.hora}${recurrente ? ` (+ cada ${recurrSemanas}sem × ${recurrReps})` : ""}`);
     } catch (e) { console.warn("Firebase write:", e); }
     setSaving(false);
     setEnviado(true);
@@ -6207,28 +6249,33 @@ function CAgendar({ clienta, data, servicioPresel, clearServicioPresel }) {
                 </div>
               ))}
             </div>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 0", marginTop:8 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 0", marginTop:8 }}>
               <div>
                 <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:13, color:G.text, fontWeight:600 }}>¿Turno recurrente?</p>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Solicitar turnos futuros automáticamente</p>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Solicitar los próximos turnos automáticamente</p>
               </div>
-              <button onClick={() => setRecurrente(r => !r)} style={{ flexShrink:0, padding:"7px 14px", borderRadius:20, border:`1.5px solid ${recurrente ? G.green : G.border}`, background:recurrente ? G.greenM : "transparent", fontFamily:F.sans, fontSize:12, fontWeight:700, color:recurrente ? G.greenL : G.muted, cursor:"pointer", marginLeft:12 }}>
-                {recurrente ? "Sí" : "No"}
+              <button onClick={() => setRecurrente(r => !r)} style={{ flexShrink:0, padding:"7px 16px", borderRadius:20, border:`1.5px solid ${recurrente ? G.green : G.border}`, background:recurrente ? G.greenM : "transparent", fontFamily:F.sans, fontSize:12, fontWeight:700, color:recurrente ? G.greenL : G.muted, cursor:"pointer", transition:"all 0.18s", marginLeft:12 }}>
+                {recurrente ? "Sí ✓" : "No"}
               </button>
             </div>
             {recurrente && (
               <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:4 }}>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                  <Field label="cada cuántos días">
-                    <input style={{ ...s.input, textAlign:"center" }} type="number" min="1" max="365" value={recurrInterval} onChange={e => setRecurrInterval(Math.max(1, Math.min(365, Number(e.target.value) || 1)))} />
+                  <Field label="cada cuántas semanas">
+                    <input style={{ ...s.input, textAlign:"center" }} type="number" min="1" max="52" value={recurrSemanas} onChange={e => setRecurrSemanas(Math.max(1, Math.min(52, Number(e.target.value) || 1)))} />
                   </Field>
                   <Field label="repeticiones (máx. 12)">
                     <input style={{ ...s.input, textAlign:"center" }} type="number" min="1" max="12" value={recurrReps} onChange={e => setRecurrReps(Math.max(1, Math.min(12, Number(e.target.value) || 1)))} />
                   </Field>
                 </div>
-                <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted, background:G.glass, borderRadius:10, padding:"8px 12px", border:`0.5px solid ${G.border}` }}>
-                  Se solicitarán <strong style={{ color:G.greenL }}>{recurrReps}</strong> turnos más, cada <strong style={{ color:G.greenL }}>{recurrInterval} días</strong>. Total: {recurrReps + 1} solicitudes.
-                </p>
+                <div style={{ background:G.glass, borderRadius:12, padding:"10px 14px", border:`0.5px solid ${G.border}` }}>
+                  <p style={{ margin:"0 0 3px", fontFamily:F.sans, fontSize:11, color:G.muted }}>
+                    Mismo día y horario · cada <strong style={{ color:G.greenL }}>{recurrSemanas} semana{recurrSemanas>1?"s":""}</strong> · <strong style={{ color:G.greenL }}>{recurrReps}</strong> veces más
+                  </p>
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted, lineHeight:1.5 }}>
+                    Male confirmará cada turno según disponibilidad.
+                  </p>
+                </div>
               </div>
             )}
             <button style={{ ...s.btnG, marginTop:6, opacity:saving?0.6:1 }} onClick={confirmar} disabled={saving}>
