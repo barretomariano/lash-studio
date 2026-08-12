@@ -127,6 +127,38 @@ const fmtFecha = (iso) => { if (!iso) return ""; const [,m,d] = iso.split("-"); 
 const openWA   = (msg = "") => window.open(`https://wa.me/${WA_NUM}?text=${encodeURIComponent(msg)}`, "_blank");
 const haptic   = (ms = 8) => typeof navigator !== "undefined" && navigator.vibrate?.(ms);
 
+// ── useCountUp — animación de números ─────────────────────────────────────────
+function useCountUp(target, duration = 900) {
+  const [val, setVal] = useState(0);
+  const prev = useRef(0);
+  useEffect(() => {
+    if (target === prev.current) return;
+    const start = prev.current;
+    const end   = target;
+    prev.current = end;
+    const startTs = performance.now();
+    const tick = (now) => {
+      const p = Math.min((now - startTs) / duration, 1);
+      const ease = 1 - Math.pow(1 - p, 3); // cubic ease-out
+      setVal(Math.round(start + (end - start) * ease));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [target, duration]);
+  return val;
+}
+
+// ── saludoPorHora — saludo contextual ─────────────────────────────────────────
+function saludoPorHora(nombre = "") {
+  const h = new Date().getHours();
+  const primer = (nombre || "").split(" ")[0];
+  const suf = primer ? `, ${primer}` : "";
+  if (h >= 6  && h < 12) return `Buenos días${suf} ☀️`;
+  if (h >= 12 && h < 19) return `Buenas tardes${suf} 🌿`;
+  if (h >= 19 && h < 24) return `Buenas noches${suf} 🌙`;
+  return `Bienvenida${suf} 🌿`;
+}
+
 const MESES  = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const DIAS_C = ["D","L","M","X","J","V","S"];
 const DIAS_F = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
@@ -185,6 +217,20 @@ function useIsWide() {
     return () => window.removeEventListener("resize", fn);
   }, []);
   return wide;
+}
+
+// ── useAnimateIn — staggered entrance animation for lists ─────────────────────
+function useAnimateIn(count, delay = 55) {
+  const [visible, setVisible] = useState(0);
+  useEffect(() => {
+    setVisible(0);
+    if (count === 0) return;
+    let i = 0;
+    const tick = () => { i++; setVisible(i); if (i < count) setTimeout(tick, delay); };
+    const t = setTimeout(tick, 30);
+    return () => clearTimeout(t);
+  }, [count, delay]);
+  return visible;
 }
 
 // ── Time utilities for week calendar ─────────────────────────────────────────
@@ -456,6 +502,30 @@ const GlobalStyles = () => (
       from { transform:translateX(100%); opacity:0.6; }
       to   { transform:translateX(0); opacity:1; }
     }
+    @keyframes fadeInCard {
+      from { opacity:0; transform:translateY(14px) scale(0.98); }
+      to   { opacity:1; transform:translateY(0) scale(1); }
+    }
+    @keyframes popIn {
+      0%   { opacity:0; transform:scale(0.7); }
+      70%  { transform:scale(1.08); }
+      100% { opacity:1; transform:scale(1); }
+    }
+    @keyframes pulseGreen {
+      0%,100% { box-shadow:0 0 0 0 rgba(143,189,90,0.38); }
+      50%      { box-shadow:0 0 0 8px rgba(143,189,90,0); }
+    }
+    @keyframes slideUpFade {
+      from { opacity:0; transform:translateY(18px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes barGrow {
+      from { width:0 !important; }
+    }
+    .anim-card { animation: fadeInCard 0.32s cubic-bezier(0.22,1,0.36,1) both; }
+    .anim-pop  { animation: popIn 0.38s cubic-bezier(0.22,1,0.36,1) both; }
+    .anim-slide{ animation: slideUpFade 0.28s ease both; }
+    .anim-bar  { animation: barGrow 0.7s cubic-bezier(0.22,1,0.36,1) both; }
     @media (min-width: 681px) {
       .ls-wide-content > * { animation: fadeInTab 0.18s ease; }
     }
@@ -920,6 +990,38 @@ function AdminApp({ data, onLogout }) {
   const shwToast = (msg) => setToast(msg);
   const cur      = stack[stack.length - 1];
 
+  // ── Reporte semanal push trigger ──────────────────────────────────────────
+  useEffect(() => {
+    if (data.loading) return;
+    const LAST_KEY = "ls_last_reporte_semanal";
+    const schedule = data.getConfig("notifSchedule", {});
+    if (!schedule.reporteSemanal) return;
+    const reporteDia  = schedule.reporteDia  ?? 6; // sábado por defecto
+    const reporteHora = schedule.reporteHora || "20:00";
+    const ahora = new Date();
+    const diaSemana = ahora.getDay(); // 0=dom, 6=sab
+    const [hh, mm] = reporteHora.split(":").map(Number);
+    const esElDia = diaSemana === reporteDia;
+    const despusDeLaHora = ahora.getHours() > hh || (ahora.getHours() === hh && ahora.getMinutes() >= mm);
+    if (!esElDia || !despusDeLaHora) return;
+    const semKey = `${ahora.getFullYear()}-W${Math.floor(ahora.getDate() / 7)}-${diaSemana}`;
+    const yaEnviado = localStorage.getItem(LAST_KEY) === semKey;
+    if (yaEnviado) return;
+    // Construir el resumen
+    const hoyISO2 = hoyISO();
+    const todoHist2 = data.clientas.flatMap(c => Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []));
+    const lunesOffset = (ahora.getDay() + 6) % 7;
+    const lunesPasado = new Date(ahora); lunesPasado.setDate(ahora.getDate() - lunesOffset - 7);
+    const domPasado   = new Date(lunesPasado); domPasado.setDate(lunesPasado.getDate() + 6);
+    const desde = lunesPasado.toISOString().slice(0, 10);
+    const hasta = domPasado.toISOString().slice(0, 10);
+    const histSem = todoHist2.filter(h => h.fecha >= desde && h.fecha <= hasta);
+    const total = histSem.reduce((a, h) => a + (h.monto || 0), 0);
+    const body  = `${histSem.length} servicios · ${fmtPesos(total)} · ${new Date(desde + "T12:00:00").toLocaleDateString("es-AR", { day:"numeric", month:"short" })} – ${new Date(hasta + "T12:00:00").toLocaleDateString("es-AR", { day:"numeric", month:"short" })}`;
+    sendPush(["admin"], "📊 Reporte semanal 🌿", body, "/");
+    localStorage.setItem(LAST_KEY, semKey);
+  }, [data.loading, data.config]);
+
   const renderModalContent = (screen, props) => {
     const p = { ...props, pop, push, data, toast:shwToast, onLogout };
     switch (screen) {
@@ -1177,6 +1279,63 @@ function VistaDisponibilidad({ data, onClose }) {
   );
 }
 
+// ── Notas Rápidas ─────────────────────────────────────────────────────────────
+function NotasRapidas() {
+  const KEY = "ls_notas_rapidas";
+  const [notas, setNotas] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch { return []; }
+  });
+  const [nueva, setNueva] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const inputRef = useRef(null);
+
+  const guardar = () => {
+    if (!nueva.trim()) return;
+    const upd = [{ id:Date.now(), txt:nueva.trim(), ts:new Date().toISOString() }, ...notas];
+    setNotas(upd);
+    localStorage.setItem(KEY, JSON.stringify(upd));
+    setNueva("");
+    haptic();
+  };
+  const borrar = (id) => {
+    const upd = notas.filter(n => n.id !== id);
+    setNotas(upd);
+    localStorage.setItem(KEY, JSON.stringify(upd));
+  };
+
+  return (
+    <div style={{ marginBottom:16 }}>
+      <button onClick={() => { setExpanded(e => !e); setTimeout(() => inputRef.current?.focus(), 80); }}
+        style={{ width:"100%", textAlign:"left", background:"transparent", border:"none", cursor:"pointer", marginBottom: expanded ? 8 : 0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ fontSize:15 }}>📌</span>
+          <p style={{ fontFamily:F.display, fontWeight:400, fontSize:17, letterSpacing:"0.5px", color:G.white, margin:0 }}>notas rápidas</p>
+          {notas.length > 0 && <span style={{ ...s.tag, fontSize:9, marginLeft:2 }}>{notas.length}</span>}
+          <Icon name={expanded ? "chevronUp" : "chevronDown"} size={14} color={G.muted} style={{ marginLeft:"auto" }} />
+        </div>
+      </button>
+      {expanded && (
+        <div className="anim-slide">
+          <div style={{ display:"flex", gap:7, marginBottom:10 }}>
+            <input ref={inputRef} style={{ ...s.input, flex:1, fontSize:13, padding:"10px 13px" }}
+              placeholder="Escribí una nota..." value={nueva} onChange={e => setNueva(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && guardar()} />
+            <button style={{ ...s.btnG, width:"auto", padding:"10px 16px", fontSize:12, flexShrink:0 }} onClick={guardar}>+</button>
+          </div>
+          {notas.length === 0 && <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:0 }}>Sin notas. Usá este espacio para recordatorios rápidos.</p>}
+          {notas.map((n, i) => (
+            <div key={n.id} className="anim-card" style={{ ...s.card, display:"flex", alignItems:"flex-start", gap:9, padding:"10px 12px", marginBottom:6, animationDelay:`${i*40}ms` }}>
+              <span style={{ fontSize:13, marginTop:1 }}>📎</span>
+              <p style={{ flex:1, margin:0, fontFamily:F.sans, fontSize:13, color:G.sub, lineHeight:1.5 }}>{n.txt}</p>
+              <button style={{ background:"transparent", border:"none", cursor:"pointer", padding:"2px 4px", color:G.muted, fontSize:16, lineHeight:1, flexShrink:0 }} onClick={() => borrar(n.id)}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminInicio({ data, push, setTab, toast }) {
   const hoy = hoyISO();
   const mes = mesISO();
@@ -1245,8 +1404,8 @@ function AdminInicio({ data, push, setTab, toast }) {
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
             <p style={s.eyebrow}>panel lashista</p>
-            <h1 style={s.h1}>{estudio.nombre || "Lash Studio"}</h1>
-            <p style={s.sub}>{new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
+            <h1 style={{ ...s.h1, animation:"fadeInUp 0.4s ease both" }}>{saludoPorHora(estudio.nombre || "Male")} ✦</h1>
+            <p style={{ ...s.sub, animation:"fadeInUp 0.4s 0.08s ease both" }}>{new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
           </div>
           <button onClick={toggleTheme} style={{ background:"transparent", border:`0.5px solid ${G.border}`, borderRadius:10, padding:"7px 10px", cursor:"pointer", display:"flex", alignItems:"center", color:G.muted, marginTop:4 }}>
             <Icon name={dark ? "sun" : "moon"} size={16} color={G.muted} />
@@ -1256,39 +1415,74 @@ function AdminInicio({ data, push, setTab, toast }) {
       <div style={{ padding:wide ? "24px 32px 0" : "18px 18px 0" }}>
         <PushBanner role="admin" />
         {/* ── Bento stats grid ── */}
-        <div style={{ display:"grid", gridTemplateColumns:wide ? "2fr 1fr 1fr 1fr" : "1fr 1fr", gap:10, marginBottom:12 }}>
-          <div onClick={() => setTab("finanzas")} style={{ cursor:"pointer", margin:0, padding:"20px 18px", gridColumn:wide ? "1" : "1 / -1", borderRadius:22,
-            background:`linear-gradient(135deg, rgba(${G.greenRGB},0.20) 0%, rgba(${G.greenRGB},0.05) 60%, rgba(232,164,201,0.06) 100%)`,
-            border:`1px solid rgba(${G.greenRGB},0.32)`, boxShadow:`0 8px 32px ${G.shadow}, 0 0 0 0.5px rgba(${G.greenRGB},0.12) inset`, position:"relative", overflow:"hidden" }}>
-            <div style={{ position:"absolute", top:-30, right:-30, width:110, height:110, borderRadius:"50%", background:`radial-gradient(circle, rgba(${G.greenRGB},0.18) 0%, transparent 70%)` }} />
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.sub, margin:"0 0 6px", textTransform:"uppercase", letterSpacing:"0.16em" }}>✦ ingresos del mes</p>
-            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:38, letterSpacing:"1px", color:G.greenL, margin:"0 0 4px", lineHeight:1 }}>{fmtPesos(ingresosMes)}</p>
-            <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{todoHist.filter(h => h.fecha?.startsWith(mes)).length} servicios este mes</p>
-          </div>
-          <div onClick={() => setTab("agenda")} style={{ cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", borderRadius:18,
-            background:"linear-gradient(160deg, rgba(167,139,250,0.10) 0%, rgba(167,139,250,0.03) 100%)",
-            border:"0.5px solid rgba(167,139,250,0.28)", boxShadow:`0 2px 16px ${G.shadowMd}` }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 5px", textTransform:"uppercase", letterSpacing:"0.1em" }}>hoy</p>
-            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:"#c4b5fd", margin:"0 0 2px", lineHeight:1 }}>{citasHoy.length}</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>{data.citas.filter(c => c.fecha === hoy).length} citas</p>
-          </div>
-          <div onClick={() => setTab("clientas")} style={{ cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", borderRadius:18,
-            background:"linear-gradient(160deg, rgba(232,164,201,0.10) 0%, rgba(232,164,201,0.03) 100%)",
-            border:"0.5px solid rgba(232,164,201,0.28)", boxShadow:`0 2px 16px ${G.shadowMd}` }}>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 5px", textTransform:"uppercase", letterSpacing:"0.1em" }}>clientas</p>
-            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:"#f0abcd", margin:"0 0 2px", lineHeight:1 }}>{data.clientas.length}</p>
-            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>registradas</p>
-          </div>
-          {wide && (
-            <div onClick={() => setTab("agenda")} style={{ cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", borderRadius:18,
-              background:`linear-gradient(160deg, rgba(${G.greenRGB},0.10) 0%, rgba(${G.greenRGB},0.03) 100%)`,
-              border:`0.5px solid rgba(${G.greenRGB},0.28)`, boxShadow:`0 2px 16px ${G.shadowMd}` }}>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 5px", textTransform:"uppercase", letterSpacing:"0.1em" }}>próximas</p>
-              <p style={{ fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:G.green, margin:"0 0 2px", lineHeight:1 }}>{data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").length}</p>
-              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>confirmadas</p>
-            </div>
-          )}
-        </div>
+        {(() => {
+          const animIngresos = useCountUp(ingresosMes, 900);
+          const animHoy      = useCountUp(citasHoy.length, 600);
+          const animClientas = useCountUp(data.clientas.length, 700);
+          const animProximas = useCountUp(data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").length, 650);
+          // Clienta del mes: más visitas en el mes actual
+          const clientaMes = (() => {
+            const porClientaMes = {};
+            todoHist.filter(h => h.fecha?.startsWith(mes)).forEach(h => {
+              if (!h.clientaId && !h.servicio) return;
+              const cl = data.clientas.find(c => c.historial && (Array.isArray(c.historial) ? c.historial : Object.values(c.historial)).some(x => x.fecha === h.fecha && x.servicio === h.servicio));
+              if (!cl) return;
+              porClientaMes[cl._id] = (porClientaMes[cl._id] || { cl, count:0 });
+              porClientaMes[cl._id].count++;
+            });
+            const sorted = Object.values(porClientaMes).sort((a, b) => b.count - a.count);
+            return sorted[0] || null;
+          })();
+          return (
+            <>
+              <div style={{ display:"grid", gridTemplateColumns:wide ? "2fr 1fr 1fr 1fr" : "1fr 1fr", gap:10, marginBottom:12 }}>
+                <div onClick={() => setTab("finanzas")} className="anim-card" style={{ cursor:"pointer", margin:0, padding:"20px 18px", gridColumn:wide ? "1" : "1 / -1", borderRadius:22, animationDelay:"0ms",
+                  background:`linear-gradient(135deg, rgba(${G.greenRGB},0.20) 0%, rgba(${G.greenRGB},0.05) 60%, rgba(232,164,201,0.06) 100%)`,
+                  border:`1px solid rgba(${G.greenRGB},0.32)`, boxShadow:`0 8px 32px ${G.shadow}, 0 0 0 0.5px rgba(${G.greenRGB},0.12) inset`, position:"relative", overflow:"hidden" }}>
+                  <div style={{ position:"absolute", top:-30, right:-30, width:110, height:110, borderRadius:"50%", background:`radial-gradient(circle, rgba(${G.greenRGB},0.18) 0%, transparent 70%)` }} />
+                  <p style={{ fontFamily:F.sans, fontSize:9, color:G.sub, margin:"0 0 6px", textTransform:"uppercase", letterSpacing:"0.16em" }}>✦ ingresos del mes</p>
+                  <p style={{ fontFamily:F.display, fontWeight:400, fontSize:38, letterSpacing:"1px", color:G.greenL, margin:"0 0 4px", lineHeight:1 }}>{fmtPesos(animIngresos)}</p>
+                  <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{todoHist.filter(h => h.fecha?.startsWith(mes)).length} servicios este mes</p>
+                </div>
+                <div onClick={() => setTab("agenda")} className="anim-card" style={{ cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", borderRadius:18, animationDelay:"60ms",
+                  background:"linear-gradient(160deg, rgba(167,139,250,0.10) 0%, rgba(167,139,250,0.03) 100%)",
+                  border:"0.5px solid rgba(167,139,250,0.28)", boxShadow:`0 2px 16px ${G.shadowMd}` }}>
+                  <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 5px", textTransform:"uppercase", letterSpacing:"0.1em" }}>hoy</p>
+                  <p style={{ fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:"#c4b5fd", margin:"0 0 2px", lineHeight:1 }}>{animHoy}</p>
+                  <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>{data.citas.filter(c => c.fecha === hoy).length} citas</p>
+                </div>
+                <div onClick={() => setTab("clientas")} className="anim-card" style={{ cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", borderRadius:18, animationDelay:"120ms",
+                  background:"linear-gradient(160deg, rgba(232,164,201,0.10) 0%, rgba(232,164,201,0.03) 100%)",
+                  border:"0.5px solid rgba(232,164,201,0.28)", boxShadow:`0 2px 16px ${G.shadowMd}` }}>
+                  <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 5px", textTransform:"uppercase", letterSpacing:"0.1em" }}>clientas</p>
+                  <p style={{ fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:"#f0abcd", margin:"0 0 2px", lineHeight:1 }}>{animClientas}</p>
+                  <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>registradas</p>
+                </div>
+                {wide && (
+                  <div onClick={() => setTab("agenda")} className="anim-card" style={{ cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", borderRadius:18, animationDelay:"180ms",
+                    background:`linear-gradient(160deg, rgba(${G.greenRGB},0.10) 0%, rgba(${G.greenRGB},0.03) 100%)`,
+                    border:`0.5px solid rgba(${G.greenRGB},0.28)`, boxShadow:`0 2px 16px ${G.shadowMd}` }}>
+                    <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 5px", textTransform:"uppercase", letterSpacing:"0.1em" }}>próximas</p>
+                    <p style={{ fontFamily:F.display, fontWeight:400, fontSize:30, letterSpacing:"1px", color:G.green, margin:"0 0 2px", lineHeight:1 }}>{animProximas}</p>
+                    <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>confirmadas</p>
+                  </div>
+                )}
+              </div>
+              {/* ── Clienta del mes ── */}
+              {clientaMes && (
+                <div className="anim-slide" style={{ ...s.card, marginBottom:12, display:"flex", alignItems:"center", gap:12, background:"linear-gradient(120deg,rgba(245,200,66,0.08),rgba(245,200,66,0.02))", borderColor:"rgba(245,200,66,0.25)", animationDelay:"220ms" }}>
+                  <div className="anim-pop" style={{ fontSize:28, lineHeight:1, animationDelay:"320ms" }}>👑</div>
+                  <div style={{ flex:1 }}>
+                    <p style={{ fontFamily:F.sans, fontSize:9, color:"rgba(245,200,66,0.8)", textTransform:"uppercase", letterSpacing:"0.16em", margin:"0 0 2px" }}>clienta del mes</p>
+                    <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.text, margin:"0 0 1px" }}>{clientaMes.cl.nombre}</p>
+                    <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{clientaMes.count} visita{clientaMes.count !== 1 ? "s" : ""} en {new Date().toLocaleDateString("es-AR", { month:"long" })}</p>
+                  </div>
+                  <Avatar nombre={clientaMes.cl.nombre} size={38} />
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* ── Quick actions ── */}
         <div style={{ display:"flex", gap:8, marginBottom:14 }}>
@@ -1411,8 +1605,8 @@ function AdminInicio({ data, push, setTab, toast }) {
         <p style={{ fontFamily:F.display, fontWeight:400, fontSize:19, letterSpacing:"0.5px", color:G.white, margin:"0 0 10px" }}>citas de hoy</p>
         {citasHoy.length === 0
           ? <p style={{ color:G.muted, fontSize:13, marginBottom:14 }}>Sin citas para hoy</p>
-          : citasHoy.map(c => (
-            <div key={c._id} style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer" }} onClick={() => push("cita-detalle", { cita:c })}>
+          : citasHoy.map((c, i) => (
+            <div key={c._id} className="anim-card" style={{ ...s.card, display:"flex", gap:12, alignItems:"center", cursor:"pointer", animationDelay:`${i * 55}ms` }} onClick={() => push("cita-detalle", { cita:c })}>
               <div style={{ background:G.greenM, border:`0.5px solid ${G.green}`, borderRadius:9, padding:"7px 10px", textAlign:"center", minWidth:48 }}>
                 <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.greenL }}>{c.hora}</p>
               </div>
@@ -1480,6 +1674,9 @@ function AdminInicio({ data, push, setTab, toast }) {
             <button style={{ ...s.btnG, marginTop:10 }} onClick={() => setTab("agenda")}>ver agenda completa →</button>
           </>
         )}
+
+        {/* ── Notas rápidas ── */}
+        <NotasRapidas />
 
         {sinCita.length > 0 && (
           <>
@@ -3196,7 +3393,7 @@ function AdminClientas({ data, push, toast }) {
           }
           const cumpleTag = diasCumple !== null && diasCumple <= 14;
           return (
-            <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11, cursor:"pointer", opacity:c.estado === "pausada" ? 0.5 : 1 }} onClick={() => push("clienta-detalle", { clienta:c })}>
+            <div key={c._id} className="anim-card" style={{ ...s.card, display:"flex", alignItems:"center", gap:11, cursor:"pointer", opacity:c.estado === "pausada" ? 0.5 : 1 }} onClick={() => push("clienta-detalle", { clienta:c })}>
               <Avatar nombre={c.nombre} />
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:7 }}>
@@ -3682,7 +3879,7 @@ function AdminFinanzas({ data, toast }) {
 
   const todoHist = data.clientas.flatMap(c => Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []));
 
-  const tabs = [["dashboard","resumen"],["gastos","gastos"],["insumos","insumos"]];
+  const tabs = [["dashboard","resumen"],["reporte","reporte"],["gastos","gastos"],["insumos","insumos"]];
 
   return (
     <div>
@@ -3716,8 +3913,163 @@ function AdminFinanzas({ data, toast }) {
           </div>
         )
       )}
+      {tab === "reporte" && <div style={{ padding:"16px 14px" }}><ReporteSemanal data={data} todoHist={todoHist} toast={toast} /></div>}
       {tab === "gastos" && <div style={{ padding:"18px" }}><GastosTab data={data} toast={toast} /></div>}
       {tab === "insumos" && <div style={{ padding:"18px" }}><InsumosTab data={data} toast={toast} /></div>}
+    </div>
+  );
+}
+
+// ── Reporte Semanal ───────────────────────────────────────────────────────────
+function ReporteSemanal({ data, todoHist, toast }) {
+  const hoy = hoyISO();
+  // Semana pasada: lunes-domingo anterior
+  const ahora = new Date(hoy + "T12:00:00");
+  const dowHoy = (ahora.getDay() + 6) % 7; // 0=lun
+  const lunesPasado = new Date(ahora); lunesPasado.setDate(ahora.getDate() - dowHoy - 7);
+  const domPasado   = new Date(lunesPasado); domPasado.setDate(lunesPasado.getDate() + 6);
+  const semISO = d => d.toISOString().slice(0, 10);
+  const desde = semISO(lunesPasado);
+  const hasta = semISO(domPasado);
+
+  // Semana actual
+  const lunesActual = new Date(ahora); lunesActual.setDate(ahora.getDate() - dowHoy);
+  const desdeActual = semISO(lunesActual);
+
+  const histSem  = todoHist.filter(h => h.fecha >= desde && h.fecha <= hasta);
+  const histSemA = todoHist.filter(h => h.fecha >= desdeActual && h.fecha <= hoy);
+
+  const total    = histSem.reduce((a, h) => a + (h.monto || 0), 0);
+  const totalA   = histSemA.reduce((a, h) => a + (h.monto || 0), 0);
+  const servicios= histSem.length;
+
+  // Clientas únicas esta semana (por nombre de historial)
+  const clientasSet = new Set();
+  histSem.forEach(h => { if (h.clientaNombre || h.servicio) clientasSet.add(h.clientaNombre || h.fecha); });
+  const clientasUnicas = clientasSet.size || histSem.length;
+
+  // Racha de clientas activas: cuántas vinieron al menos 1 vez en las últimas 4 semanas
+  const hace4sem = new Date(ahora); hace4sem.setDate(ahora.getDate() - 28);
+  const activasRacha = data.clientas.filter(c => {
+    const h = Array.isArray(c.historial) ? c.historial : (c.historial ? Object.values(c.historial) : []);
+    return h.some(x => x.fecha && x.fecha >= semISO(hace4sem) && x.fecha <= hoy);
+  });
+
+  // Servicio más pedido esta semana
+  const cnt = {}; histSem.forEach(h => { if (h.servicio) cnt[h.servicio] = (cnt[h.servicio] || 0) + 1; });
+  const topSv = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+
+  // Día más ocupado
+  const porDia = {}; histSem.forEach(h => { if (h.fecha) porDia[h.fecha] = (porDia[h.fecha] || 0) + 1; });
+  const topDia = Object.entries(porDia).sort((a, b) => b[1] - a[1])[0];
+  const topDiaNombre = topDia ? new Date(topDia[0] + "T12:00:00").toLocaleDateString("es-AR", { weekday:"long", day:"numeric" }) : null;
+
+  const fmtSem = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("es-AR", { day:"numeric", month:"short" });
+
+  const enviarReporte = () => {
+    const msg = [
+      `📊 *Reporte semanal ${fmtSem(desde)} – ${fmtSem(hasta)}*`,
+      ``,
+      `💰 Ingresos: ${fmtPesos(total)}`,
+      `✂️ Servicios: ${servicios}`,
+      `👥 Clientas activas (4 sem): ${activasRacha.length}`,
+      topSv ? `⭐ Servicio top: ${topSv[0]} (${topSv[1]}x)` : "",
+      topDiaNombre ? `📅 Día más ocupado: ${topDiaNombre}` : "",
+      ``,
+      `Esta semana: ${fmtPesos(totalA)} · ${histSemA.length} servicios`,
+    ].filter(Boolean).join("\n");
+    openWA(msg);
+  };
+
+  const dias = ["lun","mar","mié","jue","vie","sáb","dom"];
+  const barras = dias.map((d, i) => {
+    const fecha = new Date(lunesPasado); fecha.setDate(lunesPasado.getDate() + i);
+    const key = semISO(fecha);
+    const val = porDia[key] || 0;
+    return { d, val, key };
+  });
+  const maxBar = Math.max(...barras.map(b => b.val), 1);
+
+  return (
+    <div style={{ marginBottom:20 }}>
+      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 4px" }}>Reporte de la semana</p>
+      <p style={{ ...s.sub, marginBottom:14 }}>{fmtSem(desde)} – {fmtSem(hasta)}</p>
+
+      {/* Métricas clave */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:14 }}>
+        {[
+          { label:"ingresos", val:fmtPesos(total), color:G.greenL },
+          { label:"servicios", val:servicios, color:"#c4b5fd" },
+          { label:"racha activas", val:activasRacha.length, color:"#f0abcd" },
+        ].map(({ label, val, color }, i) => (
+          <div key={label} className="anim-card" style={{ ...s.card, textAlign:"center", margin:0, padding:"14px 6px", animationDelay:`${i*60}ms` }}>
+            <p style={{ fontFamily:F.display, fontWeight:400, fontSize:22, letterSpacing:"0.5px", color, margin:"0 0 3px", lineHeight:1 }}>{val}</p>
+            <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0, textTransform:"uppercase", letterSpacing:"0.1em" }}>{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Barras por día */}
+      <div style={{ ...s.card, padding:"14px 12px", marginBottom:12 }}>
+        <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 12px" }}>servicios por día</p>
+        <div style={{ display:"flex", alignItems:"flex-end", gap:6, height:52 }}>
+          {barras.map(({ d, val }) => (
+            <div key={d} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:val > 0 ? G.greenL : G.muted, margin:0 }}>{val || ""}</p>
+              <div style={{ width:"100%", borderRadius:4, background:G.border, height:36, display:"flex", alignItems:"flex-end", overflow:"hidden" }}>
+                {val > 0 && <div className="anim-bar" style={{ width:"100%", height:`${(val/maxBar)*100}%`, background:`linear-gradient(180deg,${G.greenL},${G.greenD})`, borderRadius:4 }} />}
+              </div>
+              <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:0 }}>{d}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Detalles */}
+      <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:12 }}>
+        {topSv && (
+          <div style={{ ...s.cardSub, display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:16 }}>⭐</span>
+            <div style={{ flex:1 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>Servicio más pedido</p></div>
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.text }}>{topSv[0]} <span style={{ color:G.muted, fontWeight:400, fontSize:11 }}>({topSv[1]}x)</span></p>
+          </div>
+        )}
+        {topDiaNombre && (
+          <div style={{ ...s.cardSub, display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:16 }}>📅</span>
+            <div style={{ flex:1 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>Día más ocupado</p></div>
+            <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.text }}>{topDiaNombre}</p>
+          </div>
+        )}
+        <div style={{ ...s.cardSub, display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:16 }}>📈</span>
+          <div style={{ flex:1 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:12, color:G.sub }}>Esta semana (en curso)</p></div>
+          <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.greenL }}>{fmtPesos(totalA)}</p>
+        </div>
+      </div>
+
+      {/* Racha de clientas activas */}
+      <div style={{ ...s.card, marginBottom:12, padding:"14px 14px" }}>
+        <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"0 0 10px" }}>racha de clientas activas — últimas 4 semanas</p>
+        {activasRacha.length === 0
+          ? <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:0 }}>Sin actividad reciente</p>
+          : (
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {activasRacha.slice(0, 12).map(c => (
+                <div key={c._id} style={{ display:"flex", alignItems:"center", gap:5, background:G.greenM, borderRadius:20, padding:"3px 10px 3px 5px", border:`0.5px solid rgba(${G.greenRGB},0.35)` }}>
+                  <Avatar nombre={c.nombre} size={18} />
+                  <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.greenL }}>{c.nombre.split(" ")[0]}</p>
+                </div>
+              ))}
+              {activasRacha.length > 12 && <span style={{ ...s.tag, fontSize:10 }}>+{activasRacha.length - 12} más</span>}
+            </div>
+          )
+        }
+      </div>
+
+      <button style={{ ...s.btnGl, width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }} onClick={enviarReporte}>
+        <span style={{ fontSize:14 }}>📤</span> compartir por WhatsApp
+      </button>
     </div>
   );
 }
@@ -3798,10 +4150,10 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, 
           <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>por servicio</p>
           <p style={{ ...s.sub, marginBottom:12 }}>ingresos del período</p>
           {Object.entries(porSv).length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin registros</p>}
-          {Object.entries(porSv).sort((a, b) => b[1] - a[1]).map(([nom, tot]) => (
-            <div key={nom} style={{ ...s.card, padding:"11px 13px" }}>
+          {Object.entries(porSv).sort((a, b) => b[1] - a[1]).map(([nom, tot], i) => (
+            <div key={nom} className="anim-card" style={{ ...s.card, padding:"11px 13px", animationDelay:`${i*55}ms` }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p><p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmtPesos(tot)}</p></div>
-              <div style={{ height:3, background:G.border, borderRadius:2 }}><div style={{ height:"100%", width:`${(tot / maxSv) * 100}%`, background:G.green, borderRadius:2 }} /></div>
+              <div style={{ height:3, background:G.border, borderRadius:2, overflow:"hidden" }}><div className="anim-bar" style={{ height:"100%", width:`${(tot / maxSv) * 100}%`, background:G.green, borderRadius:2 }} /></div>
             </div>
           ))}
         </div>
@@ -3811,7 +4163,7 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, 
           <p style={{ ...s.sub, marginBottom:12 }}>por gasto en el período</p>
           {topC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin datos</p>}
           {topC.map((c, i) => (
-            <div key={c._id} style={{ ...s.card, display:"flex", alignItems:"center", gap:11 }}>
+            <div key={c._id} className="anim-card" style={{ ...s.card, display:"flex", alignItems:"center", gap:11, animationDelay:`${i*60}ms` }}>
               <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i === 0 ? G.green : G.muted, minWidth:22, margin:0 }}>{i + 1}</p>
               <Avatar nombre={c.nombre} size={34} />
               <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p><p style={{ margin:0, ...s.sub, fontSize:10 }}>{c.vis} visita{c.vis !== 1 ? "s" : ""}</p></div>
@@ -5144,7 +5496,7 @@ function ConfigNotificaciones({ data, toast }) {
     toast("✓ guardado");
   };
 
-  const defaultSchedule = { recordatorio24h: true, recordatorio24hTexto:"Recordatorio de tu turno mañana 🌿", recall: false, recallDias:30, recallTexto:"¡Te extrañamos! ¿Reagendamos tu servicio?", service: false, serviceDias:14, serviceTexto:"¡Es momento del service! Agendá tu turno 🌿", horaEnvio:"09:00" };
+  const defaultSchedule = { recordatorio24h: true, recordatorio24hTexto:"Recordatorio de tu turno mañana 🌿", recall: false, recallDias:30, recallTexto:"¡Te extrañamos! ¿Reagendamos tu servicio?", service: false, serviceDias:14, serviceTexto:"¡Es momento del service! Agendá tu turno 🌿", horaEnvio:"09:00", reporteSemanal: true, reporteDia:6, reporteHora:"20:00" };
   const [schedule, setSchedule] = useState(() => ({ ...defaultSchedule, ...data.getConfig("notifSchedule", {}) }));
   const setSch = (k, v) => setSchedule(s => ({ ...s, [k]:v }));
   const saveSchedule = async (upd) => {
@@ -5261,7 +5613,7 @@ function ConfigNotificaciones({ data, toast }) {
         </div>
 
         {/* Recordatorio de service */}
-        <div style={{ ...s.cardSub }}>
+        <div style={{ ...s.cardSub, marginBottom:10 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:schedule.service ? 10 : 0 }}>
             <div>
               <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontWeight:600, fontSize:13, color:G.text }}>Recordatorio de service</p>
@@ -5277,6 +5629,34 @@ function ConfigNotificaciones({ data, toast }) {
               <Field label="días entre servicios"><input style={{ ...s.input, width:"auto", maxWidth:100 }} type="number" min="1" value={schedule.serviceDias} onChange={e => setSch("serviceDias", parseInt(e.target.value)||14)} onBlur={() => saveSchedule({ serviceDias: schedule.serviceDias })} /></Field>
               <Field label="texto del mensaje"><input style={s.input} defaultValue={schedule.serviceTexto} onBlur={e => saveSchedule({ serviceTexto: e.target.value || defaultSchedule.serviceTexto })} /></Field>
             </>
+          )}
+        </div>
+
+        {/* Reporte semanal push */}
+        <div style={{ ...s.cardSub }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:schedule.reporteSemanal ? 10 : 0 }}>
+            <div>
+              <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontWeight:600, fontSize:13, color:G.text }}>📊 Reporte semanal</p>
+              <p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>Push con resumen de la semana para Male</p>
+            </div>
+            <div style={{ width:36, height:20, borderRadius:10, background:schedule.reporteSemanal ? G.green : G.border, cursor:"pointer", position:"relative", transition:"background 0.2s", flexShrink:0 }}
+              onClick={() => saveSchedule({ reporteSemanal: !schedule.reporteSemanal })}>
+              <div style={{ position:"absolute", top:3, left:schedule.reporteSemanal ? 18 : 3, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+            </div>
+          </div>
+          {schedule.reporteSemanal && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+              <Field label="día de envío">
+                <select style={{ ...s.input, fontSize:13 }} value={schedule.reporteDia ?? 6} onChange={e => saveSchedule({ reporteDia: parseInt(e.target.value) })}>
+                  {[["1","Lunes"],["2","Martes"],["3","Miércoles"],["4","Jueves"],["5","Viernes"],["6","Sábado"],["0","Domingo"]].map(([v, l]) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="hora de envío">
+                <input style={{ ...s.input, fontSize:13 }} type="time" value={schedule.reporteHora || "20:00"} onChange={e => saveSchedule({ reporteHora: e.target.value })} />
+              </Field>
+            </div>
           )}
         </div>
       </div>
@@ -5608,8 +5988,8 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
         </div>
       )}
       <div style={s.topBar}>
-        <p style={{ fontFamily:F.display, fontWeight:400, fontSize:36, letterSpacing:"1px", color:G.greenL, margin:"0 0 2px", lineHeight:1 }}>Hola, {clienta.nombre?.split(" ")[0]}</p>
-        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0" }}>{estudio.nombre || "Lash Studio"} · {new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
+        <p style={{ fontFamily:F.display, fontWeight:400, fontSize:36, letterSpacing:"1px", color:G.greenL, margin:"0 0 2px", lineHeight:1, animation:"fadeInUp 0.4s ease both" }}>{saludoPorHora(clienta.nombre?.split(" ")[0])} 🌿</p>
+        <p style={{ fontFamily:F.sans, fontSize:12, color:G.muted, margin:"4px 0 0", animation:"fadeInUp 0.4s 0.08s ease both" }}>{estudio.nombre || "Lash Studio"} · {new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
         {histPasado.length > 0 && (
           <div style={{ display:"flex", gap:10, marginTop:8, flexWrap:"wrap" }}>
             <span style={{ ...s.tag, fontSize:10 }}>{histPasado.length} visita{histPasado.length !== 1 ? "s" : ""}</span>
@@ -5663,7 +6043,7 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
             </div>
             <span style={{ fontSize:20 }}>🌿</span>
           </div>
-          <div style={{ display:"flex", gap:8 }}>
+          <div style={{ display:"flex", gap:8, marginBottom:12 }}>
             <div style={{ flex:1, textAlign:"center", background:"rgba(255,255,255,0.05)", borderRadius:12, padding:"9px 4px", border:`0.5px solid ${G.border}` }}>
               <p style={{ margin:0, fontFamily:F.display, fontSize:20, letterSpacing:"0.5px", color:G.greenL, lineHeight:1 }}>{histPasado.length}</p>
               <p style={{ margin:"3px 0 0", fontFamily:F.sans, fontSize:8, color:G.muted, textTransform:"uppercase", letterSpacing:"0.1em" }}>visitas</p>
@@ -5677,6 +6057,20 @@ function CInicio({ clienta, data, setTab, goToAgendar, installProps = {} }) {
               <p style={{ margin:"3px 0 0", fontFamily:F.sans, fontSize:8, color:G.muted, textTransform:"uppercase", letterSpacing:"0.1em" }}>próx. turno</p>
             </div>
           </div>
+          <button onClick={() => {
+            const msg = [
+              `💅 *Mi carnet — ${estudio.nombre || "Lash Studio"}*`,
+              `Nombre: ${clienta.nombre}`,
+              `Visitas: ${histPasado.length}`,
+              curvaFav !== "—" ? `Curva favorita: ${curvaFav}` : "",
+              proxCita ? `Próximo turno: ${fmtFecha(proxCita.fecha)} a las ${proxCita.hora}` : "",
+              ``,
+              `Accedé a tu app: ${DEPLOY_URL}`,
+            ].filter(Boolean).join("\n");
+            openWA(msg);
+          }} style={{ ...s.btnGl, width:"100%", fontSize:11, padding:"8px 12px", display:"flex", alignItems:"center", justifyContent:"center", gap:7, borderColor:"rgba(37,211,102,0.28)", color:"rgba(37,211,102,0.85)" }}>
+            <span style={{ fontSize:13 }}>📤</span> compartir carnet por WhatsApp
+          </button>
         </div>
 
         {cumpleEnBreve && bdayPromo.habilitado && (
@@ -6308,8 +6702,8 @@ function CHistorial({ clienta }) {
       <div style={s.topBar}><h1 style={s.h1}>Historial</h1><p style={s.sub}>{hist.length} visitas al estudio</p></div>
       <div style={{ padding:"18px" }}>
         <div style={{ display:"flex", gap:9, marginBottom:16 }}>
-          <div style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"12px 6px" }}><p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px" }}>visitas</p><p style={{ fontFamily:F.serif, fontWeight:700, fontSize:24, color:G.green, margin:0 }}>{hist.length}</p></div>
-          <div style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"12px 6px" }}><p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px" }}>curva fav.</p><p style={{ fontFamily:F.serif, fontWeight:700, fontSize:24, margin:0 }}>{curvaFav}</p></div>
+          <div className="anim-card" style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"12px 6px", animationDelay:"0ms" }}><p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px" }}>visitas</p><p style={{ fontFamily:F.serif, fontWeight:700, fontSize:24, color:G.green, margin:0 }}>{hist.length}</p></div>
+          <div className="anim-card" style={{ ...s.card, flex:1, textAlign:"center", margin:0, padding:"12px 6px", animationDelay:"80ms" }}><p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px" }}>curva fav.</p><p style={{ fontFamily:F.serif, fontWeight:700, fontSize:24, margin:0 }}>{curvaFav}</p></div>
         </div>
         {badge && (
           <div style={{ ...s.card, background:"rgba(143,189,90,0.05)", borderColor:G.greenD, textAlign:"center", padding:"16px", marginBottom:14 }}>
@@ -6321,7 +6715,7 @@ function CHistorial({ clienta }) {
         <p style={{ ...s.sub, marginBottom:12 }}>más recientes primero</p>
         {hist.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>tu historial estará aquí después de tu primera visita ✦</p>}
         {[...hist].reverse().map((h, i) => (
-          <div key={i} style={s.card}>
+          <div key={i} className="anim-card" style={{ ...s.card, animationDelay:`${Math.min(i * 45, 400)}ms` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:5 }}>
               <div><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:14 }}>{h.servicio}</p><p style={{ margin:0, fontFamily:F.sans, fontSize:11, color:G.muted }}>{fmtFecha(h.fecha)}</p></div>
               {h.curva && <span style={s.tag}>curva {h.curva}</span>}
