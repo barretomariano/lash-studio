@@ -162,9 +162,9 @@ function saludoPorHora(nombre = "") {
   const primer = (nombre || "").split(" ")[0];
   const suf = primer ? `, ${primer}` : "";
   if (h >= 6  && h < 12) return `Buenos días${suf} ☀️`;
-  if (h >= 12 && h < 19) return `Buenas tardes${suf} 🌿`;
+  if (h >= 12 && h < 19) return `Buenas tardes${suf} 🌤️`;
   if (h >= 19 && h < 24) return `Buenas noches${suf} 🌙`;
-  return `Bienvenida${suf} 🌿`;
+  return `Bienvenida${suf} ❤️`;
 }
 
 const MESES  = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
