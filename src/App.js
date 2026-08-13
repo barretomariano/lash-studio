@@ -123,6 +123,15 @@ const genPass  = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 const hoyISO   = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const mesISO   = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
 const fmtPesos = (n) => `$${Number(n || 0).toLocaleString("es-AR")}`;
+const fmtPesosMasked = (n) => `$••••`;
+// Global mask context
+const MaskContext = React.createContext(false);
+const useMask = () => React.useContext(MaskContext);
+// Masked-aware formatter hook
+const useFmtPesos = () => {
+  const masked = useMask();
+  return (n) => masked ? fmtPesosMasked(n) : fmtPesos(n);
+};
 const fmtFecha = (iso) => { if (!iso) return ""; const [,m,d] = iso.split("-"); const M = ["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]; return `${parseInt(d)} ${M[parseInt(m)]}`; };
 const openWA   = (msg = "") => window.open(`https://wa.me/${WA_NUM}?text=${encodeURIComponent(msg)}`, "_blank");
 const haptic   = (ms = 8) => typeof navigator !== "undefined" && navigator.vibrate?.(ms);
@@ -522,10 +531,49 @@ const GlobalStyles = () => (
     @keyframes barGrow {
       from { width:0 !important; }
     }
-    .anim-card { animation: fadeInCard 0.32s cubic-bezier(0.22,1,0.36,1) both; }
-    .anim-pop  { animation: popIn 0.38s cubic-bezier(0.22,1,0.36,1) both; }
-    .anim-slide{ animation: slideUpFade 0.28s ease both; }
-    .anim-bar  { animation: barGrow 0.7s cubic-bezier(0.22,1,0.36,1) both; }
+    @keyframes floatBadge {
+      0%,100% { transform:translateY(0px); }
+      50%      { transform:translateY(-4px); }
+    }
+    @keyframes glowPulse {
+      0%,100% { opacity:0.7; }
+      50%      { opacity:1; }
+    }
+    @keyframes ripple {
+      0%   { transform:scale(0); opacity:0.6; }
+      100% { transform:scale(2.4); opacity:0; }
+    }
+    @keyframes slideInLeft {
+      from { opacity:0; transform:translateX(-18px); }
+      to   { opacity:1; transform:translateX(0); }
+    }
+    @keyframes fadeInScale {
+      from { opacity:0; transform:scale(0.93); }
+      to   { opacity:1; transform:scale(1); }
+    }
+    @keyframes bounceIn {
+      0%   { opacity:0; transform:scale(0.6); }
+      60%  { transform:scale(1.06); }
+      80%  { transform:scale(0.97); }
+      100% { opacity:1; transform:scale(1); }
+    }
+    @keyframes numberFlip {
+      0%   { opacity:0; transform:translateY(-8px) scale(0.9); }
+      100% { opacity:1; transform:translateY(0) scale(1); }
+    }
+    .anim-card   { animation: fadeInCard 0.32s cubic-bezier(0.22,1,0.36,1) both; }
+    .anim-pop    { animation: popIn 0.38s cubic-bezier(0.22,1,0.36,1) both; }
+    .anim-slide  { animation: slideUpFade 0.28s ease both; }
+    .anim-bar    { animation: barGrow 0.7s cubic-bezier(0.22,1,0.36,1) both; }
+    .anim-left   { animation: slideInLeft 0.3s cubic-bezier(0.22,1,0.36,1) both; }
+    .anim-scale  { animation: fadeInScale 0.28s cubic-bezier(0.22,1,0.36,1) both; }
+    .anim-bounce { animation: bounceIn 0.45s cubic-bezier(0.22,1,0.36,1) both; }
+    .anim-glow   { animation: glowPulse 2.4s ease-in-out infinite; }
+    .anim-float  { animation: floatBadge 3s ease-in-out infinite; }
+    .anim-numflip{ animation: numberFlip 0.22s cubic-bezier(0.22,1,0.36,1) both; }
+    .btn-ripple  { position:relative; overflow:hidden; }
+    .btn-ripple::after { content:""; position:absolute; width:60%; padding-bottom:60%; border-radius:50%; background:rgba(255,255,255,0.18); top:50%; left:50%; transform:translate(-50%,-50%) scale(0); }
+    .btn-ripple:active::after { animation:ripple 0.45s ease-out; }
     @media (min-width: 681px) {
       .ls-wide-content > * { animation: fadeInTab 0.18s ease; }
     }
@@ -965,10 +1013,12 @@ export default function App() {
 // ADMIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
 function AdminApp({ data, onLogout }) {
-  const [tab, setTab]     = useState("inicio");
-  const [stack, setStack] = useState([]);
-  const [modal, setModal] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [tab, setTab]       = useState("inicio");
+  const [stack, setStack]   = useState([]);
+  const [modal, setModal]   = useState(null);
+  const [toast, setToast]   = useState(null);
+  const [maskNums, setMaskNums] = useState(() => localStorage.getItem("ls_mask_nums") === "true");
+  const toggleMask = () => setMaskNums(v => { const nv = !v; localStorage.setItem("ls_mask_nums", nv); return nv; });
   const wide = useIsWide();
 
   const push = (screen, props = {}) => {
@@ -1052,7 +1102,7 @@ function AdminApp({ data, onLogout }) {
     }
     const p = { push, data, toast:shwToast, onLogout };
     switch (tab) {
-      case "inicio":   return <AdminInicio   {...p} setTab={setTab} />;
+      case "inicio":   return <AdminInicio   {...p} setTab={setTab} toggleMask={toggleMask} maskNums={maskNums} />;
       case "agenda":   return <AdminAgenda   {...p} />;
       case "clientas": return <AdminClientas {...p} />;
       case "finanzas": return <AdminFinanzas {...p} />;
@@ -1065,6 +1115,7 @@ function AdminApp({ data, onLogout }) {
 
   if (wide) {
     return (
+      <MaskContext.Provider value={maskNums}>
       <div style={{ height:"100vh", background:G.bg, color:G.text, fontFamily:F.sans, display:"flex", flexDirection:"row", overflow:"hidden" }}>
         <GlobalStyles />
         <AppBg />
@@ -1079,6 +1130,13 @@ function AdminApp({ data, onLogout }) {
           ))}
           <div style={{ flex:1 }} />
           <button style={{ ...s.btnG, maxWidth:"100%", fontSize:13 }} onClick={() => push("nueva-cita")}>+ Nuevo turno</button>
+          <button
+            className="btn-ripple"
+            onClick={toggleMask}
+            style={{ ...s.btnGl, maxWidth:"100%", fontSize:12, marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", gap:7, transition:"all 0.2s", borderColor: maskNums ? G.green : G.border, color: maskNums ? G.greenL : G.muted }}>
+            <Icon name={maskNums ? "eyeOff" : "eye"} size={14} color={maskNums ? G.greenL : G.muted} />
+            {maskNums ? "mostrar montos" : "ocultar montos"}
+          </button>
           <button style={{ ...s.btnRed, maxWidth:"100%", fontSize:12, marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", gap:7 }} onClick={onLogout}>
             <Icon name="logOut" size={14} color={G.red} /> Cerrar sesión
           </button>
@@ -1098,16 +1156,18 @@ function AdminApp({ data, onLogout }) {
         )}
         {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
       </div>
+      </MaskContext.Provider>
     );
   }
 
   return (
+    <MaskContext.Provider value={maskNums}>
     <div style={s.app}>
       <GlobalStyles />
       <AppBg />
       <div key={cur ? `${cur.screen}:${cur.props?.cita?._id || cur.props?.clienta?._id || ""}` : tab} style={{ ...s.screen, ...(cur ? { animation:"slideInFromRight 0.28s cubic-bezier(0.4,0,0.2,1)" } : { animation:"fadeInTab 0.18s ease" }) }}>{renderScreen()}</div>
       {!cur && (
-        <button style={s.fab} onClick={() => setTab("agenda")} title="Ir a agenda">
+        <button style={s.fab} onClick={() => push("nueva-cita", {})} title="Nuevo turno">
           <Icon name="calendarPlus" size={22} color="#0a0a0a" strokeWidth={1.9} />
         </button>
       )}
@@ -1124,6 +1184,7 @@ function AdminApp({ data, onLogout }) {
       )}
       {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
     </div>
+    </MaskContext.Provider>
   );
 }
 
@@ -1336,7 +1397,7 @@ function NotasRapidas() {
   );
 }
 
-function AdminInicio({ data, push, setTab, toast }) {
+function AdminInicio({ data, push, setTab, toast, toggleMask, maskNums }) {
   const hoy = hoyISO();
   const mes = mesISO();
   const { dark, toggleTheme } = useTheme();
@@ -1404,18 +1465,26 @@ function AdminInicio({ data, push, setTab, toast }) {
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
             <p style={s.eyebrow}>panel lashista</p>
-            <h1 style={{ ...s.h1, animation:"fadeInUp 0.4s ease both" }}>{saludoPorHora(estudio.nombre || "Male")} ✦</h1>
+            <h1 style={{ ...s.h1, animation:"fadeInUp 0.4s ease both" }}>{saludoPorHora(estudio.nombreLashista || estudio.nombre || "")} ✦</h1>
             <p style={{ ...s.sub, animation:"fadeInUp 0.4s 0.08s ease both" }}>{new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
           </div>
-          <button onClick={toggleTheme} style={{ background:"transparent", border:`0.5px solid ${G.border}`, borderRadius:10, padding:"7px 10px", cursor:"pointer", display:"flex", alignItems:"center", color:G.muted, marginTop:4 }}>
-            <Icon name={dark ? "sun" : "moon"} size={16} color={G.muted} />
-          </button>
+          <div style={{ display:"flex", gap:6, marginTop:4 }}>
+            {toggleMask && (
+              <button onClick={toggleMask} style={{ background:"transparent", border:`0.5px solid ${maskNums ? G.green : G.border}`, borderRadius:10, padding:"7px 10px", cursor:"pointer", display:"flex", alignItems:"center", transition:"border-color 0.2s" }}>
+                <Icon name={maskNums ? "eyeOff" : "eye"} size={16} color={maskNums ? G.greenL : G.muted} />
+              </button>
+            )}
+            <button onClick={toggleTheme} style={{ background:"transparent", border:`0.5px solid ${G.border}`, borderRadius:10, padding:"7px 10px", cursor:"pointer", display:"flex", alignItems:"center", color:G.muted }}>
+              <Icon name={dark ? "sun" : "moon"} size={16} color={G.muted} />
+            </button>
+          </div>
         </div>
       </div>
       <div style={{ padding:wide ? "24px 32px 0" : "18px 18px 0" }}>
         <PushBanner role="admin" />
         {/* ── Bento stats grid ── */}
         {(() => {
+          const masked       = useMask();
           const animIngresos = useCountUp(ingresosMes, 900);
           const animHoy      = useCountUp(citasHoy.length, 600);
           const animClientas = useCountUp(data.clientas.length, 700);
@@ -1441,7 +1510,7 @@ function AdminInicio({ data, push, setTab, toast }) {
                   border:`1px solid rgba(${G.greenRGB},0.32)`, boxShadow:`0 8px 32px ${G.shadow}, 0 0 0 0.5px rgba(${G.greenRGB},0.12) inset`, position:"relative", overflow:"hidden" }}>
                   <div style={{ position:"absolute", top:-30, right:-30, width:110, height:110, borderRadius:"50%", background:`radial-gradient(circle, rgba(${G.greenRGB},0.18) 0%, transparent 70%)` }} />
                   <p style={{ fontFamily:F.sans, fontSize:9, color:G.sub, margin:"0 0 6px", textTransform:"uppercase", letterSpacing:"0.16em" }}>✦ ingresos del mes</p>
-                  <p style={{ fontFamily:F.display, fontWeight:400, fontSize:38, letterSpacing:"1px", color:G.greenL, margin:"0 0 4px", lineHeight:1 }}>{fmtPesos(animIngresos)}</p>
+                  <p style={{ fontFamily:F.display, fontWeight:400, fontSize:38, letterSpacing:"1px", color:G.greenL, margin:"0 0 4px", lineHeight:1 }}>{masked ? "$••••" : fmtPesos(animIngresos)}</p>
                   <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{todoHist.filter(h => h.fecha?.startsWith(mes)).length} servicios este mes</p>
                 </div>
                 <div onClick={() => setTab("agenda")} className="anim-card" style={{ cursor:"pointer", margin:0, padding:"16px 12px", textAlign:"center", borderRadius:18, animationDelay:"60ms",
@@ -1486,17 +1555,13 @@ function AdminInicio({ data, push, setTab, toast }) {
 
         {/* ── Quick actions ── */}
         <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-          <button style={{ ...s.btnGl, flex:1, padding:"11px 8px", fontSize:11, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}
+          <button className="btn-ripple anim-slide" style={{ ...s.btnGl, flex:1, padding:"11px 8px", fontSize:11, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6, animationDelay:"0ms" }}
             onClick={() => { haptic(); push("nueva-cita", {}); }}>
             <Icon name="calendarPlus" size={14} color={G.greenL} /> nuevo turno
           </button>
-          <button style={{ ...s.btnGl, flex:1, padding:"11px 8px", fontSize:11, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}
-            onClick={() => { haptic(); setTab("agenda"); }}>
-            <Icon name="calendar" size={14} color={G.sub} /> agenda
-          </button>
-          <button style={{ ...s.btnGl, flex:1, padding:"11px 8px", fontSize:11, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}
-            onClick={() => { haptic(); setShowDisp(true); }}>
-            📸 compartir
+          <button className="btn-ripple anim-slide" style={{ ...s.btnGl, flex:2, padding:"11px 8px", fontSize:11, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6, animationDelay:"50ms", background:G.greenM, borderColor:G.green, color:G.greenL }}
+            onClick={() => { haptic(); setTab("finanzas"); }}>
+            <Icon name="barChart" size={14} color={G.greenL} /> reporte
           </button>
         </div>
 
@@ -3898,7 +3963,7 @@ function AdminFinanzas({ data, toast }) {
           // WIDE: stats on left + finance calendar on right — both always visible
           <div style={{ display:"flex", minHeight:"calc(100vh - 80px)", overflow:"hidden" }}>
             <div style={{ flex:1, overflowY:"auto", padding:"20px 28px" }}>
-              <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} wide={false} />
+              <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} wide={true} toast={toast} />
             </div>
             <div style={{ width:360, flexShrink:0, overflowY:"auto", padding:"20px 20px", borderLeft:`0.5px solid ${G.border}` }}>
               <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />
@@ -3906,10 +3971,7 @@ function AdminFinanzas({ data, toast }) {
           </div>
         ) : (
           <div style={{ padding:"16px 14px" }}>
-            <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} />
-            <div style={s.div} />
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 12px" }}>Calendario de ingresos</p>
-            <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />
+            <FinanzasResumen data={data} todoHist={todoHist} periodo={periodo} setPeriodo={setPeriodo} hoy={hoy} mes={mes} anio={anio} wide={false} toast={toast} />
           </div>
         )
       )}
@@ -4074,7 +4136,7 @@ function ReporteSemanal({ data, todoHist, toast }) {
   );
 }
 
-function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, wide }) {
+function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, wide, toast }) {
   const filtrar = (h) => { if (periodo === "hoy") return h.fecha === hoy; if (periodo === "mes") return h.fecha?.startsWith(mes); if (periodo === "año") return h.fecha?.startsWith(anio); return true; };
   const ings   = todoHist.filter(filtrar);
   const total  = ings.reduce((a, h) => a + (h.monto || 0), 0);
@@ -4107,43 +4169,87 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, 
     return Math.round((retenidas.length / activasMes.length) * 100);
   })();
 
+  const fmt = useFmtPesos();
+  const ingresosHoy = todoHist.filter(h => h.fecha === hoy);
+  const totalHoy = ingresosHoy.reduce((a, h) => a + (h.monto || 0), 0);
+
   return (
     <div>
+      {/* ── 1. Ingresos widgets ── */}
       <div style={{ display:"flex", gap:7, marginBottom:18 }}>
         {[["hoy","hoy"],["mes","este mes"],["año","este año"],["todo","histórico"]].map(([v, l]) => (
-          <button key={v} onClick={() => setPeriodo(v)} style={{ ...s.btnGl, flex:1, fontSize:10, background:periodo === v ? G.greenM : "transparent", borderColor:periodo === v ? G.green : G.border, color:periodo === v ? G.greenL : G.muted, padding:"8px 2px", fontWeight:periodo === v ? 700 : 400 }}>{l}</button>
+          <button key={v} onClick={() => setPeriodo(v)} style={{ ...s.btnGl, flex:1, fontSize:10, background:periodo === v ? G.greenM : "transparent", borderColor:periodo === v ? G.green : G.border, color:periodo === v ? G.greenL : G.muted, padding:"8px 2px", fontWeight:periodo === v ? 700 : 400, transition:"all 0.18s" }}>{l}</button>
         ))}
       </div>
-      <div style={{ ...s.card, textAlign:"center", padding:"22px 16px", marginBottom:12 }}>
+      <div className="anim-scale" style={{ ...s.card, textAlign:"center", padding:"22px 16px", marginBottom:12 }}>
         <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 6px", textTransform:"lowercase", letterSpacing:"0.08em" }}>ingresos · {periodo === "mes" ? new Date().toLocaleDateString("es-AR", { month:"long", year:"numeric" }) : periodo === "año" ? anio : periodo === "hoy" ? "hoy" : "histórico"}</p>
-        <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:36, color:G.green, margin:"0 0 4px" }}>{fmtPesos(total)}</p>
+        <p className="anim-numflip" key={`total-${periodo}`} style={{ fontFamily:F.serif, fontWeight:700, fontSize:36, color:G.green, margin:"0 0 4px" }}>{fmt(total)}</p>
         <p style={{ fontFamily:F.sans, fontSize:12, color:G.sub, margin:0 }}>{ings.length} servicio{ings.length !== 1 ? "s" : ""}</p>
         {varPct !== null && <p style={{ fontFamily:F.sans, fontSize:11, color:varPct >= 0 ? G.green : G.red, margin:"5px 0 0", fontWeight:600 }}>{varPct >= 0 ? "↑" : "↓"}{Math.abs(varPct)}% vs {prevMesNombre}</p>}
         {retencion !== null && <p style={{ fontFamily:F.sans, fontSize:11, color:G.muted, margin:"5px 0 0" }}>retención: <span style={{ color:retencion >= 70 ? G.green : retencion >= 40 ? G.amber : G.red, fontWeight:600 }}>{retencion}%</span></p>}
       </div>
       {totalGastos > 0 && (
         <div style={{ display:"flex", gap:9, marginBottom:14 }}>
-          <div style={{ ...s.card, flex:1, margin:0 }}>
+          <div className="anim-left" style={{ ...s.card, flex:1, margin:0, animationDelay:"40ms" }}>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>gastos</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.red, margin:"0 0 2px" }}>{fmtPesos(totalGastos)}</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:G.red, margin:"0 0 2px" }}>{fmt(totalGastos)}</p>
           </div>
-          <div style={{ ...s.card, flex:1, margin:0 }}>
+          <div className="anim-left" style={{ ...s.card, flex:1, margin:0, animationDelay:"80ms" }}>
             <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>ganancia neta</p>
-            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:ganancia >= 0 ? G.green : G.red, margin:"0 0 2px" }}>{fmtPesos(ganancia)}</p>
+            <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:ganancia >= 0 ? G.green : G.red, margin:"0 0 2px" }}>{fmt(ganancia)}</p>
           </div>
         </div>
       )}
       {total > 0 && (
         <div style={{ display:"flex", gap:9, marginBottom:14 }}>
-          {[["transferencia", transf], ["efectivo", efect]].map(([m, v]) => (
-            <div key={m} style={{ ...s.card, flex:1, margin:0 }}>
+          {[["transferencia", transf], ["efectivo", efect]].map(([m, v], mi) => (
+            <div key={m} className="anim-left" style={{ ...s.card, flex:1, margin:0, animationDelay:`${mi*50+60}ms` }}>
               <p style={{ fontFamily:F.sans, fontSize:9, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>{m}</p>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:m === "transferencia" ? G.green : G.white, margin:"0 0 2px" }}>{fmtPesos(v)}</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:18, color:m === "transferencia" ? G.green : G.white, margin:"0 0 2px" }}>{fmt(v)}</p>
               <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:0 }}>{Math.round(v / denom * 100)}%</p>
             </div>
           ))}
         </div>
       )}
+
+      {/* ── 2. Calendario de ingresos (mobile only; wide shows it in sidebar) ── */}
+      {!wide && (
+        <>
+          <div style={s.div} />
+          <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 12px" }}>Calendario de ingresos</p>
+          <FinanzasCalendario data={data} todoHist={todoHist} toast={toast} />
+        </>
+      )}
+
+      {/* ── 3. Ingresos de hoy ── */}
+      <div style={s.div} />
+      <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 4px" }}>Ingresos de hoy</p>
+      <p style={{ ...s.sub, marginBottom:12 }}>{new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" })}</p>
+      {ingresosHoy.length === 0
+        ? <p style={{ color:G.muted, fontSize:13, marginBottom:8 }}>Sin registros por hoy</p>
+        : (
+          <>
+            <div className="anim-scale" style={{ ...s.card, textAlign:"center", padding:"14px 16px", marginBottom:10, background:`linear-gradient(135deg, rgba(${G.greenRGB},0.15) 0%, rgba(${G.greenRGB},0.04) 100%)`, borderColor:`rgba(${G.greenRGB},0.35)` }}>
+              <p style={{ fontFamily:F.sans, fontSize:10, color:G.muted, margin:"0 0 3px", textTransform:"lowercase" }}>total del día</p>
+              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:28, color:G.greenL, margin:0 }}>{fmt(totalHoy)}</p>
+            </div>
+            {ingresosHoy.map((h, i) => (
+              <div key={i} className="anim-card" style={{ ...s.card, padding:"10px 13px", display:"flex", justifyContent:"space-between", alignItems:"center", animationDelay:`${i*45}ms` }}>
+                <div>
+                  <p style={{ margin:"0 0 2px", fontFamily:F.sans, fontSize:13 }}>{h.servicio || "Servicio"}</p>
+                  {h.clientaNombre && <p style={{ margin:0, fontFamily:F.sans, fontSize:10, color:G.muted }}>{h.clientaNombre}</p>}
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:14, color:G.green }}>{fmt(h.monto)}</p>
+                  {h.pago && <p style={{ margin:0, fontFamily:F.sans, fontSize:9, color:G.muted }}>{h.pago}</p>}
+                </div>
+              </div>
+            ))}
+          </>
+        )
+      }
+
+      {/* ── 4. Ingresos por servicios ── */}
       <div style={s.div} />
       <div style={wide ? { display:"grid", gridTemplateColumns:"1fr 1fr", gap:24 } : {}}>
         <div>
@@ -4152,11 +4258,18 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, 
           {Object.entries(porSv).length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin registros</p>}
           {Object.entries(porSv).sort((a, b) => b[1] - a[1]).map(([nom, tot], i) => (
             <div key={nom} className="anim-card" style={{ ...s.card, padding:"11px 13px", animationDelay:`${i*55}ms` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}><p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p><p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmtPesos(tot)}</p></div>
-              <div style={{ height:3, background:G.border, borderRadius:2, overflow:"hidden" }}><div className="anim-bar" style={{ height:"100%", width:`${(tot / maxSv) * 100}%`, background:G.green, borderRadius:2 }} /></div>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                <p style={{ margin:0, fontFamily:F.sans, fontSize:13 }}>{nom}</p>
+                <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, fontSize:13, color:G.green }}>{fmt(tot)}</p>
+              </div>
+              <div style={{ height:3, background:G.border, borderRadius:2, overflow:"hidden" }}>
+                <div className="anim-bar" style={{ height:"100%", width:`${(tot / maxSv) * 100}%`, background:G.green, borderRadius:2 }} />
+              </div>
             </div>
           ))}
         </div>
+
+        {/* ── 5. Top clientas ── */}
         <div>
           {!wide && <div style={s.div} />}
           <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:16, color:G.white, margin:"0 0 3px" }}>top clientas</p>
@@ -4164,10 +4277,13 @@ function FinanzasResumen({ data, todoHist, periodo, setPeriodo, hoy, mes, anio, 
           {topC.length === 0 && <p style={{ color:G.muted, fontSize:13 }}>Sin datos</p>}
           {topC.map((c, i) => (
             <div key={c._id} className="anim-card" style={{ ...s.card, display:"flex", alignItems:"center", gap:11, animationDelay:`${i*60}ms` }}>
-              <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i === 0 ? G.green : G.muted, minWidth:22, margin:0 }}>{i + 1}</p>
+              <p className={i === 0 ? "anim-float" : ""} style={{ fontFamily:F.serif, fontWeight:700, fontSize:19, color:i === 0 ? G.green : G.muted, minWidth:22, margin:0 }}>{i === 0 ? "🥇" : i + 1}</p>
               <Avatar nombre={c.nombre} size={34} />
-              <div style={{ flex:1 }}><p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p><p style={{ margin:0, ...s.sub, fontSize:10 }}>{c.vis} visita{c.vis !== 1 ? "s" : ""}</p></div>
-              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmtPesos(c.total)}</p>
+              <div style={{ flex:1 }}>
+                <p style={{ margin:"0 0 2px", fontFamily:F.serif, fontSize:13 }}>{c.nombre}</p>
+                <p style={{ margin:0, ...s.sub, fontSize:10 }}>{c.vis} visita{c.vis !== 1 ? "s" : ""}</p>
+              </div>
+              <p style={{ margin:0, fontFamily:F.serif, fontWeight:700, color:G.green, fontSize:14 }}>{fmt(c.total)}</p>
             </div>
           ))}
         </div>
@@ -5406,7 +5522,7 @@ function ConfigHorarios({ data, toast }) {
 // ── Config Estudio ─────────────────────────────────────────────────────────────
 function ConfigEstudio({ data, toast, onLogout }) {
   const est  = data.getConfig("estudio", {});
-  const [form, setForm] = useState({ nombre:est.nombre||"", direccion:est.direccion||"", telefono:est.telefono||"", instagram:est.instagram||"", descripcion:est.descripcion||"", recordatorioCita:est.recordatorioCita||"", googleMapsReview:est.googleMapsReview||"" });
+  const [form, setForm] = useState({ nombre:est.nombre||"", nombreLashista:est.nombreLashista||"", direccion:est.direccion||"", telefono:est.telefono||"", instagram:est.instagram||"", descripcion:est.descripcion||"", recordatorioCita:est.recordatorioCita||"", googleMapsReview:est.googleMapsReview||"" });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]:v }));
 
@@ -5418,7 +5534,7 @@ function ConfigEstudio({ data, toast, onLogout }) {
 
   useEffect(() => {
     const e = data.getConfig("estudio", {});
-    setForm({ nombre:e.nombre||"", direccion:e.direccion||"", telefono:e.telefono||"", instagram:e.instagram||"", descripcion:e.descripcion||"", recordatorioCita:e.recordatorioCita||"", googleMapsReview:e.googleMapsReview||"" });
+    setForm({ nombre:e.nombre||"", nombreLashista:e.nombreLashista||"", direccion:e.direccion||"", telefono:e.telefono||"", instagram:e.instagram||"", descripcion:e.descripcion||"", recordatorioCita:e.recordatorioCita||"", googleMapsReview:e.googleMapsReview||"" });
   }, [data.config]);
 
   const guardarEstudio = async () => { setSaving(true); await data.saveConfig("estudio", form); setSaving(false); toast("✓ datos guardados"); };
@@ -5432,6 +5548,7 @@ function ConfigEstudio({ data, toast, onLogout }) {
       <p style={{ fontFamily:F.serif, fontWeight:700, fontSize:15, color:G.white, margin:"0 0 12px" }}>datos del estudio</p>
       <div style={{ display:"flex", flexDirection:"column", gap:12, marginBottom:20 }}>
         <Field label="nombre del estudio"><input style={s.input} value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="ej: Lash Studio by Chulas" /></Field>
+        <Field label="tu nombre (lashista)" hint="Se usa en el saludo del panel de administración"><input style={s.input} value={form.nombreLashista} onChange={e => set("nombreLashista", e.target.value)} placeholder="ej: Male, Sofi, Caro..." /></Field>
         <Field label="dirección"><input style={s.input} value={form.direccion} onChange={e => set("direccion", e.target.value)} placeholder="calle, localidad..." /></Field>
         <Field label="teléfono / WhatsApp"><input style={s.input} value={form.telefono} onChange={e => set("telefono", e.target.value)} placeholder="11 XXXX-XXXX" /></Field>
         <Field label="instagram"><input style={s.input} value={form.instagram} onChange={e => set("instagram", e.target.value)} placeholder="@tuusuario" /></Field>
