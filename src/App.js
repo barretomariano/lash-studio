@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
-
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 const FB        = "https://lash-studio-c9cd7-default-rtdb.firebaseio.com";
 const API_KEY   = "AIzaSyDq8japdXOWaAAOjBLhESJB1h2qITdnhvk";
 const AUTH_URL  = "https://identitytoolkit.googleapis.com/v1/accounts";
