@@ -1402,6 +1402,7 @@ function AdminInicio({ data, push, setTab, toast, toggleMask, maskNums }) {
   const mes = mesISO();
   const { dark, toggleTheme } = useTheme();
   const wide = useIsWide();
+  const masked = useMask();
   const [showDisp, setShowDisp] = useState(false);
   const citasHoy    = data.citas.filter(c => c.fecha === hoy && c.estado !== "completada");
   const proximas    = data.citas.filter(c => c.fecha > hoy && c.estado !== "completada").sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)).slice(0, 6);
@@ -1484,7 +1485,6 @@ function AdminInicio({ data, push, setTab, toast, toggleMask, maskNums }) {
         <PushBanner role="admin" />
         {/* ── Bento stats grid ── */}
         {(() => {
-          const masked       = useMask();
           const animIngresos = useCountUp(ingresosMes, 900);
           const animHoy      = useCountUp(citasHoy.length, 600);
           const animClientas = useCountUp(data.clientas.length, 700);
